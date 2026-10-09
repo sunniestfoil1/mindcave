@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.agents
+.system_generated
+.gemini
+brain
+*.zip
+*.gz
+ceu_extracted
