@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(unzip -l \"C:/Users/Administrador/Videos/JOGO CRIADO NO LOVABLE/MIND-CAVE/MindCave-PRDs.zip\")",
+      "Bash(rm -rf \"/tmp/mcprd2\")",
+      "Bash(mkdir -p \"/tmp/mcprd2\")",
+      "Bash(powershell.exe -Command \"Expand-Archive -Path 'C:/Users/Administrador/Videos/JOGO CRIADO NO LOVABLE/MIND-CAVE/MindCave-PRDs.zip' -DestinationPath '/tmp/mcprd2' -Force; Get-ChildItem '/tmp/mcprd2' -Recurse | Select-Object FullName,Length | Format-Table -AutoSize\")",
+      "Bash(powershell.exe -Command \"Get-Content 'C:/tmp/mcprd2/mind-cave-prd/MindCave-PRD-15-online-lan-e-chat.md' -TotalCount 80 | Out-String\")",
+      "Bash(powershell.exe -Command \"Get-Content 'C:/tmp/mcprd2/mind-cave-prd/MindCave-PRD-24-correcao-visual-colisao-hud-e-picos.md' -TotalCount 120 | Out-String\")",
+      "Bash(powershell.exe -Command \"Get-Content 'C:/tmp/mcprd2/mind-cave-prd/MindCave-PRD-12-multiplayer-avancado-qualidade-e-polimento.md' -TotalCount 40 | Out-String\")",
+      "Bash(powershell.exe -Command \"Copy-Item 'C:/tmp/mcprd2/mind-cave-prd/*' 'C:/Users/Administrador/Videos/JOGO CRIADO NO LOVABLE/MIND-CAVE/mind-cave-prd/' -Force; Get-ChildItem 'C:/Users/Administrador/Videos/JOGO CRIADO NO LOVABLE/MIND-CAVE/mind-cave-prd' | Measure-Object | Select-Object -ExpandProperty Count\")",
+      "Bash(powershell.exe -Command \"Compress-Archive -Path 'mind-cave-prd' -DestinationPath 'MindCave-PRDs.zip' -Force; Get-Item 'MindCave-PRDs.zip' | Select-Object Name,Length,LastWriteTime | Format-List\")"
+    ]
+  }
+}
