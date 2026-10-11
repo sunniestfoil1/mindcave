@@ -28,6 +28,8 @@ function App() {
     i.hotbar[3] = { id: 17, count: 5, meta: 0 };
     i.main[0] = { id: 297, count: 3, meta: 0 };
     i.main[5] = { id: 264, count: 2, meta: 0 };
+    // lajes (tipos pela meta) e escadas: ícones isométricos
+    [[44, 0], [44, 1], [44, 3], [44, 4], [44, 7], [126, 0], [53, 0], [67, 0], [156, 0], [180, 0], [182, 0], [109, 0]].forEach(([id, meta], k) => { i.main[9 + k] = { id, count: 64, meta }; });
     return i;
   }, []);
   const furnace = useMemo(() => ({ input: { id: 12, count: 8, meta: 0 }, fuel: { id: 263, count: 5, meta: 0 }, output: { id: 20, count: 3, meta: 0 }, burnTime: 120, totalBurn: 200, cookTime: 90 }), []);

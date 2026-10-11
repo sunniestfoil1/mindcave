@@ -152,6 +152,18 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
       const numId = parseInt(id, 10);
       const b = BLOCKS[id];
       if (numId === 0 || !b) continue;
+      if (b.singleId) continue; // laje dupla não aparece no criativo (vem de duas lajes)
+      if (b.variants && b.model === 'slab') {
+        // uma entrada por tipo de laje (a meta guarda o tipo)
+        b.variants.forEach((_, meta) => {
+          if (numId === 44 && meta === 2) return; // "laje de madeira" antiga: duplicata da laje de carvalho
+          list.push({
+            id: numId, meta, name: b.variantNames[meta], nameEn: b.name, isBlock: true,
+            categories: getItemCategories(numId, true, b), maxStack: 64, block: b,
+          });
+        });
+        continue;
+      }
       list.push({
         id: numId, name: b.namePt || b.name, nameEn: b.name, isBlock: true,
         categories: getItemCategories(numId, true, b), maxStack: 64, block: b,
@@ -195,11 +207,11 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
     const max = itemData.maxStack || 64;
     playClickSound();
     if (isShift) {
-      addItem(inv, { id: itemData.id, count: max, meta: 0 });
+      addItem(inv, { id: itemData.id, count: max, meta: itemData.meta || 0 });
       refresh();
       return;
     }
-    inv.cursor = { id: itemData.id, count: isRight ? 1 : max, meta: 0 };
+    inv.cursor = { id: itemData.id, count: isRight ? 1 : max, meta: itemData.meta || 0 };
     refresh();
   };
 

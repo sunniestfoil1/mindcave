@@ -30,3 +30,5 @@ O HUD e os inventários ficam em `/lab/hud.html?mode=hud|inventory|creative|craf
 ## Verificação automática
 
 No console da página: `__lab.runChecks()` devolve `{ facing, hand, mobs }` e escreve o resultado no painel de texto.
+
+- `lab/index.html?view=grass&shape=1&d=17&a=15&p=55&x=8&z=8` mostra lajes e escadas (todos os tipos, de cima/de baixo, duplas, invertidas, cantos) com a malha real; `d`, `a`, `p`, `x`, `z` = distância, ângulo, inclinação e alvo da câmera.

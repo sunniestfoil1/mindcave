@@ -35,6 +35,23 @@ export async function setup(scene, camera, renderer, api) {
   const plants = [[2, 2, 31], [3, 4, 31], [4, 2, 31], [2, 5, 37], [11, 3, 38], [12, 5, 31], [13, 3, 31], [10, 11, 31], [11, 11, 31], [12, 12, 31], [3, 12, 37], [4, 11, 31]];
   for (const [x, z, id] of plants) blocks[chunkIndex(x, 61, z)] = packState(id, 1);
   for (let y = 61; y <= 62; y++) for (let x = 1; x <= 2; x++) for (let z = 8; z <= 9; z++) blocks[chunkIndex(x, y, z)] = packState(18, 0);
+  // ?shape=1 mostra lajes e escadas (todos os tipos, de baixo/de cima, duplas, invertidas e cantos) com a malha real
+  const qs = new URLSearchParams(location.search);
+  const shapeMode = !!qs.get('shape');
+  if (shapeMode) {
+    for (let x = 0; x < 16; x++) for (let z = 0; z < 16; z++) blocks[chunkIndex(x, 61, z)] = 0;
+    for (let x = 6; x < 9; x++) for (let z = 6; z < 9; z++) { blocks[chunkIndex(x, 61, z)] = 0; blocks[chunkIndex(x, 60, z)] = packState(GRASS, 0); }
+    const put = (x, z, id, meta = 0, y = 61) => { blocks[chunkIndex(x, y, z)] = packState(id, meta); };
+    for (let v = 0; v < 8; v++) { put(1 + v, 2, 44, v); put(1 + v, 4, 44, 8 | v); put(1 + v, 6, 43, v); } // lajes: baixo, cima, dupla
+    for (let v = 0; v < 6; v++) put(1 + v, 8, 126, v);
+    put(9, 8, 182, 0);
+    for (let m = 0; m < 4; m++) put(1 + m, 11, 53, m);            // escada de carvalho nas 4 direções
+    for (let m = 0; m < 4; m++) put(6 + m, 11, 67, 4 | m);        // pedregulho, invertidas
+    put(11, 9, 156, 3); put(11, 8, 156, 1);                       // quartzo: canto externo (frente sobe p/ oeste)
+    put(13, 12, 109, 3); put(13, 13, 109, 1);                     // tijolo de pedra: canto interno
+    put(11, 12, 134, 0); put(12, 12, 134, 0); put(13, 14, 180, 2); put(1, 13, 128, 2); put(2, 13, 114, 2); put(3, 13, 108, 2);
+    put(5, 14, 53, 0); put(6, 14, 53, 0, 61); put(6, 14, 53, 0, 62); // degraus empilhados
+  }
   const tint = new Uint8Array(256 * 9);
   for (let i = 0; i < 256; i++) { tint.set([124, 189, 107, 72, 181, 24, 63, 118, 228], i * 9); } // grama, folhagem, água (planície)
   // ?real=cx,cz troca o terreno de brinquedo por chunks gerados pelo próprio jogo (árvores, relevo)
@@ -70,6 +87,14 @@ export async function setup(scene, camera, renderer, api) {
   api.update = () => {
     const ui = window.__lab ? window.__lab.ui : { gDist: 4, gAng: 30, gPitch: 40 };
     const a = (ui.gAng ?? 30) * Math.PI / 180, p = (ui.gPitch ?? 40) * Math.PI / 180, d = ui.gDist ?? 4;
+    if (shapeMode) {
+      const q = new URLSearchParams(location.search);
+      const sa = Number(q.get('a') ?? 20) * Math.PI / 180, sp = Number(q.get('p') ?? 50) * Math.PI / 180, sd = Number(q.get('d') ?? 16);
+      const t = new THREE.Vector3(Number(q.get('x') ?? 8), 61, Number(q.get('z') ?? 8));
+      camera.position.set(t.x + Math.sin(sa) * Math.cos(sp) * sd, t.y + Math.sin(sp) * sd, t.z + Math.cos(sa) * Math.cos(sp) * sd);
+      camera.lookAt(t);
+      return;
+    }
     camera.position.set(target.x + Math.sin(a) * Math.cos(p) * d, target.y + Math.sin(p) * d, target.z + Math.cos(a) * Math.cos(p) * d);
     camera.lookAt(target);
   };

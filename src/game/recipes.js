@@ -132,8 +132,22 @@ export const RECIPES = [
   // TNT
   R(['GSG', 'SGS', 'GSG'], { G: GUNPOWDER, S: SAND }, { id: 46, count: 1 }),
 
-  // Lajes (Laje de pedregulho = meta 3)
+  // Lajes: 3 blocos em linha → 6 lajes (a meta é o tipo: 0 pedra, 1 arenito, 3 pedregulho, 4 tijolos, 5 tijolos de pedra, 6 nether, 7 quartzo)
+  R(['CCC'], { C: { id: 1 } }, { id: 44, meta: 0, count: 6 }),
+  R(['CCC'], { C: { id: 24 } }, { id: 44, meta: 1, count: 6 }),
   R(['CCC'], { C: COBBLE }, { id: 44, meta: 3, count: 6 }),
+  R(['CCC'], { C: { id: 45 } }, { id: 44, meta: 4, count: 6 }),
+  R(['CCC'], { C: { id: 98 } }, { id: 44, meta: 5, count: 6 }),
+  R(['CCC'], { C: { id: 112 } }, { id: 44, meta: 6, count: 6 }),
+  R(['CCC'], { C: { id: 155 } }, { id: 44, meta: 7, count: 6 }),
+  R(['CCC'], { C: { id: 5 } }, { id: 126, meta: 0, count: 6 }),
+  R(['CCC'], { C: { id: 176 } }, { id: 182, meta: 0, count: 6 }),
+
+  // Escadas: 6 blocos em degraus (nos dois sentidos) → 4 escadas
+  ...[[5, 53], [4, 67], [45, 108], [98, 109], [112, 114], [24, 128], [155, 156], [176, 180]].flatMap(([src, out]) => [
+    R(['C  ', 'CC ', 'CCC'], { C: { id: src } }, { id: out, count: 4 }),
+    R(['  C', ' CC', 'CCC'], { C: { id: src } }, { id: out, count: 4 }),
+  ]),
 
   // Blocos de minério → bloco
   R(['III', 'III', 'III'], { I: { id: 265 } }, { id: 42, count: 1 }),  // ferro → bloco

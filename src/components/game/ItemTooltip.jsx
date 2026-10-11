@@ -1,6 +1,6 @@
 import React from "react";
 import { ITEMS } from "@/game/items";
-import { BLOCKS } from "@/game/blocks";
+import { BLOCKS, blockDisplayName } from "@/game/blocks";
 import { GUNS } from "@/game/guns/registry";
 import { FOODS } from "@/game/survival";
 
@@ -12,7 +12,7 @@ export default function ItemTooltip({ item, mousePos }) {
   const blockDef = isBlock ? BLOCKS[item.id] : null;
   const itemDef = !isBlock ? ITEMS[item.id] : null;
 
-  const namePt = item.name || blockDef?.namePt || itemDef?.namePt || `Item #${item.id}`;
+  const namePt = item.name || (blockDef && blockDisplayName(item.id, item.meta)) || blockDef?.namePt || itemDef?.namePt || `Item #${item.id}`;
   const nameEn = item.nameEn || blockDef?.name || itemDef?.name || '';
   const rarity = itemDef?.rarity || (item.id === 399 || item.id === 466 ? 'epic' : item.id === 322 || item.id === 384 ? 'rare' : 'common');
 

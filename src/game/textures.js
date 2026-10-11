@@ -270,6 +270,9 @@ const TILE_ORDER = [
   'slime', 'hay', 'tnt_top', 'bookshelf', 'grass_plant', 'flower_dandelion', 'flower_rose', 'mushroom_brown',
   'mushroom_red', 'sugarcane', 'lilypad', 'torch', 'fire',
   'cactus_side', 'cactus_top', 'cactus_bottom', 'dead_bush', 'vine',
+  // lajes e escadas
+  'stone_slab_top', 'stone_slab_side', 'quartz_top', 'quartz_bottom', 'planks_spruce', 'planks_birch', 'planks_jungle',
+  'planks_acacia', 'planks_dark_oak', 'red_sandstone_top', 'red_sandstone_bottom', 'red_sandstone_side',
 ];
 
 let _cache = null;
@@ -351,6 +354,10 @@ const MC_TEXTURE_MAP = {
   'lilypad': 'waterlily', 'torch': 'torch_on', 'fire': 'fire_layer_0',
   'cactus_side': 'cactus_side', 'cactus_top': 'cactus_top', 'cactus_bottom': 'cactus_bottom',
   'dead_bush': 'deadbush', 'vine': 'vine',
+  'stone_slab_top': 'stone_slab_top', 'stone_slab_side': 'stone_slab_side', 'quartz_top': 'quartz_block_top',
+  'quartz_bottom': 'quartz_block_bottom', 'planks_spruce': 'planks_spruce', 'planks_birch': 'planks_birch',
+  'planks_jungle': 'planks_jungle', 'planks_acacia': 'planks_acacia', 'planks_dark_oak': 'planks_big_oak',
+  'red_sandstone_top': 'red_sandstone_top', 'red_sandstone_bottom': 'red_sandstone_bottom', 'red_sandstone_side': 'red_sandstone_normal',
 };
 
 let _realLoaded = false;

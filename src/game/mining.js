@@ -37,6 +37,13 @@ export const HARVEST = {
   175: { tool: 'pickaxe', level: 0 }, // tijolos musgosos
   24: { tool: 'pickaxe', level: 0 },  // arenito
   176: { tool: 'pickaxe', level: 0 }, // arenito vermelho
+  // lajes e escadas: de pedra exigem picareta; de madeira o machado é só o mais rápido
+  44: { tool: 'pickaxe', level: 0 }, 43: { tool: 'pickaxe', level: 0 }, 182: { tool: 'pickaxe', level: 0 }, 181: { tool: 'pickaxe', level: 0 },
+  67: { tool: 'pickaxe', level: 0 }, 108: { tool: 'pickaxe', level: 0 }, 109: { tool: 'pickaxe', level: 0 }, 114: { tool: 'pickaxe', level: 0 },
+  128: { tool: 'pickaxe', level: 0 }, 156: { tool: 'pickaxe', level: 0 }, 180: { tool: 'pickaxe', level: 0 },
+  126: { tool: 'axe', level: 0 }, 125: { tool: 'axe', level: 0 },
+  53: { tool: 'axe', level: 0 }, 134: { tool: 'axe', level: 0 }, 135: { tool: 'axe', level: 0 }, 136: { tool: 'axe', level: 0 },
+  163: { tool: 'axe', level: 0 }, 164: { tool: 'axe', level: 0 },
   // Pá
   2: { tool: 'shovel', level: 0 },    // grama
   3: { tool: 'shovel', level: 0 },    // terra
@@ -179,7 +186,13 @@ export function getMiningTime(blockId, tool, effects = [], inWater = false, onGr
 }
 
 // Calcula drops de um bloco
-export function getDrops(blockId, tool) {
+export function getDrops(blockId, tool, meta = 0) {
+  const blk = getBlock(blockId);
+  // Lajes: a simples dropa 1 do mesmo tipo; a dupla dropa 2 (a meta guarda o tipo, o bit 8 é só a metade)
+  if (blk && (blk.model === 'slab' || blk.singleId)) {
+    if (!canHarvest(blockId, tool)) return [];
+    return [{ id: blk.singleId || blockId, count: blk.singleId ? 2 : 1, meta: meta & 7 }];
+  }
   const dropFn = DROP_TABLE[blockId];
   if (dropFn) return dropFn(tool);
   // Drop padrão: o próprio bloco (se puder colher)

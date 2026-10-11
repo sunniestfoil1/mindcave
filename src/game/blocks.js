@@ -174,7 +174,7 @@ export function lightOpacity(id) { const b = BLOCKS[id]; return b ? (b.lightOpac
 export function lightEmission(id) { const b = BLOCKS[id]; return b ? (b.lightEmission ?? 0) : 0; }
 
 export function tileForFace(block, face, meta) {
-  const f = block.faces || {};
+  const f = (block.variants && block.variants[(meta || 0) & 7]) || block.faces || {};
   if (f.all) return f.all;
   if (face === 'front' && f.front) return f.front;
   return f[face] || f.side || f.top || f.all;
@@ -208,6 +208,7 @@ export function getSelectionBox(id, meta = 0) {
     case 'carpet': return id === 171 ? [0, 0, 0, 1, 0.0625, 1] : SEL_PLATE;
     case 'snow': return [0, 0, 0, 1, ((meta & 7) + 1) / 8, 1];
     case 'box': return b.box || FULL_BOX;
+    case 'slab': return (meta & 8) ? [0, 0.5, 0, 1, 1, 1] : [0, 0, 0, 1, 0.5, 1];
     default: return FULL_BOX;
   }
 }
@@ -221,6 +222,64 @@ export function getModelBox(block, meta = 0) {
     case 'box': return block.box || FULL_BOX;
     default: return FULL_BOX;
   }
+}
+
+
+// === Lajes e escadas (1.8.9) ===
+// Os modelos 'slab' e 'stairs' têm formas próprias (shapes.js). São sólidos (colisão por caixas) e não opacos (as faces dos
+// vizinhos aparecem); lightOpacity 15 como no original, com o brilho da malha vindo dos vizinhos (mesher).
+const FACES_STONE_SLAB = { top: 'stone_slab_top', bottom: 'stone_slab_top', side: 'stone_slab_side' };
+const FACES_SANDSTONE = { top: 'sandstone_top', bottom: 'sandstone_bottom', side: 'sandstone_side' };
+const FACES_QUARTZ = { top: 'quartz_top', bottom: 'quartz_bottom', side: 'quartz' };
+const FACES_RED_SANDSTONE = { top: 'red_sandstone_top', bottom: 'red_sandstone_bottom', side: 'red_sandstone_side' };
+const all = (t) => ({ all: t });
+
+const STONE_SLAB_VARIANTS = [FACES_STONE_SLAB, FACES_SANDSTONE, all('planks'), all('cobblestone'), all('bricks'), all('stone_bricks'), all('nether_brick'), FACES_QUARTZ];
+const STONE_SLAB_NAMES = ['Laje de Pedra', 'Laje de Arenito', 'Laje de Madeira (antiga)', 'Laje de Pedregulho', 'Laje de Tijolos', 'Laje de Tijolos de Pedra', 'Laje de Tijolos do Nether', 'Laje de Quartzo'];
+const WOOD_SLAB_VARIANTS = ['planks', 'planks_spruce', 'planks_birch', 'planks_jungle', 'planks_acacia', 'planks_dark_oak'].map(all);
+const WOOD_SLAB_NAMES = ['Laje de Carvalho', 'Laje de Pinheiro', 'Laje de Bétula', 'Laje da Selva', 'Laje de Acácia', 'Laje de Carvalho Escuro'];
+
+function shaped(id, name, namePt, props) {
+  return { ...B(id, name, namePt, { solid: true, opaque: false, lightOpacity: 15, render: 'opaque', ...props }) };
+}
+
+function addSlab(singleId, doubleId, name, namePt, variants, names, extra) {
+  BLOCKS[singleId] = shaped(singleId, name, namePt, { model: 'slab', variants, variantNames: names, doubleId, drop: singleId, ...extra });
+  // laje dupla: cubo comum; drop = 2 lajes (mining.js)
+  BLOCKS[doubleId] = B(doubleId, 'double_' + name, 'Laje Dupla de ' + namePt.replace(/^Laje (de |da )?/, ''), { variants, variantNames: names, singleId, drop: singleId, faces: variants[0], ...extra });
+}
+
+addSlab(44, 43, 'stone_slab', 'Laje de Pedra', STONE_SLAB_VARIANTS, STONE_SLAB_NAMES, { hardness: 2.0 });
+addSlab(126, 125, 'wooden_slab', 'Laje de Madeira', WOOD_SLAB_VARIANTS, WOOD_SLAB_NAMES, { hardness: 2.0, soundCategory: 'wood' });
+addSlab(182, 181, 'stone_slab2', 'Laje de Arenito Vermelho', [FACES_RED_SANDSTONE], ['Laje de Arenito Vermelho'], { hardness: 2.0 });
+
+const STAIRS = [
+  [53, 'oak_stairs', 'Escada de Carvalho', all('planks'), 2.0, 'wood'],
+  [67, 'stone_stairs', 'Escada de Pedregulho', all('cobblestone'), 2.0, 'stone'],
+  [108, 'brick_stairs', 'Escada de Tijolos', all('bricks'), 2.0, 'stone'],
+  [109, 'stone_brick_stairs', 'Escada de Tijolos de Pedra', all('stone_bricks'), 1.5, 'stone'],
+  [114, 'nether_brick_stairs', 'Escada de Tijolos do Nether', all('nether_brick'), 2.0, 'stone'],
+  [128, 'sandstone_stairs', 'Escada de Arenito', FACES_SANDSTONE, 0.8, 'stone'],
+  [134, 'spruce_stairs', 'Escada de Pinheiro', all('planks_spruce'), 2.0, 'wood'],
+  [135, 'birch_stairs', 'Escada de Bétula', all('planks_birch'), 2.0, 'wood'],
+  [136, 'jungle_stairs', 'Escada da Selva', all('planks_jungle'), 2.0, 'wood'],
+  [156, 'quartz_stairs', 'Escada de Quartzo', FACES_QUARTZ, 0.8, 'stone'],
+  [163, 'acacia_stairs', 'Escada de Acácia', all('planks_acacia'), 2.0, 'wood'],
+  [164, 'dark_oak_stairs', 'Escada de Carvalho Escuro', all('planks_dark_oak'), 2.0, 'wood'],
+  [180, 'red_sandstone_stairs', 'Escada de Arenito Vermelho', FACES_RED_SANDSTONE, 0.8, 'stone'],
+];
+for (const [id, name, namePt, faces, hardness, snd] of STAIRS) {
+  BLOCKS[id] = shaped(id, name, namePt, { model: 'stairs', faces, hardness, soundCategory: snd, drop: id });
+}
+export const SLAB_IDS = [44, 126, 182];
+export const STAIR_IDS = STAIRS.map(s => s[0]);
+
+// Nome exibido (a laje muda de nome conforme o tipo, guardado na meta)
+export function blockDisplayName(id, meta = 0) {
+  const b = BLOCKS[id];
+  if (!b) return null;
+  if (b.variantNames) return b.variantNames[meta & 7] || b.namePt;
+  return b.namePt;
 }
 
 // Nome do bloco para lookup por comando /give

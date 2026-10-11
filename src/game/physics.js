@@ -3,6 +3,7 @@
 // ATENÇÃO: world.getBlock devolve o ESTADO (id << 4 | meta); a colisão sempre usa o id do estado.
 import { PLAYER } from './constants';
 import { BLOCKS } from './blocks';
+import { blockBoxes } from './shapes';
 
 const EPS = 1e-7;
 
@@ -28,6 +29,13 @@ export function getBlockSlipperiness(state) {
 const BOX = new Float64Array(6 * 600);
 let nBox = 0;
 
+const _getters = new WeakMap();
+function getState(world) {
+  let g = _getters.get(world);
+  if (!g) { g = (x, y, z) => world.getBlock(x, y, z); _getters.set(world, g); }
+  return g;
+}
+
 function collect(world, minX, minY, minZ, maxX, maxY, maxZ) {
   nBox = 0;
   const x0 = Math.floor(minX), x1 = Math.floor(maxX);
@@ -36,7 +44,21 @@ function collect(world, minX, minY, minZ, maxX, maxY, maxZ) {
   for (let x = x0; x <= x1; x++) {
     for (let z = z0; z <= z1; z++) {
       for (let y = y0; y <= y1; y++) {
-        const h = collisionHeight(world.getBlock(x, y, z));
+        const st = world.getBlock(x, y, z);
+        if (st === 0) continue;
+        const blk = BLOCKS[(st >> 4) & 0xfff];
+        if (blk && blk.solid && (blk.model === 'slab' || blk.model === 'stairs')) {
+          // lajes e escadas: várias caixas, cada uma com sua altura
+          for (const bx of blockBoxes(st, getState(world), x, y, z)) {
+            if (nBox >= 600) break;
+            const o = nBox * 6;
+            BOX[o] = x + bx[0]; BOX[o + 1] = y + bx[1]; BOX[o + 2] = z + bx[2];
+            BOX[o + 3] = x + bx[3]; BOX[o + 4] = y + bx[4]; BOX[o + 5] = z + bx[5];
+            nBox++;
+          }
+          continue;
+        }
+        const h = collisionHeight(st);
         if (h === 0 || nBox >= 600) continue;
         const o = nBox * 6;
         BOX[o] = x; BOX[o + 1] = y; BOX[o + 2] = z; BOX[o + 3] = x + 1; BOX[o + 4] = y + h; BOX[o + 5] = z + 1;

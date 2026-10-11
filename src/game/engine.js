@@ -4,6 +4,7 @@ import { TICK_MS, TPS, PLAYER, AUTOSAVE_TICKS } from './constants';
 import { moveEntity, unstickPlayer, pushOutOfBlocks, collidesAt, chunkLoadedAt, getBlockSlipperiness } from './physics';
 import { packState, stateId, stateMeta, chunkCoord } from './chunk';
 import { getBlock, isWater, isLava, isFluid, isReplaceable, isSolid, BLOCK_NAMES, getSelectionBox } from './blocks';
+import { blockBoxes, rayBox, hasShape, isSlabBlock, isStairsBlock, computePlacement } from './shapes';
 import { Sky } from './sky';
 import { skyBrightnessFactor, sunsetFactor, sunBrightness } from './lighting';
 import { tickFluids } from './fluids';
@@ -204,6 +205,14 @@ export class GameEngine {
     );
     this.outline.visible = false;
     this.scene.add(this.outline);
+    // contornos extras para blocos de várias caixas (escadas)
+    this._outlineExtra = [];
+    for (let i = 0; i < 3; i++) {
+      const o = new THREE.LineSegments(this.outline.geometry, this.outline.material);
+      o.visible = false;
+      this.scene.add(o);
+      this._outlineExtra.push(o);
+    }
 
     // Overlay de rachadura ao minerar bloco (destroy_stage_0 a 9)
     const destroyMat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
@@ -483,21 +492,38 @@ export class GameEngine {
     let tmy = sy !== 0 ? ((sy > 0 ? y + 1 - eye.y : eye.y - y) / Math.abs(dir.y)) : Infinity;
     let tmz = sz !== 0 ? ((sz > 0 ? z + 1 - eye.z : eye.z - z) / Math.abs(dir.z)) : Infinity;
     let nx = 0, ny = 0, nz = 0;
+    let tEnter = 0; // distância em que o raio entra na célula atual
+    const getState = (a, b, c) => this.world.getBlock(a, b, c);
     for (let i = 0; i < 80; i++) {
       const s = this.world.getBlock(x, y, z);
       const id = stateId(s);
       if (id !== 0 && !isWater(id) && !isLava(id)) {
-        return { x, y, z, nx, ny, nz, id, meta: stateMeta(s) };
+        const blk = getBlock(id);
+        if (hasShape(blk)) {
+          // lajes e escadas: só vale se o raio acerta alguma das caixas (mirar no vão não seleciona o bloco)
+          let best = null;
+          for (const box of blockBoxes(s, getState, x, y, z)) {
+            const r = rayBox(eye.x - x, eye.y - y, eye.z - z, dir.x, dir.y, dir.z, box, reach);
+            if (r && (!best || r.t < best.t)) best = r;
+          }
+          if (best) {
+            return { x, y, z, nx: best.nx, ny: best.ny, nz: best.nz, id, meta: stateMeta(s),
+              hx: eye.x + dir.x * best.t, hy: eye.y + dir.y * best.t, hz: eye.z + dir.z * best.t };
+          }
+        } else {
+          return { x, y, z, nx, ny, nz, id, meta: stateMeta(s),
+            hx: eye.x + dir.x * tEnter, hy: eye.y + dir.y * tEnter, hz: eye.z + dir.z * tEnter };
+        }
       }
       if (tmx < tmy && tmx < tmz) {
         if (tmx > reach) break;
-        x += sx; nx = -sx; ny = 0; nz = 0; tmx += tdx;
+        tEnter = tmx; x += sx; nx = -sx; ny = 0; nz = 0; tmx += tdx;
       } else if (tmy < tmz) {
         if (tmy > reach) break;
-        y += sy; nx = 0; ny = -sy; nz = 0; tmy += tdy;
+        tEnter = tmy; y += sy; nx = 0; ny = -sy; nz = 0; tmy += tdy;
       } else {
         if (tmz > reach) break;
-        z += sz; nx = 0; ny = 0; nz = -sz; tmz += tdz;
+        tEnter = tmz; z += sz; nx = 0; ny = 0; nz = -sz; tmz += tdz;
       }
     }
     return null;
@@ -541,19 +567,25 @@ export class GameEngine {
     if (!hit) return;
     const slot = this.player.hotbar[this.player.selectedSlot];
     if (!slot || !slot.id) return;
-    const px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
-    if (this.intersectsPlayer(px, py, pz)) return;
+    let px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
+    const placing = getBlock(slot.id);
+    let meta = slot.meta || 0;
+    let placeId = slot.id;
+    const plan = computePlacement(placing, meta, hit, this.player.yaw, (a, b, c) => this.world.getBlock(a, b, c));
+    if (plan) { px = plan.x; py = plan.y; pz = plan.z; placeId = plan.id; meta = plan.meta; }
+    if (hasShape(getBlock(placeId))) { if (this._shapeHitsPlayer(placeId, meta, px, py, pz)) return; }
+    else if (this.intersectsPlayer(px, py, pz)) return;
     const targetState = this.world.getBlock(px, py, pz);
     const targetId = stateId(targetState);
-    if (targetId !== 0 && !isFluid(targetId) && !isReplaceable(targetId)) return;
-    let meta = slot.meta || 0;
+    const mergingInPlace = placeId !== slot.id; // laje dupla: o bloco existente é a laje que está sendo completada
+    if (!mergingInPlace && targetId !== 0 && !isFluid(targetId) && !isReplaceable(targetId)) return;
     if (slot.id === 17) {
       if (hit.ny !== 0) meta = 0;
       else if (hit.nx !== 0) meta = 1;
       else meta = 2;
     }
-    const newState = packState(slot.id, meta);
-    playBlockPlaceSound(slot.id, { x: px, y: py, z: pz });
+    const newState = packState(placeId, meta);
+    playBlockPlaceSound(placeId, { x: px, y: py, z: pz });
     this.world.setBlock(px, py, pz, newState);
     this.onBlockChange?.(px, py, pz, newState);
     this.netManager?.sendBlockChange?.(px, py, pz, newState);
@@ -575,7 +607,21 @@ export class GameEngine {
   pickBlock() {
     const hit = this.raycast();
     if (!hit) return;
-    this.player.hotbar[this.player.selectedSlot] = { id: hit.id, meta: hit.meta };
+    const b = getBlock(hit.id);
+    // laje dupla vira a laje simples do mesmo tipo; escadas e lajes voltam à meta base (a orientação vem da colocação)
+    const id = b.singleId || hit.id;
+    let meta = hit.meta;
+    if (b.singleId || isSlabBlock(b)) meta = hit.meta & 7;
+    else if (isStairsBlock(b)) meta = 0;
+    this.player.hotbar[this.player.selectedSlot] = { id, meta };
+  }
+
+  // Uma laje/escada recém-colocada não pode prender o jogador dentro dela
+  _shapeHitsPlayer(id, meta, x, y, z) {
+    const p = this.player.pos, hw = PLAYER.width / 2;
+    const boxes = blockBoxes(packState(id, meta), (a, b, c) => this.world.getBlock(a, b, c), x, y, z) || [[0, 0, 0, 1, 1, 1]];
+    return boxes.some(bx => x + bx[3] > p.x - hw && x + bx[0] < p.x + hw && y + bx[4] > p.y && y + bx[1] < p.y + PLAYER.height
+      && z + bx[5] > p.z - hw && z + bx[2] < p.z + hw);
   }
 
   intersectsPlayer(x, y, z) {
@@ -1261,15 +1307,25 @@ export class GameEngine {
   }
 
   updateOutline() {
-    if (this.paused || this.chatOpen) { this.outline.visible = false; return; }
+    const hideAll = () => { this.outline.visible = false; for (const o of this._outlineExtra) o.visible = false; };
+    if (this.paused || this.chatOpen) { hideAll(); return; }
     const hit = this.raycast();
-    if (hit) {
-      const box = getSelectionBox(hit.id, hit.meta) || [0, 0, 0, 1, 1, 1];
+    if (!hit) { hideAll(); this.outline.scale.set(1, 1, 1); return; }
+    const blk = getBlock(hit.id);
+    // lajes e escadas: um contorno por caixa (a escada tem até 3); os demais usam a caixa de seleção do registro
+    let boxes = [getSelectionBox(hit.id, hit.meta) || [0, 0, 0, 1, 1, 1]];
+    if (hasShape(blk)) {
+      boxes = blockBoxes(this.world.getBlock(hit.x, hit.y, hit.z), (a, b, c) => this.world.getBlock(a, b, c), hit.x, hit.y, hit.z) || boxes;
+    }
+    const targets = [this.outline, ...this._outlineExtra];
+    targets.forEach((o, i) => {
+      const box = boxes[i];
+      if (!box) { o.visible = false; return; }
       const w = box[3] - box[0], h = box[4] - box[1], d = box[5] - box[2];
-      this.outline.position.set(hit.x + box[0] + w / 2, hit.y + box[1] + h / 2, hit.z + box[2] + d / 2);
-      this.outline.scale.set(w, h, d);
-      this.outline.visible = true;
-    } else { this.outline.visible = false; this.outline.scale.set(1, 1, 1); }
+      o.position.set(hit.x + box[0] + w / 2, hit.y + box[1] + h / 2, hit.z + box[2] + d / 2);
+      o.scale.set(w * 1.002, h * 1.002, d * 1.002);
+      o.visible = true;
+    });
   }
 
   updateDestroyOverlay() {
@@ -1527,7 +1583,7 @@ export class GameEngine {
   breakBlockSurvival(hit, tool) {
     const block = getBlock(hit.id);
     if (block.hardness < 0) return;
-    const drops = getDrops(hit.id, tool);
+    const drops = getDrops(hit.id, tool, hit.meta);
     for (const drop of drops) {
       const item = { id: drop.id, count: drop.count, meta: drop.meta || 0 };
       const rx = (Math.random() - 0.5) * 0.2;

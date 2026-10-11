@@ -5,6 +5,9 @@
 //  · saída compacta: cores/luz/ao em Uint8 normalizado (menos memória e menos bytes para a GPU).
 import { stateId, chunkIndex } from './chunk';
 import { getBlock, isOpaque, tileForFace, getModelBox, WOOL_COLORS } from './blocks';
+import { blockBoxes } from './shapes';
+
+const NB = [[0, 1, 0], [0, -1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
 
 const SS = 16; // section size
 
@@ -313,6 +316,22 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
             }
             target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
           }
+        } else if (model === 'slab' || model === 'stairs') {
+          // Brilho vindo dos vizinhos (o próprio bloco barra a luz, como "useNeighborBrightness" da 1.8)
+          // (getLightAbs devolve um objeto reutilizado: copiar os números a cada leitura)
+          const own = getLightAbs(wx, wy, wz);
+          let lb = own.block, ls = own.sky;
+          for (let d = 0; d < 6; d++) {
+            const nl = getLightAbs(wx + NB[d][0], wy + NB[d][1], wz + NB[d][2]);
+            if (nl.block > lb) lb = nl.block;
+            if (nl.sky > ls) ls = nl.sky;
+          }
+          const l = { block: lb, sky: ls };
+          const boxes = blockBoxes(s, getBlockAbs, wx, wy, wz);
+          const tTop = tiles[tileForFace(block, 'top', meta)] || tiles.error;
+          const tBottom = tiles[tileForFace(block, 'bottom', meta)] || tiles.error;
+          const tSide = tiles[tileForFace(block, 'side', meta)] || tiles.error;
+          for (const box of boxes) emitBox(target, tTop, tBottom, tSide, null, wx, wy, wz, box, l, getBlockAbs);
         } else {
           // 'box' | 'carpet' | 'torch' | 'snow' → caixa do registro
           const l = getLightAbs(wx, wy, wz);

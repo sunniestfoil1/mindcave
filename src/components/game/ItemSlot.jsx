@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { itemColor, ITEMS } from "@/game/items";
-import { BLOCKS } from "@/game/blocks";
+import { BLOCKS, tileForFace } from "@/game/blocks";
 import { getDurabilityRatio } from "@/game/mining";
 import { getPackUrl, MC } from "@/game/pack";
 import { getAtlasTileCanvas, getAtlasVersion } from "@/game/textures";
 import { itemIconFile, itemBlockTile, ICON_TINT } from "@/game/gui/iconNames";
+import { drawIsoBoxes, ICON_SLAB, ICON_STAIRS } from "@/game/gui/isoIcon";
 
 const blockCanvasCache = new Map();
 
@@ -77,10 +78,26 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
       return c;
     };
     const showBlock = (b) => {
+      const meta = item.meta || 0;
       const f = b.faces;
-      const top = typeof f === 'string' ? f : (f?.top || f?.all || f?.side || b.name);
-      const side = typeof f === 'string' ? f : (f?.side || f?.front || f?.all || top);
+      // lajes mudam de textura conforme o tipo (meta); o resto usa as faces fixas do bloco
+      const top = b.variants ? tileForFace(b, 'top', meta) : (typeof f === 'string' ? f : (f?.top || f?.all || f?.side || b.name));
+      const side = b.variants ? tileForFace(b, 'side', meta) : (typeof f === 'string' ? f : (f?.side || f?.front || f?.all || top));
       const tint = b.tint === 'grass' || b.tint === 'foliage' ? b.tint : null;
+      if (b.model === 'slab' || b.model === 'stairs') {
+        const t = tile(top, null), sd = tile(side, null);
+        if (t && sd) {
+          const key = `${b.model}|${top}|${side}`;
+          if (!blockCanvasCache.has(key)) {
+            const c = document.createElement('canvas');
+            c.width = 32; c.height = 32;
+            drawIsoBoxes(c.getContext('2d'), b.model === 'slab' ? ICON_SLAB : ICON_STAIRS, t, sd);
+            blockCanvasCache.set(key, c.toDataURL());
+          }
+          setImgUrl(blockCanvasCache.get(key));
+          return true;
+        }
+      }
       if (b.model === 'cube' || !b.model) {
         const t = tile(top, tint);
         const sd = tile(side, tint && side === top ? tint : null);
@@ -105,7 +122,7 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
       const flat = blockTile ? tile(blockTile) : null;
       setImgUrl(flat ? flat.toDataURL() : null);
     });
-  }, [item?.id, atlasVer]);
+  }, [item?.id, item?.meta, atlasVer]);
 
   const handleClick = (e) => {
     e.preventDefault();
