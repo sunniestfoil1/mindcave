@@ -20,7 +20,7 @@
     input[type=range] { width: 100%; }
     button { background: #2a4d8f; color: #fff; border: 0; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin: 2px 2px 2px 0; }
     button.alt { background: #3a3f48; }
-    .views { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: #2c3038; }
+    .views { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: #2c3038; }
     .view { background: #0d0f12; position: relative; min-height: 360px; }
     .view canvas { width: 100%; height: 100%; display: block; }
     .view .tag { position: absolute; top: 6px; left: 8px; background: #000a; padding: 2px 8px; border-radius: 3px; font-size: 12px; pointer-events: none; }
@@ -37,6 +37,7 @@
       <div class="view"><canvas id="cv-f5"></canvas><div class="tag">Terceira pessoa (F5)</div></div>
       <div class="view"><canvas id="cv-hand"></canvas><div class="tag">Mão em 1ª pessoa</div></div>
       <div class="view"><canvas id="cv-grass"></canvas><div class="tag">Grama</div></div>
+      <div class="view"><canvas id="cv-sky"></canvas><div class="tag">Céu</div></div>
       <pre id="out"></pre>
     </section>
   </main>

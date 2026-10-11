@@ -56,13 +56,15 @@ function nearestTexture(canvas) {
   return t;
 }
 
-// Converte string de tempo HH:MM ou ticks em fração de dia [0, 1] (00:00 = 0, 12:00 = 0.5, 18:00 = 0.75)
+// Converte "HH:MM" ou ticks em fração do dia [0, 1) no relógio do jogo: o tick 0 é 06:00 (nascer do sol), como no OptiFine.
+// Antes isto tratava 00:00 como o início do dia e deixava as camadas 6 horas fora de fase em relação ao sol.
 function parseTimeStr(str) {
   if (!str) return 0;
-  const clean = str.trim().replace(/\\:/g, ':');
+  const clean = str.trim().replace(/\:/g, ':');
   if (clean.includes(':')) {
     const [h, m] = clean.split(':').map(Number);
-    return (((h || 0) * 60 + (m || 0)) / 1440) % 1.0;
+    const hours = (((h || 0) - 6) % 24 + 24) % 24 + (m || 0) / 60;
+    return (hours / 24) % 1.0;
   }
   const ticks = parseFloat(clean);
   return ((((ticks % 24000) + 24000) % 24000) / 24000) % 1.0;
@@ -132,19 +134,6 @@ const DEFAULT_SKY_LAYERS = [
     }
   },
   {
-    name: 'sky2',
-    props: {
-      startFadeIn: parseTimeStr('18:00'),
-      endFadeIn: parseTimeStr('19:30'),
-      startFadeOut: parseTimeStr('19:30'),
-      endFadeOut: parseTimeStr('4:30'),
-      blend: 'add',
-      rotate: false,
-      axis: [0.0, 1.0, 0.0],
-      source: 'cloud2.png',
-    }
-  },
-  {
     name: 'sky3',
     props: {
       startFadeIn: parseTimeStr('18:30'),
@@ -172,66 +161,45 @@ const DEFAULT_SKY_LAYERS = [
   }
 ];
 
-function createSkyBoxGeometry(radius) {
-  const segments = 24;
-  const geo = new THREE.BoxGeometry(radius * 2, radius * 2, radius * 2, segments, segments, segments);
-  const pos = geo.attributes.position;
-  const uvs = geo.attributes.uv;
+// Skybox OptiFine/MCPatcher: imagem 3×2 de faces quadradas. Layout confirmado pela continuidade das bordas
+// (12 bordas casadas com erro ~0 em cloud1.png e cloud2.png):
+//   linha 0: baixo, cima, norte   ·   linha 1: leste, sul, oeste      (cada lateral em pé, esquerda→direita = giro N→L→S→O)
+// Cada face é parametrizada por (s, t): s = esquerda→direita da imagem, t = cima→baixo.
+const SKY_FACES = [
+  { tile: 0, p: (R, s, t) => [R * (1 - 2 * s), -R, R * (1 - 2 * t)] },        // baixo
+  { tile: 1, p: (R, s, t) => [R * (1 - 2 * s), R, R * (2 * t - 1)] },         // cima
+  { tile: 2, p: (R, s, t) => [R * (2 * s - 1), R * (1 - 2 * t), -R] },        // norte (-Z)
+  { tile: 3, p: (R, s, t) => [R, R * (1 - 2 * t), R * (2 * s - 1)] },         // leste (+X)
+  { tile: 4, p: (R, s, t) => [R * (1 - 2 * s), R * (1 - 2 * t), R] },         // sul (+Z)
+  { tile: 5, p: (R, s, t) => [-R, R * (1 - 2 * t), R * (1 - 2 * s)] },        // oeste (-X)
+];
 
-  // Normaliza todos os vértices da caixa para criar um domo esférico perfeitamente arredondado (sem cantos de cubo)
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    const len = Math.hypot(x, y, z);
-    if (len > 0) {
-      pos.setXYZ(i, (x / len) * radius, (y / len) * radius, (z / len) * radius);
+export function createSkyBoxGeometry(radius, segments = 8) {
+  const pos = [], uv = [], idx = [];
+  const epsU = 0.75 / 1536, epsV = 0.75 / 1024;
+  for (const f of SKY_FACES) {
+    const col = f.tile % 3, row = Math.floor(f.tile / 3);
+    const u0 = col / 3 + epsU, u1 = (col + 1) / 3 - epsU;
+    const vTop = 1 - row / 2 - epsV, vBot = 1 - (row + 1) / 2 + epsV; // a textura sobe invertida (flipY)
+    const base = pos.length / 3;
+    for (let j = 0; j <= segments; j++) {
+      for (let i = 0; i <= segments; i++) {
+        const s = i / segments, t = j / segments;
+        pos.push(...f.p(radius, s, t));
+        uv.push(u0 + (u1 - u0) * s, vTop + (vBot - vTop) * t);
+      }
+    }
+    for (let j = 0; j < segments; j++) {
+      for (let i = 0; i < segments; i++) {
+        const a = base + j * (segments + 1) + i, b = a + 1, c = a + segments + 1, d = c + 1;
+        idx.push(a, c, b, b, c, d);
+      }
     }
   }
-  pos.needsUpdate = true;
-
-  // Mapeamento contínuo dos 6 grupos de faces para a grade 3×2 de 1536x1024 (OptiFine / MCPatcher format)
-  // Grupo 0: +X (Leste / East)  -> Col 1, Row 1
-  // Grupo 1: -X (Oeste / West)  -> Col 1, Row 0
-  // Grupo 2: +Y (Topo / Up)     -> Col 0, Row 0
-  // Grupo 3: -Y (Fundo / Down)  -> Col 0, Row 1
-  // Grupo 4: +Z (Sul / South)   -> Col 2, Row 1
-  // Grupo 5: -Z (Norte / North) -> Col 2, Row 0
-  const faceMap = [
-    { col: 1, row: 1 },
-    { col: 1, row: 0 },
-    { col: 0, row: 0 },
-    { col: 0, row: 1 },
-    { col: 2, row: 1 },
-    { col: 2, row: 0 },
-  ];
-
-  const epsU = 0.5 / 1536;
-  const epsV = 0.5 / 1024;
-
-  for (let g = 0; g < geo.groups.length; g++) {
-    const group = geo.groups[g];
-    const { col, row } = faceMap[g];
-
-    for (let i = group.start; i < group.start + group.count; i++) {
-      const vIdx = geo.index.getX(i);
-      const u = uvs.getX(vIdx);
-      const v = uvs.getY(vIdx);
-
-      const uMin = (col / 3.0) + epsU;
-      const uMax = ((col + 1) / 3.0) - epsU;
-      const vMin = (row === 0 ? 0.5 : 0.0) + epsV;
-      const vMax = (row === 0 ? 1.0 : 0.5) - epsV;
-
-      const finalU = uMin + u * (uMax - uMin);
-      const finalV = vMin + v * (vMax - vMin);
-
-      uvs.setXY(vIdx, finalU, finalV);
-    }
-  }
-
-  uvs.needsUpdate = true;
-  geo.computeVertexNormals();
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
   return geo;
 }
 
@@ -278,74 +246,56 @@ export class Sky {
     this.createCustomSkyLayers();
   }
 
+  // Camadas do CEU.zip (OptiFine/MCPatcher). Lê sky1..4.properties de /assets/sky; camada cuja textura não existe é ignorada.
   createCustomSkyLayers() {
     this.customLayers = [];
     const texLoader = new THREE.TextureLoader();
-
-    DEFAULT_SKY_LAYERS.forEach((layerDef, index) => {
-      const p = layerDef.props;
-      const radius = 460 - index * 2;
-      const geo = createSkyBoxGeometry(radius);
-
-      let blending = THREE.NormalBlending;
-      if (p.blend === 'add') blending = THREE.AdditiveBlending;
-      if (p.blend === 'multiply') blending = THREE.MultiplyBlending;
-
-      const mat = new THREE.MeshBasicMaterial({
-        transparent: true,
-        opacity: 0,
-        side: THREE.BackSide,
-        depthWrite: false,
-        depthTest: true,
-        blending: blending,
-        fog: false,
-      });
-
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.renderOrder = -950 + index;
-      mesh.frustumCulled = false;
-      this.scene.add(mesh);
-
-      const axisVec = new THREE.Vector3(p.axis[0], p.axis[1], p.axis[2]).normalize();
-      if (axisVec.lengthSq() < 0.001) axisVec.set(0, 1, 0);
-
-      const layerObj = {
-        name: layerDef.name,
-        mesh,
-        mat,
-        geo,
-        props: p,
-        axis: axisVec,
-      };
-
-      const imgUrl = `/assets/sky/${p.source}`;
-      texLoader.load(
-        imgUrl,
-        (tex) => {
-          if (this.disposed) return;
+    const loadProps = (i) => fetch(`/assets/sky/sky${i}.properties`).then((r) => (r.ok ? r.text() : null)).catch(() => null);
+    Promise.all([1, 2, 3, 4].map(loadProps)).then((texts) => {
+      if (this.disposed) return;
+      let defs = texts.map((t, i) => (t ? { name: `sky${i + 1}`, props: parseSkyProperties(t) } : null)).filter(Boolean);
+      if (defs.length === 0) defs = DEFAULT_SKY_LAYERS;
+      defs.forEach((layerDef, index) => {
+        const p = layerDef.props;
+        texLoader.load(`/assets/sky/${p.source}`, (tex) => {
+          if (this.disposed) { tex.dispose(); return; }
           tex.magFilter = THREE.LinearFilter;
           tex.minFilter = THREE.LinearFilter;
+          tex.generateMipmaps = false;
           tex.wrapS = THREE.ClampToEdgeWrapping;
           tex.wrapT = THREE.ClampToEdgeWrapping;
-          mat.map = tex;
-          mat.needsUpdate = true;
-        },
-        undefined,
-        () => {
-          texLoader.load('/assets/sky/cloud2.png', (fallbackTex) => {
-            if (this.disposed) return;
-            fallbackTex.magFilter = THREE.LinearFilter;
-            fallbackTex.minFilter = THREE.LinearFilter;
-            fallbackTex.wrapS = THREE.ClampToEdgeWrapping;
-            fallbackTex.wrapT = THREE.ClampToEdgeWrapping;
-            mat.map = fallbackTex;
-            mat.needsUpdate = true;
-          });
-        }
-      );
-
-      this.customLayers.push(layerObj);
+          this._addSkyLayer(layerDef, tex, index);
+        }, undefined, () => { /* sem textura: sem camada (nada de substituir por outra imagem) */ });
+      });
     });
+  }
+
+  _addSkyLayer(layerDef, tex, index) {
+    const p = layerDef.props;
+    const mode = p.blend === 'multiply' ? 2 : p.blend === 'add' ? 1 : 0; // 0 substituir, 1 somar, 2 multiplicar
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { map: { value: tex }, uFade: { value: 0 }, uMode: { value: mode } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `
+        uniform sampler2D map; uniform float uFade; uniform float uMode; varying vec2 vUv;
+        void main() {
+          vec4 t = texture2D(map, vUv);
+          if (uMode > 1.5) gl_FragColor = vec4(mix(vec3(1.0), t.rgb, uFade), 1.0);   // multiplicar: some em direção ao branco
+          else if (uMode > 0.5) gl_FragColor = vec4(t.rgb, t.a * uFade);               // somar (alfa da textura × fade)
+          else gl_FragColor = vec4(t.rgb, uFade);                                       // substituir
+        }`,
+      transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
+      blending: mode === 2 ? THREE.MultiplyBlending : mode === 1 ? THREE.AdditiveBlending : THREE.NormalBlending,
+    });
+    const geo = createSkyBoxGeometry(450 - index * 2);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = -950 + index;
+    mesh.frustumCulled = false;
+    mesh.visible = false;
+    this.scene.add(mesh);
+    const axis = new THREE.Vector3(p.axis[0], p.axis[1], p.axis[2]);
+    if (axis.lengthSq() < 1e-6) axis.set(0, 1, 0); else axis.normalize();
+    this.customLayers.push({ name: layerDef.name, mesh, mat, geo, props: p, axis });
   }
 
   createStars() {
@@ -463,11 +413,14 @@ export class Sky {
 
     // Atualiza camadas de Céu Personalizado (CEU.zip - OptiFine / MCPatcher)
     const tDay = ((((time % 24000) + 24000) % 24000) / 24000) % 1.0;
+    let starfield = 0, cover = 0;
     if (this.customLayers) {
       this.customLayers.forEach((layer) => {
         const p = layer.props;
         const alpha = getSkyFadeAlpha(tDay, p.startFadeIn, p.endFadeIn, p.startFadeOut, p.endFadeOut);
-        layer.mat.opacity = alpha;
+        layer.mat.uniforms.uFade.value = alpha;
+        if (/star/i.test(p.source)) starfield = Math.max(starfield, alpha);
+        if (p.blend === 'replace') cover = Math.max(cover, alpha); // céu pintado de dia esconde as estrelas vanilla
         layer.mesh.visible = alpha > 0.001;
         layer.mesh.position.copy(camera.position);
 
@@ -477,6 +430,8 @@ export class Sky {
         }
       });
     }
+
+    this.stars.material.opacity = nightFactor * 0.8 * (1 - starfield) * (1 - cover); // com o campo de estrelas pintado, some o ponto vanilla
 
     // Nuvens: deriva de 0,03 bloco por tick; cor escurece à noite
     this.cloudMat.uniforms.uOffset.value.set(time * 0.03, 0);
@@ -502,7 +457,7 @@ export class Sky {
       this.customLayers.forEach((layer) => {
         this.scene.remove(layer.mesh);
         layer.geo.dispose();
-        if (layer.mat.map) layer.mat.map.dispose();
+        if (layer.mat.uniforms.map.value) layer.mat.uniforms.map.value.dispose();
         layer.mat.dispose();
       });
     }

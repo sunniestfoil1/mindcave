@@ -5,12 +5,13 @@ import { buildHandRig, poseHand } from '/src/game/firstPersonHand.js';
 import { createAnimationState, tickAnimation, applyThirdPersonPose, startSwing } from '/src/game/animation.js';
 import { lookDirFromAngles } from '/src/game/viewMath.js';
 import { loadPack } from '/src/game/pack.js';
+import { Sky } from '/src/game/sky.js';
 
 const $ = (id) => document.getElementById(id);
 // ?view=f5|hand|grass mostra só um painel, em tamanho grande
 const only = new URLSearchParams(location.search).get('view');
 if (only) {
-  const views = { f5: 'cv-f5', hand: 'cv-hand', grass: 'cv-grass' };
+  const views = { f5: 'cv-f5', hand: 'cv-hand', grass: 'cv-grass', sky: 'cv-sky' };
   document.querySelectorAll('.view').forEach((v) => { if (v.querySelector('canvas').id !== views[only]) v.style.display = 'none'; else v.style.minHeight = '70vh'; });
   document.querySelector('.views').style.gridTemplateColumns = '1fr';
 }
@@ -23,7 +24,7 @@ const player = {
   yaw: 0, pitch: 0, sprinting: false, sneaking: false, selectedSlot: 0, hurtTime: 0, isDead: false,
 };
 const anim = createAnimationState();
-const ui = { gDist: 4, gAng: 30, gPitch: 40, yawDeg: 0, pitchDeg: 0, speed: 0, perspective: 1, walkAuto: true, heldItem: false, bob: true };
+const ui = { skyTime: 1000, skyYaw: 0, skyPitch: 20, gDist: 4, gAng: 30, gPitch: 40, yawDeg: 0, pitchDeg: 0, speed: 0, perspective: 1, walkAuto: true, heldItem: false, bob: true };
 
 // ===== Painel =====
 const panel = $('panel');
@@ -65,6 +66,10 @@ h3('Grama');
 addSlider('distância', 'gDist', 1.5, 40, 0.5);
 addSlider('ângulo (°)', 'gAng', -180, 180, 1);
 addSlider('inclinação (°)', 'gPitch', 5, 89, 1);
+h3('Céu');
+addSlider('hora (ticks)', 'skyTime', 0, 24000, 100);
+addSlider('olhar yaw (°)', 'skyYaw', -180, 180, 1);
+addSlider('olhar pitch (°)', 'skyPitch', -80, 89, 1);
 h3('Verificações');
 addBtn('rodar verificações', () => runChecks(), true);
 
@@ -75,7 +80,7 @@ function mkRenderer(id) {
   r.setPixelRatio(1);
   return r;
 }
-const rF5 = mkRenderer('cv-f5'), rHand = mkRenderer('cv-hand'), rGrass = mkRenderer('cv-grass');
+const rF5 = mkRenderer('cv-f5'), rHand = mkRenderer('cv-hand'), rGrass = mkRenderer('cv-grass'), rSky = mkRenderer('cv-sky');
 function fit(r, cam) {
   const c = r.domElement, w = c.parentElement.clientWidth, h = c.parentElement.clientHeight;
   if (c.width !== w || c.height !== h) { r.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
@@ -115,6 +120,12 @@ camGrass.position.set(1.6, 1.4, 2.4); camGrass.lookAt(0.5, 0.4, 0.5);
 const grassApi = { ready: false, update() {} };
 import('/lab/grass.js').then((m) => m.setup(sceneGrass, camGrass, rGrass, grassApi)).catch((e) => log(`<span class="bad">grama: ${e.message}</span>`));
 
+// ===== Cena do céu =====
+const sceneSky = new THREE.Scene();
+const camSky = new THREE.PerspectiveCamera(70, 1, 0.05, 1000);
+camSky.position.set(0, 0, 0);
+const sky = new Sky(sceneSky, 12345);
+
 // ===== Loop 20 TPS + render =====
 let last = performance.now(), acc = 0;
 function tick() {
@@ -148,6 +159,13 @@ function frame(now) {
   // Grama
   grassApi.update(now);
   fit(rGrass, camGrass); rGrass.render(sceneGrass, camGrass);
+
+  // Céu
+  const sd = lookDirFromAngles(ui.skyYaw * DEG, ui.skyPitch * DEG);
+  camSky.lookAt(sd.x, sd.y, sd.z);
+  sky.update(ui.skyTime, camSky);
+  sceneSky.background = sky.skyColor;
+  fit(rSky, camSky); rSky.render(sceneSky, camSky);
 
   requestAnimationFrame(frame);
 }
@@ -189,11 +207,11 @@ function runChecks() {
   window.__labResult = res;
   return res;
 }
-window.__lab = { runChecks, player, anim, ui, model, fpsArm, camHand, THREE };
+window.__lab = { runChecks, player, anim, ui, model, fpsArm, camHand, THREE, sky };
 
 (async () => {
   log('carregando pack de texturas…');
-  try { const ok = await loadPack(); await applyPackSkin(model, fpsArm); log(ok ? 'pack ok' : 'pack indisponível (skin padrão)'); } catch (e) { log('pack: ' + e.message); }
+  try { const ok = await loadPack(); await applyPackSkin(model, fpsArm); await sky.applyPack(); log(ok ? 'pack ok' : 'pack indisponível (skin padrão)'); } catch (e) { log('pack: ' + e.message); }
   runChecks();
   requestAnimationFrame(frame);
 })();
