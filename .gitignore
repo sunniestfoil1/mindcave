@@ -48,3 +48,5 @@ brain
 *.zip
 *.gz
 ceu_extracted/
+
+.vercel

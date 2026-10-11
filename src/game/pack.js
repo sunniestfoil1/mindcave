@@ -1,7 +1,9 @@
-// Pacote de recursos "minecraft-assets-1.8.9.zip" (106 MB): carregamento seguro com barra de progresso em tempo real
-// e armazenamento persistente na Cache API (mc-assets-v2) para carregamento instantâneo nas próximas visitas.
-export const PACK_URL = '/assets/minecraft-assets-1.8.9.zip';
-export const FALLBACK_PACK_URL = '/assets/Old_Default_1.8.9.zip';
+// Pacote de recursos "minecraft-assets-1.8.9.zip": hospedado em nuvem de alta velocidade no Supabase Storage
+// com fallback para Old_Default_1.8.9.zip e armazenamento persistente na Cache API (mc-assets-v2)
+export const SUPABASE_STORAGE_URL = 'https://ddwdgwaliywymcatdekg.supabase.co/storage/v1/object/public/game-assets';
+export const PACK_URL = `${SUPABASE_STORAGE_URL}/minecraft-assets-1.8.9.zip`;
+export const FALLBACK_PACK_URL = `${SUPABASE_STORAGE_URL}/Old_Default_1.8.9.zip`;
+export const LOCAL_FALLBACK_URL = '/assets/Old_Default_1.8.9.zip';
 export const MC = 'assets/minecraft/';
 
 let _entries = null;
@@ -34,14 +36,14 @@ async function fetchBufferWithProgress(url, onProgress) {
   } catch { /* sem Cache API */ }
 
   try {
-    onProgress?.({ percent: 0, loaded: 0, total: 106, status: 'Baixando pacote 1.8.9 (106 MB)...' });
+    onProgress?.({ percent: 0, loaded: 0, total: 100, status: 'Conectando ao Supabase Storage...' });
     const res = await fetch(url);
     if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
-      throw new Error('Servidor não retornou arquivo zip válido');
+      throw new Error(`Servidor retornou status ${res.status}`);
     }
 
     const contentLength = res.headers.get('content-length');
-    const totalBytes = contentLength ? parseInt(contentLength, 10) : 111944138;
+    const totalBytes = contentLength ? parseInt(contentLength, 10) : 6657308;
     let loadedBytes = 0;
 
     const reader = res.body.getReader();
@@ -60,7 +62,7 @@ async function fetchBufferWithProgress(url, onProgress) {
         percent,
         loaded: loadedBytes,
         total: totalBytes,
-        status: `Baixando pacote 1.8.9: ${loadedMB} MB / ${totalMB} MB (${percent}%)`
+        status: `Baixando texturas 1.8.9: ${loadedMB} MB / ${totalMB} MB (${percent}%)`
       });
     }
 
@@ -82,12 +84,15 @@ async function fetchBufferWithProgress(url, onProgress) {
       await cache.put(url, new Response(arrayBuf.slice(0)));
     } catch {}
 
-    onProgress?.({ percent: 100, loaded: totalBytes, total: totalBytes, status: 'Extraindo texturas e sons...' });
+    onProgress?.({ percent: 100, loaded: totalBytes, total: totalBytes, status: 'Extraindo texturas e modelos...' });
     return arrayBuf;
   } catch (e) {
-    console.warn(`[Pack] Falha ao baixar ${url}: ${e.message}. Tentando pacote de emergência...`);
-    if (url !== FALLBACK_PACK_URL) {
+    console.warn(`[Pack] Falha ao baixar ${url}: ${e.message}. Tentando próximo fallback...`);
+    if (url === PACK_URL) {
       return fetchBufferWithProgress(FALLBACK_PACK_URL, onProgress);
+    }
+    if (url === FALLBACK_PACK_URL) {
+      return fetchBufferWithProgress(LOCAL_FALLBACK_URL, onProgress);
     }
     return null;
   }
