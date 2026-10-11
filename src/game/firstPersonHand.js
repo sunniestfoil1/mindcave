@@ -1,0 +1,91 @@
+// Mão em 1ª pessoa — pose do braço vazio como no ItemRenderer.renderPlayerArm da 1.8.9.
+// Com item na mão a 1.8.9 desenha só o item (sem braço), então o braço some e o item usa a transformação de item.
+import * as THREE from 'three';
+import { buildFirstPersonArm } from './playerModel';
+import { getFirstPersonTransform } from './animation';
+
+const DEG = Math.PI / 180;
+const M = new THREE.Matrix4();
+const TMP = new THREE.Matrix4();
+
+function T(x, y, z) { return TMP.makeTranslation(x, y, z); }
+
+// Braço direito do ModelPlayer (caixa 4×12×4 px, ponto de rotação (-5, 2, 0) com Y para baixo),
+// convertido para o quadro "cru" do modelo: Y e Z invertidos em relação ao quadro do skinview (Y para cima).
+// A cadeia do ItemRenderer foi escrita para esse quadro cru.
+function bakeRawArmGeometry(geo) {
+  // geo: BoxGeometry(0.25, 0.75, 0.25) centrada na origem (UV do braço direito já aplicado)
+  const toRaw = new THREE.Matrix4().makeRotationX(Math.PI); // (x, y, z) -> (x, -y, -z): rotação, não espelhamento
+  // centro da caixa no quadro skinview: (-6, -6, 0) px
+  geo.translate(-6 / 16, -6 / 16, 0);
+  geo.applyMatrix4(toRaw);
+  return geo;
+}
+
+export function buildHandRig() {
+  const arm = buildFirstPersonArm();
+  // buildFirstPersonArm desloca a caixa para pendurar do ombro; refaz centrada para a cadeia da 1.8.9
+  const g = new THREE.BoxGeometry(0.25, 0.75, 0.25);
+  const uv = arm.geometry.attributes.uv;
+  g.attributes.uv.set(uv.array);
+  bakeRawArmGeometry(g);
+  arm.geometry.dispose();
+  arm.geometry = g;
+  arm.matrixAutoUpdate = false;
+  arm.frustumCulled = false;
+  arm.material.side = THREE.DoubleSide; // a 1.8.9 desenha o braço sem culling
+
+  const itemRoot = new THREE.Group();
+  const itemGroup = new THREE.Group();
+  itemGroup.position.set(0, -0.65, -0.1);
+  itemRoot.add(itemGroup);
+  return { arm, itemRoot, itemGroup };
+}
+
+// Matriz do braço vazio (espaço da câmera de 1ª pessoa)
+export function armMatrix(anim) {
+  const s = anim.isSwinging ? anim.swingProgress : 0;
+  const sq = Math.sqrt(s);
+  M.identity();
+  // translação do golpe
+  M.multiply(T(-0.3 * Math.sin(sq * Math.PI), 0.4 * Math.sin(sq * Math.PI * 2), -0.4 * Math.sin(s * Math.PI)));
+  // posição base + equipar/desequipar
+  M.multiply(T(0.64, -0.6 + (anim.equipProgress - 1) * 0.6, -0.72));
+  M.multiply(TMP.makeRotationY(45 * DEG));
+  // balanço do golpe
+  const f6 = Math.sin(s * s * Math.PI);
+  const f7 = Math.sin(sq * Math.PI);
+  M.multiply(TMP.makeRotationY(f7 * 70 * DEG));
+  M.multiply(TMP.makeRotationZ(-f6 * 20 * DEG));
+  // inércia ao girar a visão (mesma do item)
+  M.multiply(TMP.makeRotationY(anim.handRotY * 0.2));
+  M.multiply(TMP.makeRotationX(anim.handRotX * 0.2));
+  // caminhada
+  if (anim.speed > 0.05) {
+    const k = Math.min(1, anim.speed / 5), p = anim.walkPhase;
+    M.multiply(T(-Math.sin(p) * 0.05 * k, Math.abs(Math.cos(p * 2)) * 0.05 * k, 0));
+    M.multiply(TMP.makeRotationZ(Math.sin(p) * 5 * DEG * k));
+  }
+  // do ombro para o braço (ModelPlayer cru)
+  M.multiply(T(-1, 3.6, 3.5));
+  M.multiply(TMP.makeRotationZ(120 * DEG));
+  M.multiply(TMP.makeRotationX(200 * DEG));
+  M.multiply(TMP.makeRotationY(-135 * DEG));
+  M.multiply(T(5.6, 0, 0));
+  // geometria em px/16 tem o ponto de rotação em (-5, 2, 0)/16 do quadro cru: já incluso no bake da caixa
+  return M;
+}
+
+export function poseHand(rig, anim, player, heldDef, hasItem, time) {
+  if (hasItem) {
+    rig.arm.visible = false;
+    const tf = getFirstPersonTransform(anim, player, heldDef, time);
+    rig.itemRoot.position.set(tf.x, tf.y, tf.z);
+    rig.itemRoot.rotation.set(tf.rotX, tf.rotY, tf.rotZ);
+    rig.itemRoot.visible = true;
+  } else {
+    rig.itemRoot.visible = false;
+    rig.arm.visible = true;
+    rig.arm.matrix.copy(armMatrix(anim));
+  }
+}

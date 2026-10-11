@@ -98,6 +98,7 @@ export function applyDamage(p, amount, source, opts = {}) {
   p.health -= finalDamage;
   p.hurtTime = 10;
   p.hurtResistantTime = 10;
+  p.hurtSeq = (p.hurtSeq || 0) + 1; // a cada dano aplicado: o motor toca o som e a câmera balança
   p.lastDamage = amount;
   p.lastDamageSource = source;
   p.exhaustion = Math.min(40, p.exhaustion + 0.3);

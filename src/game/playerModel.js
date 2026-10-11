@@ -2,6 +2,7 @@
 // Constrói o modelo a partir de BoxGeometry com UV mapping de skin 64×64.
 // Referência: 07-animacoes-jogador-e-armaduras/skinview3d/src/model.ts
 import * as THREE from 'three';
+import { modelRotationYFromYaw } from './viewMath';
 
 // === UV mapping — porte exato de setUVs() do skinview3d ===
 function setUVs(box, u, v, width, height, depth, textureWidth, textureHeight) {
@@ -385,6 +386,12 @@ export function buildPlayerModel() {
   };
   wrapper.visible = false;
   return wrapper;
+}
+
+// Posiciona o modelo no mundo a partir do estado do jogador (usado pelo motor e pelo laboratório)
+export function placePlayerModel(model, pos, yaw) {
+  model.position.set(pos.x, pos.y, pos.z);
+  model.rotation.y = modelRotationYFromYaw(yaw);
 }
 
 // Carregar skin customizada de URL (ex: skin do usuário ou textura importada)

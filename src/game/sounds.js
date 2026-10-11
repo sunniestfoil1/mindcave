@@ -294,6 +294,15 @@ export function playHurtSound(pos) {
   playSound(`damage/hit${Math.floor(Math.random() * 3) + 1}.ogg`, { pos, volume: 0.8 });
 }
 
+// Dano no jogador por origem: queda usa fallsmall/fallbig (1.8.9: grande acima de 4 de dano); o resto, damage/hit1-3
+export function playPlayerHurtSound(source, amount) {
+  if (source === 'fall') {
+    playSound(amount > 4 ? 'damage/fallbig.ogg' : 'damage/fallsmall.ogg', { volume: 0.8 });
+  } else {
+    playHurtSound();
+  }
+}
+
 // Ataque / Impacto de espada
 export function playHitSound(pos) {
   playSound(`damage/hit1.ogg`, { pos, volume: 0.6, pitch: 1.1 });

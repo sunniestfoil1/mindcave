@@ -5,7 +5,6 @@ import { mindcaveApi } from '@/api/supabaseClient';
 import { roomManager } from './roomManager';
 import { WebRTCConnection } from './webrtc';
 import { parseChatMessage, FloodController, systemMessage, joinMessage, leaveMessage, checkMention } from './chatSystem';
-import { playHurtSound } from '@/game/sounds';
 import { receiveRemoteHit } from '@/game/combat';
 
 // === HOST ===
@@ -287,7 +286,6 @@ export class NetHost {
 
   _applyIncomingHit(hit) {
     if (!receiveRemoteHit(this.engine?.player, hit)) return;
-    playHurtSound();
     this.engine.emitHud?.();
   }
 
@@ -482,7 +480,6 @@ export class NetClient {
 
   _applyIncomingHit(hit) {
     if (!receiveRemoteHit(this.engine?.player, hit)) return;
-    playHurtSound();
     this.engine.emitHud?.();
   }
 

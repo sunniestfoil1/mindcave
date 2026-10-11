@@ -17,7 +17,8 @@ import { getMiningTime, getDrops, damageTool, isToolBroken, getToolDamage, ORE_X
 import { addItem, createInventory, serializeInventory, deserializeInventory, stack } from './inventory';
 import { getArmorPoints, getItem } from './items';
 import { ProjectileManager } from './projectiles';
-import { createAnimationState, tickAnimation, startSwing, applyThirdPersonPose, getFirstPersonTransform } from './animation';
+import { createAnimationState, tickAnimation, startSwing, applyThirdPersonPose } from './animation';
+import { buildHandRig, poseHand } from './firstPersonHand';
 import { attackEntity, isSword, isBow, isThrowable, computeBowCharge, createCpsTracker, recordClick, getCps, ATTACK_REACH } from './combat';
 import { MobManager } from './mobManager';
 import { GunController } from './guns/shooting';
@@ -31,10 +32,11 @@ import { tickAgriculture, applyBonemeal, trampleFarmland, harvestCrop } from './
 import { createStats, serializeStats, deserializeStats, addStat, addStatByType } from './stats';
 import { createAchievementState, serializeAchievements, deserializeAchievements, tryUnlock, checkStatAchievements } from './achievements';
 import { loadRealTextures, isRealTexturesLoaded, tickTextureAnimations } from './textures';
-import { buildPlayerModel, loadPlayerGlb, buildFirstPersonArm, loadFirstPersonArmGlb, applyPackSkin } from './playerModel';
+import { lookDirFromAngles } from './viewMath';
+import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel } from './playerModel';
 import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
 import { initBiomeTint } from './biomeTint';
-import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playHitSound, playEatSound, playBurpSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener } from './sounds';
+import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playEatSound, playBurpSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener } from './sounds';
 import { createNametag } from './nametag';
 import { ParticleManager } from './particles';
 import { ItemEntityManager } from './itemEntity';
@@ -450,9 +452,7 @@ export class GameEngine {
   }
 
   lookDir() {
-    const { yaw, pitch } = this.player;
-    const cp = Math.cos(pitch);
-    return { x: -Math.sin(yaw) * cp, y: -Math.sin(pitch), z: Math.cos(yaw) * cp };
+    return lookDirFromAngles(this.player.yaw, this.player.pitch);
   }
 
   raycast() {
@@ -976,6 +976,14 @@ export class GameEngine {
     // Partículas
     if (this.particles) this.particles.tick(this.world);
 
+    // Som do dano (o balanço de câmera sai de hurtRoll)
+    const seq = p.hurtSeq || 0;
+    if (this._hurtSeqSeen === undefined) this._hurtSeqSeen = seq;
+    if (seq !== this._hurtSeqSeen) {
+      this._hurtSeqSeen = seq;
+      playPlayerHurtSound(p.lastDamageSource, p.lastDamage);
+    }
+
     // Detectar morte para mostrar tela
     if (p.isDead && this._lastHud && !this._lastHud.isDead) {
       this.emitHud();
@@ -1205,7 +1213,18 @@ export class GameEngine {
         }
       }
     }
+    // Balanço de câmera ao tomar dano (1.8.9: 14° · sen(f⁴·π), f = hurtTime/10). Sem direção do golpe: rola sempre para o mesmo lado.
+    this._hurtRollValue = this.hurtRoll();
+    if (this._hurtRollValue) this.camera.rotateZ(this._hurtRollValue);
     updateAudioListener(this.camera.position, dir);
+  }
+
+  hurtRoll() {
+    const p = this.player;
+    if (this.paused || !(p.hurtTime > 0)) return 0;
+    const partial = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));
+    const f = Math.max(0, p.hurtTime - partial) / 10;
+    return -Math.sin(f * f * f * f * Math.PI) * 14 * Math.PI / 180;
   }
 
   updateOutline() {
@@ -1257,8 +1276,7 @@ export class GameEngine {
   updatePlayerModel() {
     const p = this.player;
     const m = this.playerModel;
-    m.position.set(p.pos.x, p.pos.y, p.pos.z);
-    m.rotation.y = p.yaw;
+    placePlayerModel(m, p.pos, p.yaw);
     applyThirdPersonPose(m, this.anim, p, this.worldTime);
 
     // Efeito de flash vermelho ao tomar dano (Hurt Red Tint)
@@ -1300,8 +1318,7 @@ export class GameEngine {
           rp.yaw = (rp.yaw ?? rp.targetYaw) + (rp.targetYaw - (rp.yaw ?? rp.targetYaw)) * 0.3;
         }
 
-        entry.group.position.set(rp.x || 0, rp.y || 0, rp.z || 0);
-        entry.group.rotation.y = rp.yaw || 0;
+        placePlayerModel(entry.group, { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0 }, rp.yaw || 0);
 
         // Atualizar áudio posicional 3D para voz
         voiceChat.updateRemotePosition(id, { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0 });
@@ -1686,12 +1703,10 @@ export class GameEngine {
 
     this.fpsScene.add(new THREE.AmbientLight(0xffffff, 1.0));
 
-    this.fpsArm = buildFirstPersonArm();
-    this.fpsScene.add(this.fpsArm);
-
-    this.fpsItemGroup = new THREE.Group();
-    this.fpsItemGroup.position.set(0, -0.65, -0.1);
-    this.fpsArm.add(this.fpsItemGroup);
+    this.handRig = buildHandRig();
+    this.fpsArm = this.handRig.arm;
+    this.fpsItemGroup = this.handRig.itemGroup;
+    this.fpsScene.add(this.fpsArm, this.handRig.itemRoot);
     this.fpsItem = null;
   }
 
@@ -1734,10 +1749,9 @@ export class GameEngine {
       if (this.fpsItem) { this.fpsItemGroup.remove(this.fpsItem); this.fpsItem = null; }
     }
 
-    // Aplicar transformação (RF-051)
-    const tf = getFirstPersonTransform(this.anim, p, heldItem ? getItem(heldItem.id) : null, this.worldTime / 20);
-    this.fpsArm.position.set(tf.x, tf.y, tf.z);
-    this.fpsArm.rotation.set(tf.rotX, tf.rotY, tf.rotZ);
+    this.fpsCamera.rotation.z = this._hurtRollValue || 0; // a mão também balança com o dano
+    // Pose da mão (RF-051): braço vazio como na 1.8.9; com item, só o item
+    poseHand(this.handRig, this.anim, p, heldItem ? getItem(heldItem.id) : null, !!(heldItem && heldItem.id), this.worldTime / 20);
 
     // Renderizar a mão por cima do mundo (RF-050)
     if ((this.perspective === 0) && !this.paused) {
