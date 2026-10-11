@@ -945,7 +945,7 @@ export class GameEngine {
     perfMonitor.endStage('mobs');
 
     perfMonitor.beginStage('sim');
-    if (this.worldTime % 5 === 0) tickFluids(this.world, this.worldTime, this.player.pos);
+    tickFluids(this.world, this.worldTime, this.player.pos);
     if (this.worldTime % 2 === 0 && this.redstone) this.redstone.tick();
     this.tickTntEntities();
     if (this.worldTime % 20 === 0) this.randomTickAgriculture();
