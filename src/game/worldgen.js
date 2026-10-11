@@ -65,10 +65,10 @@ function placeTree(data, x, y, z, ax, az, seed) {
     if (yy < WORLD_HEIGHT) data[chunkIndex(x, yy, z)] = packState(LOG, 0);
   }
   const topY = y + trunk;
-  for (let ly = -2; ly <= 1; ly++) {
+  for (let ly = -3; ly <= 0; ly++) { // copa da 1.8.9: de topY-3 a topY, raio 2,2,1,1
     const yy = topY + ly;
     if (yy >= WORLD_HEIGHT) continue;
-    const radius = ly >= 0 ? 1 : 2;
+    const radius = ly >= -1 ? 1 : 2;
     for (let dx = -radius; dx <= radius; dx++) {
       for (let dz = -radius; dz <= radius; dz++) {
         if (radius === 2 && Math.abs(dx) === 2 && Math.abs(dz) === 2) {

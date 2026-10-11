@@ -34,14 +34,14 @@ export function createBiomeGenerator(seed, opts = {}) {
     }
 
     // Rios contínuos (faixa estreita de um único ruído contínuo)
-    const r1 = riverN1(x * 0.003, z * 0.003);
+    const r1 = riverN1(x, z); // fractal2 já aplica a frequência (0.005); multiplicar de novo achatava o ruído e quase tudo virava rio
     if (Math.abs(r1) < 0.015) {
       if (t < 0.2) return getBiome(BIOME_IDS.frozen_river);
       return getBiome(BIOME_IDS.river);
     }
 
     // Praias perto da costa
-    if (c < -0.05) {
+    if (c < -0.2) {
       if (t < 0.2) return getBiome(BIOME_IDS.cold_beach);
       return getBiome(BIOME_IDS.beach);
     }
@@ -62,13 +62,13 @@ export function createBiomeGenerator(seed, opts = {}) {
     } else if (t < 0.6) {
       if (h > 0.85 && m > 0.2) biome = getBiome(BIOME_IDS.swamp);
       else if (b > 0.75) biome = getBiome(BIOME_IDS.extreme_hills);
-      else if (h > 0.65 && b > 0.5) biome = getBiome(BIOME_IDS.forest);
-      else if (h > 0.45 && m > 0.3) biome = getBiome(BIOME_IDS.birch_forest);
-      else if (h > 0.4 && m < -0.3) biome = getBiome(BIOME_IDS.roofed_forest);
+      else if (h > 0.7 && m < -0.45) biome = getBiome(BIOME_IDS.roofed_forest); // floresta escura: rara
+      else if (h > 0.55 && b > 0.35) biome = getBiome(BIOME_IDS.forest);
+      else if (h > 0.5 && m > 0.35) biome = getBiome(BIOME_IDS.birch_forest);
       else biome = getBiome(BIOME_IDS.plains);
     } else if (t < 0.9) {
       if (h > 0.75) biome = getBiome(BIOME_IDS.jungle);
-      else if (h > 0.3 && m < -0.3) biome = getBiome(BIOME_IDS.roofed_forest);
+      else if (h > 0.6 && m < -0.45) biome = getBiome(BIOME_IDS.roofed_forest);
       else if (h < 0.15) biome = getBiome(BIOME_IDS.savanna);
       else biome = getBiome(BIOME_IDS.plains);
     } else {

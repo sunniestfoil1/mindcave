@@ -182,30 +182,30 @@ function placeTree(w, x, y, z, type, rng, seed) {
   }
 }
 
-function placeOak(w, x, y, z, rng, leafMeta) {
-  const trunk = 4 + Math.floor(rng.nextFloat() * 3);
-  for (let i = 0; i < trunk; i++) w.set(x, y + i, z, packState(LOG, leafMeta & 3));
-  const topY = y + trunk;
-  for (let ly = -2; ly <= 1; ly++) {
-    const yy = topY + ly, r = ly >= 0 ? 1 : 2;
+// Copa do carvalho/bétula como no WorldGenTrees da 1.8.9: 4 camadas de topY-3 a topY, raio 2,2,1,1;
+// cantos da copa só entram com 50% de chance, e nunca na camada de cima.
+function placeOakCanopy(w, x, topY, z, rng, meta) {
+  for (let yy = topY - 3; yy <= topY; yy++) {
+    const dy = yy - topY;                    // -3..0
+    const r = 1 - Math.trunc(dy / 2);        // 2, 2, 1, 1
     for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
-      if (r === 2 && Math.abs(dx) === 2 && Math.abs(dz) === 2 && rng.nextFloat() < 0.5) continue;
-      if (w.get(x + dx, yy, z + dz) === 0) w.set(x + dx, yy, z + dz, packState(LEAVES, leafMeta & 3));
+      const corner = Math.abs(dx) === r && Math.abs(dz) === r;
+      if (corner && (dy === 0 || rng.nextInt(2) === 0)) continue;
+      if (w.get(x + dx, yy, z + dz) === 0) w.set(x + dx, yy, z + dz, packState(LEAVES, meta));
     }
   }
 }
 
+function placeOak(w, x, y, z, rng, leafMeta) {
+  const trunk = 4 + rng.nextInt(3);
+  for (let i = 0; i < trunk; i++) w.set(x, y + i, z, packState(LOG, leafMeta & 3));
+  placeOakCanopy(w, x, y + trunk, z, rng, leafMeta & 3);
+}
+
 function placeBirch(w, x, y, z, rng, logMeta, tall) {
-  const trunk = tall ? 7 + Math.floor(rng.nextFloat() * 3) : 5 + Math.floor(rng.nextFloat() * 3);
+  const trunk = tall ? 7 + rng.nextInt(3) : 5 + rng.nextInt(3);
   for (let i = 0; i < trunk; i++) w.set(x, y + i, z, packState(LOG, logMeta));
-  const topY = y + trunk;
-  for (let ly = -2; ly <= 1; ly++) {
-    const yy = topY + ly, r = ly >= 0 ? 1 : 2;
-    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
-      if (r === 2 && Math.abs(dx) === 2 && Math.abs(dz) === 2 && rng.nextFloat() < 0.6) continue;
-      if (w.get(x + dx, yy, z + dz) === 0) w.set(x + dx, yy, z + dz, packState(LEAVES, logMeta));
-    }
-  }
+  placeOakCanopy(w, x, y + trunk, z, rng, logMeta);
 }
 
 function placeSpruce(w, x, y, z, rng, logMeta) {
