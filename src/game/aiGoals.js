@@ -3,34 +3,53 @@ import { findPath, hasLineOfSight } from './pathfinding';
 import { isWater, isSolid } from './blocks';
 import { stateId } from './chunk';
 import { MobEntity } from './mobEntity';
+import { lookDirFromAngles } from './viewMath';
 
 // === Sistema de objetivos ===
+// Como o EntityAITasks da 1.8: vários objetivos rodam ao mesmo tempo, desde que não se excluam (bits de exclusão mútua).
+// Um objetivo de prioridade maior (número menor) interrompe um incompatível de prioridade menor. Objetivos de alvo
+// (nearest_target, enderman_stare) rodam à parte e só definem mob.target: antes, um deles ficava ativo para sempre e
+// travava perseguição, ataque e explosão do creeper.
+const MUTEX = { swim: 4, look_at_player: 2, creeper_swell: 1, flee_sun: 1, avoid_entity: 1, panic: 1 }; // padrão 3
+
 export class GoalSystem {
   constructor(goalDefs) {
-    this.goals = goalDefs.map(createGoal).filter(Boolean);
-    this.goals.sort((a, b) => a.priority - b.priority);
-    this.activeGoal = null;
+    const all = goalDefs.map(createGoal).filter(Boolean);
+    all.sort((a, b) => a.priority - b.priority);
+    for (const g of all) { g.mutex = MUTEX[g.def.type] ?? 3; g.running = false; }
+    this.targetGoals = all.filter((g) => g.isTarget);
+    this.goals = all.filter((g) => !g.isTarget);
+  }
+
+  _canUse(g) {
+    for (const o of this.goals) {
+      if (o !== g && o.running && (o.mutex & g.mutex) && g.priority >= o.priority) return false;
+    }
+    return true;
   }
 
   tick(mob, world, ctx) {
-    // Verificar se o objetivo ativo ainda pode continuar
-    if (this.activeGoal) {
-      if (!this.activeGoal.canContinue(mob, world, ctx)) {
-        this.activeGoal.stop(mob);
-        this.activeGoal = null;
-      } else {
-        this.activeGoal.tick(mob, world, ctx);
-        return;
+    for (const g of this.targetGoals) {
+      if (g.running) {
+        if (!g.canContinue(mob, world, ctx)) { g.stop(mob); g.running = false; }
+      } else if (g.canStart(mob, world, ctx)) {
+        g.start(mob, world, ctx);
+        g.running = true;
       }
     }
-    // Encontrar novo objetivo de maior prioridade que pode iniciar
-    for (const goal of this.goals) {
-      if (goal.canStart(mob, world, ctx)) {
-        this.activeGoal = goal;
-        goal.start(mob, world, ctx);
-        goal.tick(mob, world, ctx);
-        return;
+    for (const g of this.goals) {
+      if (g.running && !g.canContinue(mob, world, ctx)) { g.stop(mob); g.running = false; }
+    }
+    for (const g of this.goals) {
+      if (g.running || !this._canUse(g) || !g.canStart(mob, world, ctx)) continue;
+      for (const o of this.goals) {
+        if (o.running && (o.mutex & g.mutex)) { o.stop(mob); o.running = false; }
       }
+      g.start(mob, world, ctx);
+      g.running = true;
+    }
+    for (const g of this.goals) {
+      if (g.running) g.tick(mob, world, ctx);
     }
   }
 }
@@ -42,7 +61,9 @@ function createGoal(def) {
     case 'wander': return new WanderGoal(def);
     case 'melee_attack': return new MeleeAttackGoal(def);
     case 'ranged_attack': return new RangedAttackGoal(def);
-    case 'nearest_target': return new NearestTargetGoal(def);
+    case 'nearest_target': { const g = new NearestTargetGoal(def); g.isTarget = true; return g; }
+    case 'enderman_stare': { const g = new EndermanStareGoal(def); g.isTarget = true; return g; }
+    case 'slime_jump': return new SlimeJumpGoal(def);
     case 'look_at_player': return new LookAtPlayerGoal(def);
     case 'flee_sun': return new FleeSunGoal(def);
     case 'creeper_swell': return new CreeperSwellGoal(def);
@@ -311,9 +332,13 @@ class CreeperSwellGoal extends Goal {
     const dist = Math.hypot(t.pos.x - mob.pos.x, t.pos.z - mob.pos.z);
     return dist <= 7;
   }
+  start(mob) { MobEntity.onSound?.(mob, 'primed'); }
   stop(mob) { mob.swelling = 0; mob.swellTicks = 0; }
   tick(mob, world, ctx) {
-    mob.swellTicks++;
+    // 1.8.9: infla (+1/tick) com o alvo a menos de 3 blocos, desinfla (−1/tick) entre 3 e 7; explode em 30
+    const t = mob.target;
+    const near = t && Math.hypot(t.pos.x - mob.pos.x, t.pos.z - mob.pos.z) <= 3;
+    mob.swellTicks = Math.max(0, mob.swellTicks + (near ? 1 : -1));
     mob.swelling = Math.min(1, mob.swellTicks / 30);
     mob.vel.x *= 0.6; mob.vel.z *= 0.6;
     if (mob.swellTicks >= 30) {
@@ -322,6 +347,54 @@ class CreeperSwellGoal extends Goal {
       mob.health = 0;
       mob.isDead = true;
     }
+  }
+}
+
+// === Enderman: fica hostil quando o jogador olha para a sua cabeça (EntityEnderman.shouldAttackPlayer) ===
+class EndermanStareGoal extends Goal {
+  canStart(mob, world, ctx) {
+    const p = ctx.player;
+    if (!p || p.isDead || mob.target || ctx.difficulty === 'peaceful') return false;
+    if (p.gameMode === 'creative' || p.gameMode === 'spectator') return false;
+    if (mob.ticksAlive % 5 !== 0) return false;
+    const eye = { x: p.pos.x, y: p.pos.y + 1.62, z: p.pos.z };
+    const dx = mob.pos.x - eye.x, dy = mob.pos.y + mob.type.height / 2 - eye.y, dz = mob.pos.z - eye.z;
+    const d = Math.hypot(dx, dy, dz);
+    if (d > 64 || d < 1e-3) return false;
+    const look = lookDirFromAngles(p.yaw, p.pitch);
+    const dot = (look.x * dx + look.y * dy + look.z * dz) / d;
+    if (!(dot > 1 - 0.025 / d)) return false;
+    return hasLineOfSight(world, eye, { x: mob.pos.x, y: mob.pos.y + mob.type.eyeHeight, z: mob.pos.z });
+  }
+  start(mob, world, ctx) {
+    mob.target = ctx.player; mob.angerLevel = 600; mob.screaming = true;
+    MobEntity.onSound?.(mob, 'stare');
+    MobEntity.onSound?.(mob, 'scream');
+  }
+  canContinue(mob) {
+    if (!mob.target || mob.target.isDead) return false;
+    return mob.angerLevel > 0;
+  }
+  stop(mob) { mob.target = null; mob.screaming = false; }
+}
+
+// === Slime: pula em direção ao alvo (ou a esmo) a cada ~1 s ===
+class SlimeJumpGoal extends Goal {
+  canStart() { return true; }
+  canContinue() { return true; }
+  tick(mob) {
+    if (!mob.onGround) return;
+    mob._jumpTimer = (mob._jumpTimer ?? 20) - 1;
+    if (mob._jumpTimer > 0) return;
+    mob._jumpTimer = 10 + Math.floor(Math.random() * 20);
+    let dx, dz;
+    if (mob.target) { dx = mob.target.pos.x - mob.pos.x; dz = mob.target.pos.z - mob.pos.z; }
+    else { const a = Math.random() * Math.PI * 2; dx = Math.cos(a); dz = Math.sin(a); }
+    const d = Math.hypot(dx, dz) || 1;
+    mob.vel.x = (dx / d) * mob.type.speed;
+    mob.vel.z = (dz / d) * mob.type.speed;
+    mob.vel.y = 0.42;
+    mob.yaw = Math.atan2(-dx, dz);
   }
 }
 

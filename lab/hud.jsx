@@ -8,6 +8,9 @@ import { createInventory } from '/src/game/inventory.js';
 import InventoryUI from '/src/components/game/InventoryUI.jsx';
 import CreativeUI from '/src/components/game/CreativeUI.jsx';
 import GameHud from '/src/components/game/GameHud.jsx';
+import CraftingTableUI from '/src/components/game/CraftingTableUI.jsx';
+import FurnaceUI from '/src/components/game/FurnaceUI.jsx';
+import ChestUI from '/src/components/game/ChestUI.jsx';
 
 const params = new URLSearchParams(location.search);
 const out = document.getElementById('out');
@@ -27,6 +30,8 @@ function App() {
     i.main[5] = { id: 264, count: 2, meta: 0 };
     return i;
   }, []);
+  const furnace = useMemo(() => ({ input: { id: 12, count: 8, meta: 0 }, fuel: { id: 263, count: 5, meta: 0 }, output: { id: 20, count: 3, meta: 0 }, burnTime: 120, totalBurn: 200, cookTime: 90 }), []);
+  const chest = useMemo(() => ({ slots: Array.from({ length: 27 }, (_, i) => (i % 5 === 0 ? { id: 1 + (i % 7), count: 8 + i, meta: 0 } : null)) }), []);
   useEffect(() => { loadPack().then(() => loadRealTextures()).then((ok) => { log('texturas reais: ' + ok); setReady(true); }); }, []);
   window.__hudLab = { inv, setMode, mode, rev };
   const hud = {
@@ -38,13 +43,16 @@ function App() {
     <>
       <GameHud hud={mode === 'hud-creative' ? { ...hud, gamemode: 'creative' } : hud} onPause={() => {}} />
       {mode === 'inventory' && <InventoryUI inv={inv} onUpdate={() => setRev((r) => r + 1)} onClose={() => setMode('hud')} hud={hud} />}
+      {mode === 'crafting' && <CraftingTableUI inv={inv} onUpdate={() => setRev((r) => r + 1)} onClose={() => setMode('hud')} />}
+      {mode === 'furnace' && <FurnaceUI furnace={furnace} inv={inv} onUpdate={() => setRev((r) => r + 1)} onClose={() => setMode('hud')} />}
+      {mode === 'chest' && <ChestUI title="Baú" container={chest} inv={inv} onUpdate={() => setRev((r) => r + 1)} onClose={() => setMode('hud')} />}
       {mode === 'creative' && <CreativeUI inv={inv} onUpdate={() => setRev((r) => r + 1)} onClose={() => setMode('hud')} />}
     </>
   );
 }
 
 const bar = document.getElementById('bar');
-for (const m of ['hud', 'hud-creative', 'inventory', 'creative']) {
+for (const m of ['hud', 'hud-creative', 'inventory', 'creative', 'crafting', 'furnace', 'chest']) {
   const b = document.createElement('button'); b.textContent = m; b.onclick = () => window.__hudLab.setMode(m); bar.append(b);
 }
 createRoot(document.getElementById('root')).render(<App />);

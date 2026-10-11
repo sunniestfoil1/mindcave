@@ -4,8 +4,10 @@ import * as THREE from 'three';
 import { getPackCanvas, MC } from './pack';
 
 // === UV Mapping MCP — Mapeia texturas desmontadas nas faces do BoxGeometry ===
-function setBoxUVs(geo, u, v, w, h, d, texW = 64, texH = 32) {
-  const toFace = (x1, y1, x2, y2) => [
+function setBoxUVs(geo, u, v, w, h, d, texW = 64, texH = 32, mirror = false) {
+  // mirror (membros esquerdos do MCP): troca as faces laterais e inverte o U de cada face
+  const toFace = (x1, y1, x2, y2) => mirror ? toFaceRaw(x2, y1, x1, y2) : toFaceRaw(x1, y1, x2, y2);
+  const toFaceRaw = (x1, y1, x2, y2) => [
     new THREE.Vector2(x1 / texW, 1.0 - y2 / texH),
     new THREE.Vector2(x2 / texW, 1.0 - y2 / texH),
     new THREE.Vector2(x2 / texW, 1.0 - y1 / texH),
@@ -19,8 +21,9 @@ function setBoxUVs(geo, u, v, w, h, d, texW = 64, texH = 32) {
   const right = toFace(u + w + d, v + d, u + w + d * 2, v + h + d);
   const back = toFace(u + w + d * 2, v + d, u + w * 2 + d * 2, v + h + d);
 
-  const uvRight = [right[3], right[2], right[0], right[1]];
-  const uvLeft = [left[3], left[2], left[0], left[1]];
+  const R = mirror ? left : right, L = mirror ? right : left;
+  const uvRight = [R[3], R[2], R[0], R[1]];
+  const uvLeft = [L[3], L[2], L[0], L[1]];
   const uvTop = [top[3], top[2], top[0], top[1]];
   const uvBottom = [bottom[0], bottom[1], bottom[3], bottom[2]];
   const uvFront = [front[3], front[2], front[0], front[1]];
@@ -37,20 +40,6 @@ function setBoxUVs(geo, u, v, w, h, d, texW = 64, texH = 32) {
   uvAttr.needsUpdate = true;
 }
 
-function makeBox(w, h, d, u, v, texW = 64, texH = 32, material = null) {
-  const geo = new THREE.BoxGeometry(w / 16, h / 16, d / 16);
-  setBoxUVs(geo, u, v, w, h, d, texW, texH);
-  return new THREE.Mesh(geo, material);
-}
-
-function makeLimb(w, h, d, u, v, texW = 64, texH = 32, material = null) {
-  const group = new THREE.Group();
-  const mesh = makeBox(w, h, d, u, v, texW, texH, material);
-  mesh.position.y = -(h / 16) / 2;
-  group.add(mesh);
-  return group;
-}
-
 // === Sistema de Cache e Carregamento de Texturas Oficiais do Pack 1.8.9 ===
 const _texMap = new Map();
 const _matMap = new Map();
@@ -63,6 +52,7 @@ const MOB_PACK_PATHS = {
   cow: 'textures/entity/cow/cow.png',
   pig: 'textures/entity/pig/pig.png',
   sheep: 'textures/entity/sheep/sheep.png',
+  sheep_fur: 'textures/entity/sheep/sheep_fur.png',
   chicken: 'textures/entity/chicken.png',
   enderman: 'textures/entity/enderman/enderman.png',
   witch: 'textures/entity/witch.png',
@@ -227,221 +217,191 @@ function getMobMaterial(mobType, texW = 64, texH = 64) {
   return mat;
 }
 
-// === CONSTRUTORES DE MODELOS MCP ===
+// === CONSTRUTORES DE MODELOS (caixas do MCP 1.8.9) ===
+// Cada parte vem das classes net.minecraft.client.model.*: pivô e caixa no quadro "cru" do Minecraft (Y para baixo, frente = -Z,
+// origem 24 px acima dos pés). Convertemos para o quadro do jogo (Y para cima, frente = +Z) com uma rotação de 180° em X:
+// posição (x, y, z) → (x, -y, -z); rotações em X ficam iguais, em Y e Z trocam de sinal.
+const FEET_RAW = 24;
 
-// 1. ModelBiped / ModelZombie / ModelSkeleton (net.minecraft.client.model.ModelBiped)
+// Caixa do MC dentro de um pivô. box = [x, y, z, w, h, d] relativo ao pivô; uv = [u, v]; mirror espelha a textura (membros esquerdos)
+function mcPart(mat, texW, texH, { uv, box, pivot, rot = [0, 0, 0], mirror = false, inflate = 0 }) {
+  const [x, y, z, w, h, d] = box;
+  const group = new THREE.Group();
+  group.position.set(pivot[0] / 16, -pivot[1] / 16, -pivot[2] / 16);
+  group.rotation.set(rot[0], -rot[1], -rot[2]);
+  group.userData.restRot = [rot[0], -rot[1], -rot[2]];
+  const geo = new THREE.BoxGeometry((w + 2 * inflate) / 16, (h + 2 * inflate) / 16, (d + 2 * inflate) / 16);
+  setBoxUVs(geo, uv[0], uv[1], w, h, d, texW, texH, mirror);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set((x + w / 2) / 16, -(y + h / 2) / 16, -(z + d / 2) / 16);
+  group.add(mesh);
+  return group;
+}
+
+// Monta o modelo: raiz com os pés em y = 0 (o "24 px" cru vira 1.5 bloco acima da origem do mundo)
+function rigRoot() {
+  const root = new THREE.Group();
+  const inner = new THREE.Group();
+  inner.position.y = FEET_RAW / 16;
+  root.add(inner);
+  return { root, inner };
+}
+
+const texSize = (mobType) => (mobType === 'zombie' ? [64, 64] : [64, 32]);
+
+// 1. ModelBiped / ModelZombie / ModelSkeleton
 function buildBipedModel(mobType, opts = {}) {
-  const g = new THREE.Group();
-  const texH = mobType === 'zombie' ? 64 : 32;
-  const mat = getMobMaterial(mobType, 64, texH);
-
-  // Cabeça: 8x8x8 px, pivô no pescoço (y = 1.5)
-  const headGroup = new THREE.Group();
-  headGroup.position.set(0, 1.5, 0);
-  const headMesh = makeBox(8, 8, 8, 0, 0, 64, texH, mat);
-  headMesh.position.y = 0.25; // 4/16 acima do pescoço
-  headGroup.add(headMesh);
-  g.add(headGroup);
-
-  // Tronco: 8x12x4 px, centro em y = 1.125
-  const body = makeBox(8, 12, 4, 16, 16, 64, texH, mat);
-  body.position.set(0, 1.125, 0);
-  g.add(body);
-
-  // Braços: 4x12x4 px, pivôs nos ombros (y = 1.45)
-  const armL = makeLimb(4, 12, 4, texH === 64 ? 32 : 40, texH === 64 ? 48 : 16, 64, texH, mat);
-  armL.position.set(-0.375, 1.45, 0);
-  g.add(armL);
-
-  const armR = makeLimb(4, 12, 4, 40, 16, 64, texH, mat);
-  armR.position.set(0.375, 1.45, 0);
-  g.add(armR);
-
-  // Pernas: 4x12x4 px, pivôs nos quadris (y = 0.75)
-  const legL = makeLimb(4, 12, 4, texH === 64 ? 16 : 0, texH === 64 ? 48 : 16, 64, texH, mat);
-  legL.position.set(-0.125, 0.75, 0);
-  g.add(legL);
-
-  const legR = makeLimb(4, 12, 4, 0, 16, 64, texH, mat);
-  legR.position.set(0.125, 0.75, 0);
-  g.add(legR);
-
-  g.userData = { head: headGroup, body, armL, armR, legL, legR, type: 'biped', mobType, ...opts };
-  return g;
+  const [tw, th] = texSize(mobType);
+  const mat = getMobMaterial(mobType, tw, th);
+  const { root, inner } = rigRoot();
+  const thin = !!opts.isSkeleton; // esqueleto: braços e pernas 2×12×2
+  const head = mcPart(mat, tw, th, { uv: [0, 0], box: [-4, -8, -4, 8, 8, 8], pivot: [0, 0, 0] });
+  const body = mcPart(mat, tw, th, { uv: [16, 16], box: [-4, 0, -2, 8, 12, 4], pivot: [0, 0, 0] });
+  const armR = mcPart(mat, tw, th, { uv: [40, 16], box: thin ? [-1, -2, -1, 2, 12, 2] : [-3, -2, -2, 4, 12, 4], pivot: [-5, 2, 0] });
+  const armL = mcPart(mat, tw, th, { uv: [40, 16], box: thin ? [-1, -2, -1, 2, 12, 2] : [-1, -2, -2, 4, 12, 4], pivot: [5, 2, 0], mirror: true });
+  const legR = mcPart(mat, tw, th, { uv: [0, 16], box: thin ? [-1, 0, -1, 2, 12, 2] : [-2, 0, -2, 4, 12, 4], pivot: [-2, 12, 0] });
+  const legL = mcPart(mat, tw, th, { uv: [0, 16], box: thin ? [-1, 0, -1, 2, 12, 2] : [-2, 0, -2, 4, 12, 4], pivot: [2, 12, 0], mirror: true });
+  inner.add(head, body, armR, armL, legR, legL);
+  root.userData = { head, body, armL, armR, legL, legR, type: 'biped', mobType, ...opts };
+  return root;
 }
 
-// 2. ModelCreeper (net.minecraft.client.model.ModelCreeper)
+// 2. ModelCreeper
 function buildCreeperModel() {
-  const g = new THREE.Group();
   const mat = getMobMaterial('creeper', 64, 32);
-
-  // Cabeça: 8x8x8 px, pivô em y = 1.125
-  const headGroup = new THREE.Group();
-  headGroup.position.set(0, 1.125, 0);
-  const headMesh = makeBox(8, 8, 8, 0, 0, 64, 32, mat);
-  headMesh.position.y = 0.25;
-  headGroup.add(headMesh);
-  g.add(headGroup);
-
-  // Tronco: 8x12x4 px, centro em y = 0.75
-  const body = makeBox(8, 12, 4, 16, 16, 64, 32, mat);
-  body.position.set(0, 0.75, 0);
-  g.add(body);
-
-  // 4 Pernas do Creeper: 4x6x4 px, pivôs em y = 0.375
-  const leg1 = makeLimb(4, 6, 4, 0, 16, 64, 32, mat); // Traseira esquerda
-  leg1.position.set(-0.125, 0.375, -0.25);
-  g.add(leg1);
-
-  const leg2 = makeLimb(4, 6, 4, 0, 16, 64, 32, mat); // Traseira direita
-  leg2.position.set(0.125, 0.375, -0.25);
-  g.add(leg2);
-
-  const leg3 = makeLimb(4, 6, 4, 0, 16, 64, 32, mat); // Frontal esquerda
-  leg3.position.set(-0.125, 0.375, 0.25);
-  g.add(leg3);
-
-  const leg4 = makeLimb(4, 6, 4, 0, 16, 64, 32, mat); // Frontal direita
-  leg4.position.set(0.125, 0.375, 0.25);
-  g.add(leg4);
-
-  g.userData = { head: headGroup, body, leg1, leg2, leg3, leg4, type: 'creeper' };
-  return g;
+  const { root, inner } = rigRoot();
+  const head = mcPart(mat, 64, 32, { uv: [0, 0], box: [-4, -8, -4, 8, 8, 8], pivot: [0, 6, 0] });
+  const body = mcPart(mat, 64, 32, { uv: [16, 16], box: [-4, 0, -2, 8, 12, 4], pivot: [0, 6, 0] });
+  const legBox = [-2, 0, -2, 4, 6, 4];
+  const leg1 = mcPart(mat, 64, 32, { uv: [0, 16], box: legBox, pivot: [-2, 18, 4] });
+  const leg2 = mcPart(mat, 64, 32, { uv: [0, 16], box: legBox, pivot: [2, 18, 4] });
+  const leg3 = mcPart(mat, 64, 32, { uv: [0, 16], box: legBox, pivot: [-2, 18, -4] });
+  const leg4 = mcPart(mat, 64, 32, { uv: [0, 16], box: legBox, pivot: [2, 18, -4] });
+  inner.add(head, body, leg1, leg2, leg3, leg4);
+  root.userData = { head, body, leg1, leg2, leg3, leg4, type: 'creeper' };
+  return root;
 }
 
-// 3. ModelQuadruped (Cow, Pig, Sheep - net.minecraft.client.model.ModelQuadruped)
+// 3. ModelQuadruped: porco, vaca, ovelha (cada um com as medidas do seu modelo)
 function buildQuadrupedModel(mobType) {
-  const g = new THREE.Group();
   const mat = getMobMaterial(mobType, 64, 32);
-
-  const isPig = mobType === 'pig';
-  const legH = isPig ? 6 : 12;
-  const legY = (legH / 16);
-
-  // Cabeça: 8x8x8 px, pivô em y = legY + 0.35, z = 0.5
-  const headGroup = new THREE.Group();
-  headGroup.position.set(0, legY + 0.35, 0.45);
-  const headMesh = makeBox(8, 8, 8, 0, 0, 64, 32, mat);
-  headMesh.position.y = 0.25;
-  headGroup.add(headMesh);
-
-  if (isPig) {
-    // Focinho do porco: 4x3x1 px
-    const snout = makeBox(4, 3, 1, 16, 16, 64, 32, mat);
-    snout.position.set(0, 0.18, 0.28);
-    headGroup.add(snout);
+  const { root, inner } = rigRoot();
+  const H = Math.PI / 2;
+  const parts = [];
+  let head, body, legs;
+  if (mobType === 'pig') {
+    head = mcPart(mat, 64, 32, { uv: [0, 0], box: [-4, -4, -8, 8, 8, 8], pivot: [0, 12, -6] });
+    head.add(mcPart(mat, 64, 32, { uv: [16, 16], box: [-2, 0, -9, 4, 3, 1], pivot: [0, 0, 0] }));
+    body = mcPart(mat, 64, 32, { uv: [28, 8], box: [-5, -10, -7, 10, 16, 8], pivot: [0, 11, 2], rot: [H, 0, 0] });
+    const lb = [-2, 0, -2, 4, 6, 4];
+    legs = [[-3, 18, 7], [3, 18, 7], [-3, 18, -5], [3, 18, -5]].map((p) => mcPart(mat, 64, 32, { uv: [0, 16], box: lb, pivot: p }));
+  } else if (mobType === 'cow') {
+    head = mcPart(mat, 64, 32, { uv: [0, 0], box: [-4, -4, -6, 8, 8, 6], pivot: [0, 4, -8] });
+    head.add(mcPart(mat, 64, 32, { uv: [22, 0], box: [-5, -5, -4, 1, 3, 1], pivot: [0, 0, 0] }));
+    head.add(mcPart(mat, 64, 32, { uv: [22, 0], box: [4, -5, -4, 1, 3, 1], pivot: [0, 0, 0] }));
+    body = mcPart(mat, 64, 32, { uv: [18, 4], box: [-6, -10, -7, 12, 18, 10], pivot: [0, 5, 2], rot: [H, 0, 0] });
+    parts.push(mcPart(mat, 64, 32, { uv: [52, 0], box: [-2, 2, -8, 4, 6, 1], pivot: [0, 5, 2], rot: [H, 0, 0] }));
+    const lb = [-2, 0, -2, 4, 12, 4];
+    legs = [[-4, 12, 7], [4, 12, 7], [-4, 12, -6], [4, 12, -6]].map((p) => mcPart(mat, 64, 32, { uv: [0, 16], box: lb, pivot: p }));
+  } else { // ovelha
+    head = mcPart(mat, 64, 32, { uv: [0, 0], box: [-3, -4, -6, 6, 6, 8], pivot: [0, 6, -8] });
+    body = mcPart(mat, 64, 32, { uv: [28, 8], box: [-4, -10, -7, 8, 16, 6], pivot: [0, 5, 2], rot: [H, 0, 0] });
+    const lb = [-2, 0, -2, 4, 12, 4];
+    legs = [[-3, 12, 7], [3, 12, 7], [-3, 12, -5], [3, 12, -5]].map((p) => mcPart(mat, 64, 32, { uv: [0, 16], box: lb, pivot: p }));
+    // lã (sheep_fur.png): mesmas caixas infladas
+    const fur = getMobMaterial('sheep_fur', 64, 32);
+    head.add(mcPart(fur, 64, 32, { uv: [0, 0], box: [-3, -4, -4, 6, 6, 6], pivot: [0, 0, 0], inflate: 0.6 }));
+    body.add(mcPart(fur, 64, 32, { uv: [28, 8], box: [-4, -10, -7, 8, 16, 6], pivot: [0, 0, 0], inflate: 1.75 }));
+    legs.forEach((l) => l.add(mcPart(fur, 64, 32, { uv: [0, 16], box: [-2, 0, -2, 4, 6, 4], pivot: [0, 0, 0], inflate: 0.5 })));
   }
-
-  g.add(headGroup);
-
-  // Corpo horizontal: 10x16x8 px
-  const body = makeBox(10, 8, 16, 28, 8, 64, 32, mat);
-  body.position.set(0, legY + 0.25, 0);
-  g.add(body);
-
-  // 4 Pernas: 4xH×4 px
-  const leg1 = makeLimb(4, legH, 4, 0, 16, 64, 32, mat); // Traseira esquerda
-  leg1.position.set(-0.25, legY, -0.4);
-  g.add(leg1);
-
-  const leg2 = makeLimb(4, legH, 4, 0, 16, 64, 32, mat); // Traseira direita
-  leg2.position.set(0.25, legY, -0.4);
-  g.add(leg2);
-
-  const leg3 = makeLimb(4, legH, 4, 0, 16, 64, 32, mat); // Frontal esquerda
-  leg3.position.set(-0.25, legY, 0.35);
-  g.add(leg3);
-
-  const leg4 = makeLimb(4, legH, 4, 0, 16, 64, 32, mat); // Frontal direita
-  leg4.position.set(0.25, legY, 0.35);
-  g.add(leg4);
-
-  g.userData = { head: headGroup, body, leg1, leg2, leg3, leg4, type: 'quadruped', mobType };
-  return g;
+  inner.add(head, body, ...parts, ...legs);
+  root.userData = { head, body, leg1: legs[0], leg2: legs[1], leg3: legs[2], leg4: legs[3], type: 'quadruped', mobType };
+  return root;
 }
 
-// 4. ModelSpider (net.minecraft.client.model.ModelSpider)
+// 4. ModelChicken
+function buildChickenModel() {
+  const mat = getMobMaterial('chicken', 64, 32);
+  const { root, inner } = rigRoot();
+  const head = mcPart(mat, 64, 32, { uv: [0, 0], box: [-2, -6, -2, 4, 6, 3], pivot: [0, 15, -4] });
+  head.add(mcPart(mat, 64, 32, { uv: [14, 0], box: [-2, -4, -4, 4, 2, 2], pivot: [0, 0, 0] }));
+  head.add(mcPart(mat, 64, 32, { uv: [14, 4], box: [-1, -2, -3, 2, 2, 2], pivot: [0, 0, 0] }));
+  const body = mcPart(mat, 64, 32, { uv: [0, 9], box: [-3, -4, -3, 6, 8, 6], pivot: [0, 16, 0], rot: [Math.PI / 2, 0, 0] });
+  const legR = mcPart(mat, 64, 32, { uv: [26, 0], box: [-1, 0, -3, 3, 5, 3], pivot: [-2, 19, 1] });
+  const legL = mcPart(mat, 64, 32, { uv: [26, 0], box: [-1, 0, -3, 3, 5, 3], pivot: [1, 19, 1] });
+  const wingR = mcPart(mat, 64, 32, { uv: [24, 13], box: [0, 0, -3, 1, 4, 6], pivot: [-4, 13, 0] });
+  const wingL = mcPart(mat, 64, 32, { uv: [24, 13], box: [-1, 0, -3, 1, 4, 6], pivot: [4, 13, 0] });
+  inner.add(head, body, legR, legL, wingR, wingL);
+  root.userData = { head, body, legR, legL, wingR, wingL, type: 'chicken' };
+  return root;
+}
+
+// 5. ModelWolf
+function buildWolfModel() {
+  const mat = getMobMaterial('wolf', 64, 32);
+  const { root, inner } = rigRoot();
+  const H = Math.PI / 2;
+  const head = mcPart(mat, 64, 32, { uv: [0, 0], box: [-3, -3, -2, 6, 6, 4], pivot: [-1, 13.5, -7] });
+  head.add(mcPart(mat, 64, 32, { uv: [16, 14], box: [-3, -5, 0, 2, 2, 1], pivot: [0, 0, 0] }));
+  head.add(mcPart(mat, 64, 32, { uv: [16, 14], box: [1, -5, 0, 2, 2, 1], pivot: [0, 0, 0] }));
+  head.add(mcPart(mat, 64, 32, { uv: [0, 10], box: [-1.5, 0, -5, 3, 3, 4], pivot: [0, 0, 0] }));
+  const body = mcPart(mat, 64, 32, { uv: [18, 14], box: [-4, -2, -3, 6, 9, 6], pivot: [0, 14, 2], rot: [H, 0, 0] });
+  const mane = mcPart(mat, 64, 32, { uv: [21, 0], box: [-4, -3, -3, 8, 6, 7], pivot: [-1, 14, -3], rot: [H, 0, 0] });
+  const lb = [-1, 0, -1, 2, 8, 2];
+  const legs = [[-2.5, 16, 7], [0.5, 16, 7], [-2.5, 16, -4], [0.5, 16, -4]].map((p) => mcPart(mat, 64, 32, { uv: [0, 18], box: lb, pivot: p }));
+  const tail = mcPart(mat, 64, 32, { uv: [9, 18], box: [-1, 0, -1, 2, 8, 2], pivot: [-1, 12, 8], rot: [Math.PI / 5, 0, 0] });
+  inner.add(head, body, mane, tail, ...legs);
+  root.userData = { head, body, tail, leg1: legs[0], leg2: legs[1], leg3: legs[2], leg4: legs[3], type: 'quadruped', mobType: 'wolf' };
+  return root;
+}
+
+// 6. ModelSpider: pernas com os ângulos de repouso do MCP (π/4 em Z; π/4, π/8 em Y)
 function buildSpiderModel() {
-  const g = new THREE.Group();
   const mat = getMobMaterial('spider', 64, 32);
-
-  // Cabeça: 8x8x8 px, UV (32, 4)
-  const headGroup = new THREE.Group();
-  headGroup.position.set(0, 0.5, 0.3);
-  const headMesh = makeBox(8, 8, 8, 32, 4, 64, 32, mat);
-  headGroup.add(headMesh);
-  g.add(headGroup);
-
-  // Tórax: 6x6x6 px, UV (0, 0)
-  const thorax = makeBox(6, 6, 6, 0, 0, 64, 32, mat);
-  thorax.position.set(0, 0.5, 0);
-  g.add(thorax);
-
-  // Abdômen: 10x8x12 px, UV (0, 12)
-  const abdomen = makeBox(10, 8, 12, 0, 12, 64, 32, mat);
-  abdomen.position.set(0, 0.55, -0.55);
-  g.add(abdomen);
-
-  // 8 Pernas: 16x2x2 px, UV (18, 0)
-  const legs = [];
-  for (let i = 0; i < 8; i++) {
-    const side = i < 4 ? -1 : 1;
-    const idx = i % 4;
-    const legGroup = new THREE.Group();
-    legGroup.position.set(side * 0.25, 0.5, 0.2 - idx * 0.15);
-
-    const legMesh = makeBox(12, 2, 2, 18, 0, 64, 32, mat);
-    legMesh.position.x = side * (6 / 16);
-    legGroup.add(legMesh);
-
-    // Ângulos de descanso das pernas da aranha
-    legGroup.rotation.z = side * 0.35;
-    g.add(legGroup);
-    legs.push(legGroup);
-  }
-
-  g.userData = { head: headGroup, thorax, abdomen, legs, type: 'spider' };
-  return g;
+  const { root, inner } = rigRoot();
+  const head = mcPart(mat, 64, 32, { uv: [32, 4], box: [-4, -4, -8, 8, 8, 8], pivot: [0, 15, -3] });
+  const neck = mcPart(mat, 64, 32, { uv: [0, 0], box: [-3, -3, -3, 6, 6, 6], pivot: [0, 15, 0] });
+  const body = mcPart(mat, 64, 32, { uv: [0, 12], box: [-5, -4, -6, 10, 8, 12], pivot: [0, 15, 9] });
+  const f = Math.PI / 4, f1 = Math.PI / 8;
+  const spec = [ // pivô, lado (-1 direita, +1 esquerda), rotZ, rotY de repouso (MCP)
+    { p: [-4, 15, 2], s: -1, z: -f, y: f }, { p: [4, 15, 2], s: 1, z: f, y: -f },
+    { p: [-4, 15, 1], s: -1, z: -f * 0.74, y: f1 }, { p: [4, 15, 1], s: 1, z: f * 0.74, y: -f1 },
+    { p: [-4, 15, 0], s: -1, z: -f * 0.74, y: -f1 }, { p: [4, 15, 0], s: 1, z: f * 0.74, y: f1 },
+    { p: [-4, 15, -1], s: -1, z: -f, y: -f }, { p: [4, 15, -1], s: 1, z: f, y: f },
+  ];
+  const legs = spec.map((l) => mcPart(mat, 64, 32, {
+    uv: [18, 0], box: l.s < 0 ? [-15, -1, -1, 16, 2, 2] : [-1, -1, -1, 16, 2, 2], pivot: l.p, rot: [0, l.y, l.z],
+  }));
+  inner.add(head, neck, body, ...legs);
+  root.userData = { head, body, legs, type: 'spider' };
+  return root;
 }
 
-// 5. ModelEnderman
+// 7. ModelEnderman (altura total até o chão 46 px ≈ 2,9 blocos; as pernas entram 4 px no chão, como no original)
 function buildEndermanModel() {
-  const g = new THREE.Group();
   const mat = getMobMaterial('enderman', 64, 32);
+  const { root, inner } = rigRoot();
+  const f = -14;
+  const head = mcPart(mat, 64, 32, { uv: [0, 0], box: [-4, -8, -4, 8, 8, 8], pivot: [0, f, 0] });
+  const body = mcPart(mat, 64, 32, { uv: [32, 16], box: [-4, 0, -2, 8, 12, 4], pivot: [0, f, 0] });
+  const armR = mcPart(mat, 64, 32, { uv: [56, 0], box: [-1, -2, -1, 2, 30, 2], pivot: [-3, 2 + f, 0] });
+  const armL = mcPart(mat, 64, 32, { uv: [56, 0], box: [-1, -2, -1, 2, 30, 2], pivot: [5, 2 + f, 0], mirror: true });
+  const legR = mcPart(mat, 64, 32, { uv: [56, 0], box: [-1, 0, -1, 2, 30, 2], pivot: [-2, 12 + f, 0] });
+  const legL = mcPart(mat, 64, 32, { uv: [56, 0], box: [-1, 0, -1, 2, 30, 2], pivot: [2, 12 + f, 0], mirror: true });
+  inner.add(head, body, armR, armL, legR, legL);
+  root.userData = { head, body, armL, armR, legL, legR, type: 'enderman' };
+  return root;
+}
 
-  // Cabeça alta em y = 2.4
-  const headGroup = new THREE.Group();
-  headGroup.position.set(0, 2.4, 0);
-  const headMesh = makeBox(8, 8, 8, 0, 0, 64, 32, mat);
-  headMesh.position.y = 0.25;
-  headGroup.add(headMesh);
-  g.add(headGroup);
-
-  // Tronco magro: 8x12x4
-  const body = makeBox(8, 12, 4, 16, 16, 64, 32, mat);
-  body.position.set(0, 1.8, 0);
-  g.add(body);
-
-  // Braços finos e longos: 2x30x2
-  const armL = makeLimb(2, 30, 2, 56, 0, 64, 32, mat);
-  armL.position.set(-0.35, 2.3, 0);
-  g.add(armL);
-
-  const armR = makeLimb(2, 30, 2, 56, 0, 64, 32, mat);
-  armR.position.set(0.35, 2.3, 0);
-  g.add(armR);
-
-  // Pernas longas: 2x30x2
-  const legL = makeLimb(2, 30, 2, 56, 0, 64, 32, mat);
-  legL.position.set(-0.12, 1.35, 0);
-  g.add(legL);
-
-  const legR = makeLimb(2, 30, 2, 56, 0, 64, 32, mat);
-  legR.position.set(0.12, 1.35, 0);
-  g.add(legR);
-
-  g.userData = { head: headGroup, body, armL, armR, legL, legR, type: 'enderman' };
-  return g;
+// 8. Slime: núcleo 6×6×6 e casca 8×8×8 (UV do slime.png)
+function buildSlimeModel() {
+  const mat = getMobMaterial('slime', 64, 32);
+  const { root, inner } = rigRoot();
+  const outer = mcPart(mat, 64, 32, { uv: [0, 0], box: [-4, 16, -4, 8, 8, 8], pivot: [0, 0, 0] });
+  const core = mcPart(mat, 64, 32, { uv: [0, 16], box: [-3, 17, -3, 6, 6, 6], pivot: [0, 0, 0] });
+  inner.add(core, outer);
+  root.userData = { body: outer, type: 'slime' };
+  return root;
 }
 
 // === FACTORY PRINCIPAL ===
@@ -454,25 +414,22 @@ const BUILDERS = {
   pig: () => buildQuadrupedModel('pig'),
   sheep: () => buildQuadrupedModel('sheep'),
   enderman: buildEndermanModel,
-  wolf: () => buildQuadrupedModel('wolf'),
-  chicken: () => buildQuadrupedModel('pig'), // Utiliza bípede/quadrúpede compacto até pack carregar
+  wolf: buildWolfModel,
+  chicken: buildChickenModel,
   witch: () => buildBipedModel('zombie', { isWitch: true }),
-  slime: () => {
-    const g = new THREE.Group();
-    const mat = getMobMaterial('slime', 64, 32);
-    const body = makeBox(8, 8, 8, 0, 16, 64, 32, mat);
-    body.position.y = 0.25;
-    g.add(body);
-    g.userData = { body, type: 'slime' };
-    return g;
-  },
+  slime: buildSlimeModel,
 };
 
 export function buildMobModel(mobType) {
   const builder = BUILDERS[mobType];
-  const g = builder ? builder() : buildBipedModel('zombie');
+  const g = builder ? builder() : buildBipedModel('zombie', { isZombie: true });
   g.visible = false;
   return g;
+}
+
+// Aplica ângulos no quadro "cru" do MCP ao quadro do jogo (Y e Z trocam de sinal)
+function raw(part, x, y, z) {
+  if (part) part.rotation.set(x, -y, -z);
 }
 
 // === ANIMAÇÕES CLÁSSICAS MCP 1.8.9 (setRotationAngles) ===
@@ -486,119 +443,82 @@ export function animateMobModel(model, mob, time) {
   }
   model.rotation.z = 0;
 
-  // Variáveis canônicas do MCP 1.8.9:
-  const limbSwing = mob._limbSwing || 0;
-  const limbSwingAmount = mob._limbSwingAmount || 0;
-  const ageInTicks = (mob.ticksAlive || 0) + (time % 1);
-  const netHeadYaw = mob.headYaw || 0;
+  // Variáveis canônicas do MCP 1.8.9
+  const ls = mob._limbSwing || 0;
+  const amt = mob._limbSwingAmount || 0;
+  const age = (mob.ticksAlive || 0) + (time % 1);
+  const headYaw = mob.headYaw || 0;      // convenção do jogo; raw() converte
   const headPitch = mob.headPitch || 0;
+  const c1 = Math.cos(ls * 0.6662), c2 = Math.cos(ls * 0.6662 + Math.PI);
+  const clamp = (v, m) => Math.max(-m, Math.min(m, v));
+  const attacking = !!mob.target;
 
-  // 1. BIPED (Zombie, Skeleton, Player)
+  const look = () => { if (u.head) raw(u.head, headPitch, headYaw, 0); };
+
   if (u.type === 'biped') {
-    if (u.head) {
-      u.head.rotation.y = netHeadYaw;
-      u.head.rotation.x = headPitch;
-    }
-
-    // Pernas balançam com Math.cos(limbSwing * 0.6662) * 1.4 * limbSwingAmount
-    const cosLeg = Math.cos(limbSwing * 0.6662);
-    const cosLegPI = Math.cos(limbSwing * 0.6662 + Math.PI);
-    u.legR.rotation.x = cosLeg * 1.4 * limbSwingAmount;
-    u.legL.rotation.x = cosLegPI * 1.4 * limbSwingAmount;
-    u.legR.rotation.y = 0;
-    u.legL.rotation.y = 0;
-
+    look();
+    raw(u.legR, c1 * 1.4 * amt, 0, 0);
+    raw(u.legL, c2 * 1.4 * amt, 0, 0);
     if (u.isZombie) {
-      // ModelZombie.java: Braços esticados para frente (-Math.PI / 2) com sutil oscilação respiratória
-      u.armR.rotation.x = -Math.PI / 2 + Math.sin(ageInTicks * 0.067) * 0.05;
-      u.armL.rotation.x = -Math.PI / 2 - Math.sin(ageInTicks * 0.067) * 0.05;
-      u.armR.rotation.z = Math.cos(ageInTicks * 0.09) * 0.05 + 0.05;
-      u.armL.rotation.z = -(Math.cos(ageInTicks * 0.09) * 0.05 + 0.05);
-      u.armR.rotation.y = -0.1;
-      u.armL.rotation.y = 0.1;
-    } else if (u.isSkeleton) {
-      // ModelSkeleton.java: Braços apontados para mira de flechas
-      u.armR.rotation.x = -Math.PI / 2 + headPitch;
-      u.armL.rotation.x = -Math.PI / 2 + headPitch;
-      u.armR.rotation.y = -0.4 + netHeadYaw;
-      u.armL.rotation.y = 0.4 + netHeadYaw;
-      u.armR.rotation.z = 0;
-      u.armL.rotation.z = 0;
+      // ModelZombie: braços à frente (80°; 120° ao atacar) com a oscilação de respiração
+      const lift = -Math.PI / (attacking ? 1.5 : 2.25);
+      raw(u.armR, lift + Math.sin(age * 0.067) * 0.05, -0.1, Math.cos(age * 0.09) * 0.05 + 0.05);
+      raw(u.armL, lift - Math.sin(age * 0.067) * 0.05, 0.1, -(Math.cos(age * 0.09) * 0.05 + 0.05));
+    } else if (u.isSkeleton && attacking) {
+      // ModelSkeleton mirando o arco
+      raw(u.armR, -Math.PI / 2 + headPitch, -0.1 + headYaw, 0);
+      raw(u.armL, -Math.PI / 2 + headPitch, 0.1 + headYaw + 0.4, 0);
     } else {
-      // Bípede padrão
-      u.armR.rotation.x = cosLegPI * 2.0 * limbSwingAmount * 0.5;
-      u.armL.rotation.x = cosLeg * 2.0 * limbSwingAmount * 0.5;
-      u.armR.rotation.z = 0;
-      u.armL.rotation.z = 0;
+      raw(u.armR, c2 * 2.0 * amt * 0.5, 0, Math.cos(age * 0.09) * 0.05 + 0.05);
+      raw(u.armL, c1 * 2.0 * amt * 0.5, 0, -(Math.cos(age * 0.09) * 0.05 + 0.05));
     }
-  }
-
-  // 2. CREEPER (ModelCreeper.java)
-  else if (u.type === 'creeper') {
-    if (u.head) {
-      u.head.rotation.y = netHeadYaw;
-      u.head.rotation.x = headPitch;
-    }
-    const cosLeg = Math.cos(limbSwing * 0.6662) * 1.4 * limbSwingAmount;
-    const cosLegPI = Math.cos(limbSwing * 0.6662 + Math.PI) * 1.4 * limbSwingAmount;
-    u.leg1.rotation.x = cosLeg;
-    u.leg2.rotation.x = cosLegPI;
-    u.leg3.rotation.x = cosLegPI;
-    u.leg4.rotation.x = cosLeg;
-
-    // Efeito de inchaço do Creeper
-    if (mob.swelling > 0) {
-      const s = 1.0 + (mob.swelling / 30.0) * 0.3;
-      model.scale.set(s, s, s);
-    } else {
-      model.scale.set(1, 1, 1);
-    }
-  }
-
-  // 3. QUADRUPED (Cow, Pig, Sheep - ModelQuadruped.java)
-  else if (u.type === 'quadruped') {
-    if (u.head) {
-      u.head.rotation.y = netHeadYaw;
-      u.head.rotation.x = headPitch;
-    }
-    const cosLeg = Math.cos(limbSwing * 0.6662) * 1.4 * limbSwingAmount;
-    const cosLegPI = Math.cos(limbSwing * 0.6662 + Math.PI) * 1.4 * limbSwingAmount;
-    u.leg1.rotation.x = cosLeg;
-    u.leg2.rotation.x = cosLegPI;
-    u.leg3.rotation.x = cosLegPI;
-    u.leg4.rotation.x = cosLeg;
-  }
-
-  // 4. SPIDER (ModelSpider.java)
-  else if (u.type === 'spider') {
-    if (u.head) {
-      u.head.rotation.y = netHeadYaw;
-      u.head.rotation.x = headPitch;
-    }
-    if (u.legs) {
-      const f3 = -(Math.cos(limbSwing * 0.6662 * 2.0) * 0.4) * limbSwingAmount;
-      const f4 = -(Math.cos(limbSwing * 0.6662 * 2.0 + Math.PI) * 0.4) * limbSwingAmount;
-      const f7 = Math.abs(Math.sin(limbSwing * 0.6662) * 0.4) * limbSwingAmount;
-      const f8 = Math.abs(Math.sin(limbSwing * 0.6662 + Math.PI) * 0.4) * limbSwingAmount;
-
-      u.legs[0].rotation.y = f3; u.legs[4].rotation.y = -f3;
-      u.legs[1].rotation.y = f4; u.legs[5].rotation.y = -f4;
-      u.legs[0].rotation.z = -0.35 + f7; u.legs[4].rotation.z = 0.35 - f7;
-      u.legs[1].rotation.z = -0.35 + f8; u.legs[5].rotation.z = 0.35 - f8;
-    }
-  }
-
-  // 5. ENDERMAN
-  else if (u.type === 'enderman') {
-    if (u.head) {
-      u.head.rotation.y = netHeadYaw;
-      u.head.rotation.x = headPitch;
-    }
-    const cosLeg = Math.cos(limbSwing * 0.6662) * 1.0 * limbSwingAmount;
-    const cosLegPI = Math.cos(limbSwing * 0.6662 + Math.PI) * 1.0 * limbSwingAmount;
-    u.legL.rotation.x = cosLegPI;
-    u.legR.rotation.x = cosLeg;
-    u.armL.rotation.x = -cosLegPI * 0.5;
-    u.armR.rotation.x = -cosLeg * 0.5;
+  } else if (u.type === 'creeper') {
+    look();
+    raw(u.leg1, c1 * 1.4 * amt, 0, 0);
+    raw(u.leg2, c2 * 1.4 * amt, 0, 0);
+    raw(u.leg3, c2 * 1.4 * amt, 0, 0);
+    raw(u.leg4, c1 * 1.4 * amt, 0, 0);
+    // Inchaço (RenderCreeper.preRenderCallback): f⁴ estica XZ em até 40%, Y em 10%, com o tremor sen(f·100)
+    const sw = Math.max(0, Math.min(1, mob.swelling || 0));
+    const shake = 1 + Math.sin(sw * 100) * sw * 0.01;
+    const f4 = Math.pow(sw, 4);
+    model.scale.set((1 + f4 * 0.4) * shake, (1 + f4 * 0.1) / shake, (1 + f4 * 0.4) * shake);
+  } else if (u.type === 'quadruped') {
+    look();
+    raw(u.leg1, c1 * 1.4 * amt, 0, 0);
+    raw(u.leg2, c2 * 1.4 * amt, 0, 0);
+    raw(u.leg3, c2 * 1.4 * amt, 0, 0);
+    raw(u.leg4, c1 * 1.4 * amt, 0, 0);
+    if (u.tail) raw(u.tail, Math.PI / 5, c1 * 1.4 * amt * 0.5, 0);
+  } else if (u.type === 'chicken') {
+    look();
+    raw(u.legR, c1 * 1.4 * amt, 0, 0);
+    raw(u.legL, c2 * 1.4 * amt, 0, 0);
+    const flap = mob.onGround === false ? age * 1.4 : 0; // bate as asas no ar
+    raw(u.wingR, 0, 0, Math.abs(Math.sin(flap)) * 0.9);
+    raw(u.wingL, 0, 0, -Math.abs(Math.sin(flap)) * 0.9);
+  } else if (u.type === 'spider') {
+    look();
+    // ModelSpider: repouso (π/4 em Z; π/4 e π/8 em Y) somado ao balanço das pernas
+    const f = Math.PI / 4, f1 = Math.PI / 8;
+    const restY = [f, -f, f1, -f1, -f1, f1, -f, f];
+    const restZ = [-f, f, -f * 0.74, f * 0.74, -f * 0.74, f * 0.74, -f, f];
+    const sw = (ph) => -(Math.cos(ls * 0.6662 * 2 + ph) * 0.4) * amt;
+    const lift = (ph) => Math.abs(Math.sin(ls * 0.6662 + ph) * 0.4) * amt;
+    const dy = [sw(0), -sw(0), sw(Math.PI), -sw(Math.PI), sw(Math.PI / 2), -sw(Math.PI / 2), sw(Math.PI * 1.5), -sw(Math.PI * 1.5)];
+    const dz = [lift(0), -lift(0), lift(Math.PI), -lift(Math.PI), lift(Math.PI / 2), -lift(Math.PI / 2), lift(Math.PI * 1.5), -lift(Math.PI * 1.5)];
+    u.legs.forEach((leg, i) => raw(leg, 0, restY[i] + dy[i], restZ[i] + dz[i]));
+  } else if (u.type === 'enderman') {
+    look();
+    // ModelEnderman: balanço do bípede × 0,5, limitado a ±0,4
+    raw(u.legR, clamp(c1 * 1.4 * amt * 0.5, 0.4), 0, 0);
+    raw(u.legL, clamp(c2 * 1.4 * amt * 0.5, 0.4), 0, 0);
+    raw(u.armR, clamp(c2 * 2.0 * amt * 0.5 * 0.5, 0.4), 0, 0);
+    raw(u.armL, clamp(c1 * 2.0 * amt * 0.5 * 0.5, 0.4), 0, 0);
+  } else if (u.type === 'slime') {
+    // Achata e estica ao pular: usa a velocidade vertical
+    const vy = mob.vel ? mob.vel.y : 0;
+    const s = 1 - Math.max(-0.2, Math.min(0.3, vy)) * 0.5;
+    model.scale.set(1 / Math.sqrt(s), s, 1 / Math.sqrt(s));
   }
 }

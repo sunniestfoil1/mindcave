@@ -1,38 +1,17 @@
-import React, { useState, useEffect } from "react";
-import ItemSlot from "./ItemSlot";
+// Baú (container/generic_54.png, 176×222): a textura tem a parte de cima (linhas do baú) e a de baixo (inventário), recortadas
+// conforme o número de linhas, como no GuiChest da 1.8.9.
+import React, { useState } from "react";
+import ContainerFrame, { PlayerSlots, Sprite } from "./ContainerFrame";
+import { McText } from "./GuiSprite";
 import { leftClick, rightClick, shiftClick } from "@/game/inventory";
-import { itemColor } from "@/game/items";
-import { getPackUrl, MC } from "@/game/pack";
+import { playClickSound } from "@/game/sounds";
 
 export default function ChestUI({ title, container, inv, onUpdate, onClose }) {
   const [, forceUpdate] = useState(0);
   const refresh = () => { forceUpdate(n => n + 1); onUpdate?.(); };
-  const [mouse, setMouse] = useState({ x: 0, y: 0 });
-  const [bgUrl, setBgUrl] = useState(null);
 
-  useEffect(() => {
-    getPackUrl(MC + 'textures/gui/container/generic_54.png').then(url => {
-      if (url) setBgUrl(url);
-    });
-  }, []);
-
-  useEffect(() => {
-    const h = (e) => setMouse({ x: e.clientX, y: e.clientY });
-    window.addEventListener('mousemove', h);
-    const kh = (e) => {
-      if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
-      if (e.key === 'Escape' || e.key === 'e' || e.key === 'E' || e.code === 'KeyE') {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation?.();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', kh, true);
-    return () => { window.removeEventListener('mousemove', h); window.removeEventListener('keydown', kh, true); };
-  }, [onClose]);
-
-  const slotClick = (arr, i, isLeft) => {
+  const click = (arr, i, isLeft) => {
+    playClickSound();
     const getSlot = () => arr[i];
     const setSlot = (val) => { arr[i] = val; };
     if (isLeft) leftClick(inv, getSlot, setSlot);
@@ -40,64 +19,28 @@ export default function ChestUI({ title, container, inv, onUpdate, onClose }) {
     refresh();
   };
 
-  const chestClick = (i, isLeft) => {
-    const getSlot = () => container.slots[i];
-    const setSlot = (val) => { container.slots[i] = val; };
-    if (isLeft) leftClick(inv, getSlot, setSlot);
-    else rightClick(inv, getSlot, setSlot);
-    refresh();
-  };
-
-  const handleShift = (section, index) => {
-    shiftClick(inv, section, index);
-    refresh();
-  };
-
-  const sz = 38;
-  const cols = container.slots.length > 27 ? 9 : 9;
-  const rows = Math.ceil(container.slots.length / cols);
+  const rows = Math.max(1, Math.min(6, Math.ceil(container.slots.length / 9)));
+  const h = 114 + rows * 18;
+  const topH = rows * 18 + 17;
+  const off = (rows - 4) * 18; // deslocamento do inventário em relação à janela de 4 linhas
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-stone-800 border-2 border-stone-900 rounded-lg p-4 shadow-2xl" style={{ fontFamily: "monospace", backgroundImage: bgUrl ? `url(${bgUrl})` : undefined, backgroundSize: "cover", imageRendering: "pixelated" }}>
-        <div className="text-white/80 text-sm mb-2 text-center">{title || 'Baú'}</div>
-        {/* Slots do baú */}
-        <div className={"grid gap-1 mb-2"} style={{ gridTemplateColumns: `repeat(${cols}, auto)` }}>
-          {container.slots.map((item, i) => (
-            <ItemSlot key={i} item={item} size={sz}
-              onClick={() => chestClick(i, true)}
-              onRightClick={() => chestClick(i, false)}
-            />
-          ))}
-        </div>
-        {/* Inventário principal */}
-        <div className="grid grid-cols-9 gap-1 mb-2 pt-2 border-t border-stone-700">
-          {inv.main.map((item, i) => (
-            <ItemSlot key={i} item={item} size={sz}
-              onClick={() => slotClick(inv.main, i, true)}
-              onRightClick={() => slotClick(inv.main, i, false)}
-              onShiftClick={() => handleShift('main', i)}
-            />
-          ))}
-        </div>
-        {/* Hotbar */}
-        <div className="grid grid-cols-9 gap-1 pt-2 border-t border-stone-700">
-          {inv.hotbar.map((item, i) => (
-            <ItemSlot key={i} item={item} size={sz}
-              onClick={() => slotClick(inv.hotbar, i, true)}
-              onRightClick={() => slotClick(inv.hotbar, i, false)}
-              onShiftClick={() => handleShift('hotbar', i)}
-            />
-          ))}
-        </div>
-      </div>
-      {inv.cursor && (
-        <div className="fixed pointer-events-none z-50" style={{ left: mouse.x - 16, top: mouse.y - 16 }}>
-          <div className="w-8 h-8 rounded-sm border border-black/40" style={{ background: itemColor(inv.cursor.id) }}>
-            {inv.cursor.count > 1 && <span className="absolute bottom-0 right-0.5 text-xs text-white font-bold" style={{ textShadow: "1px 1px 1px black" }}>{inv.cursor.count}</span>}
-          </div>
-        </div>
+    <ContainerFrame texture="textures/gui/container/generic_54.png" w={176} h={h} inv={inv} onClose={onClose}>
+      {({ S, slot, tex }) => (
+        <>
+          <Sprite url={tex} u={0} v={0} w={176} h={topH} S={S} />
+          <Sprite url={tex} u={0} v={126} w={176} h={96} S={S} y={topH} />
+          <McText text={title || 'Baú'} x={8} y={6} S={S} />
+          <McText text="Inventário" x={8} y={h - 94} S={S} />
+          {container.slots.map((item, i) => slot('c' + i, 8 + (i % 9) * 18, 18 + Math.floor(i / 9) * 18, item, {
+            onClick: () => click(container.slots, i, true),
+            onRightClick: () => click(container.slots, i, false),
+          }))}
+          <PlayerSlots inv={inv} slot={slot} mainY={103 + off} hotY={161 + off}
+            click={(a, i) => click(a, i, true)} rightClick={(a, i) => click(a, i, false)}
+            shift={(section, index) => { shiftClick(inv, section, index); refresh(); }} />
+        </>
       )}
-    </div>
+    </ContainerFrame>
   );
 }

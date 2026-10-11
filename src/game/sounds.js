@@ -405,3 +405,60 @@ export function playArmorEquipSound(armorType = 'generic', pos) {
 export function playArmorBreakSound(pos) {
   playSound(`random/break.ogg`, { pos, volume: 0.9, pitch: 0.9 + Math.random() * 0.2 });
 }
+
+// === Eventos de som (sounds.json do pacote de áudio) ===
+// O arquivo mapeia 1462 eventos ("entity.zombie.hurt") para os 5981 .ogg de public/assets/sounds. Os eventos de jogo
+// passam por aqui em vez de nomes de arquivo escritos à mão.
+let eventsTable = null;
+let eventsPromise = null;
+function loadEvents() {
+  if (eventsTable) return Promise.resolve(eventsTable);
+  if (!eventsPromise) {
+    eventsPromise = fetch('/assets/sounds/sounds.json')
+      .then((r) => (r.ok ? r.json() : {}))
+      .catch(() => ({}))
+      .then((t) => { eventsTable = t; return t; });
+  }
+  return eventsPromise;
+}
+
+// Sorteio ponderado; entradas { type: 'event' } apontam para outro evento
+function pickEventSound(table, entry, depth = 0) {
+  if (!entry || !entry.sounds || !entry.sounds.length || depth > 4) return null;
+  const list = entry.sounds.map((s) => (typeof s === 'string' ? { name: s } : s));
+  const total = list.reduce((a, s) => a + (s.weight || 1), 0);
+  let r = Math.random() * total;
+  let chosen = list[0];
+  for (const s of list) { r -= (s.weight || 1); if (r <= 0) { chosen = s; break; } }
+  if (chosen.type === 'event') return pickEventSound(table, table[chosen.name], depth + 1);
+  return { file: chosen.name, volume: chosen.volume ?? 1, pitch: chosen.pitch };
+}
+
+export async function playEvent(event, opts = {}) {
+  const table = await loadEvents();
+  const entry = table[event];
+  const s = pickEventSound(table, entry);
+  if (!s) return null;
+  return playSound(`${s.file}.ogg`, {
+    pos: opts.pos,
+    volume: (opts.volume ?? 1) * (entry.volume ?? 1) * s.volume,
+    pitch: opts.pitch ?? s.pitch,
+  });
+}
+
+// Nome do som de cada mob (variantes tecnológicas usam o do zumbi)
+const MOB_SOUND_NAME = {
+  zombie: 'zombie', zombie_soldier: 'zombie', zombie_miner: 'zombie', zombie_scout: 'zombie', zombie_sapper: 'zombie',
+  zombie_armored: 'zombie', zombie_sniper: 'zombie', skeleton: 'skeleton', creeper: 'creeper', spider: 'spider',
+  enderman: 'enderman', pig: 'pig', cow: 'cow', sheep: 'sheep', chicken: 'chicken', wolf: 'wolf', slime: 'slime',
+  witch: 'witch', bat: 'bat',
+};
+
+// kind: hurt | death | ambient | step | primed | teleport | scream | stare
+export function playMobSound(mob, kind) {
+  const name = MOB_SOUND_NAME[mob.typeId];
+  if (!name) return null;
+  const generic = { primed: 'entity.creeper.primed' };
+  const event = generic[kind] || `entity.${name}.${kind}`;
+  return playEvent(event, { pos: mob.pos, volume: kind === 'step' ? 0.35 : 1 });
+}

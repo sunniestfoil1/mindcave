@@ -21,6 +21,7 @@ import { createAnimationState, tickAnimation, startSwing, applyThirdPersonPose }
 import { buildHandRig, poseHand } from './firstPersonHand';
 import { attackEntity, isSword, isBow, isThrowable, computeBowCharge, createCpsTracker, recordClick, getCps, ATTACK_REACH } from './combat';
 import { MobManager } from './mobManager';
+import { MobEntity } from './mobEntity';
 import { GunController } from './guns/shooting';
 import { NoiseSystem } from './guns/noiseSystem';
 import { getGunDef, getGunState, createGunState, GUNS, isGunItem, isAccessoryItem } from './guns/registry';
@@ -36,7 +37,7 @@ import { lookDirFromAngles } from './viewMath';
 import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel } from './playerModel';
 import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
 import { initBiomeTint } from './biomeTint';
-import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playEatSound, playBurpSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener } from './sounds';
+import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener } from './sounds';
 import { createNametag } from './nametag';
 import { ParticleManager } from './particles';
 import { ItemEntityManager } from './itemEntity';
@@ -175,6 +176,7 @@ export class GameEngine {
 
     // Mobs (PRD 08)
     this.mobs = new MobManager(this.scene, this.world);
+    MobEntity.onSound = (mob, kind) => playMobSound(mob, kind);
 
     // Armas de fogo (PRD 09)
     this.gunController = new GunController(this);
@@ -628,6 +630,7 @@ export class GameEngine {
     // Respingo ao entrar na água (transição seco → molhado com velocidade Y negativa)
     if (this.particles && this.inFluid === 'water' && !this._wasInWater && p.vel.y < -0.3) {
       this.particles.spawnSplash(p.pos.x, p.pos.y, p.pos.z, Math.min(1.5, Math.abs(p.vel.y) * 0.8));
+      playSplashSound(p.pos);
     }
     this._wasInWater = this.inFluid === 'water';
 
@@ -986,6 +989,7 @@ export class GameEngine {
 
     // Detectar morte para mostrar tela
     if (p.isDead && this._lastHud && !this._lastHud.isDead) {
+      playEvent('entity.player.death', { pos: p.pos });
       this.emitHud();
     }
   }
@@ -1906,6 +1910,7 @@ export class GameEngine {
     document.removeEventListener('pointerlockchange', this._onPLChange);
     window.removeEventListener('beforeunload', this._onBeforeUnload);
     document.exitPointerLock?.();
+    MobEntity.onSound = null;
     if (this.projectiles) this.projectiles.dispose();
     if (this.particles) this.particles.dispose();
     if (this.mobs) this.mobs.dispose();

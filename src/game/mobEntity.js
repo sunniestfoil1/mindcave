@@ -2,6 +2,7 @@
 import { moveEntity } from './physics';
 import { getMobType } from './mobRegistry';
 import { buildMobModel, animateMobModel } from './mobModels';
+import { modelRotationYFromYaw } from './viewMath';
 import { GoalSystem } from './aiGoals';
 import { findPath } from './pathfinding';
 import { isWater, isSolid, isLava } from './blocks';
@@ -11,6 +12,9 @@ import { applyDamage } from './survival';
 let _mobId = 0;
 
 export class MobEntity {
+  // Preenchido pelo motor: toca o som do mob (hurt, death, ambient, step, primed, teleport, scream, stare)
+  static onSound = null;
+
   constructor(typeId, pos) {
     this.id = ++_mobId;
     this.typeId = typeId;
@@ -82,7 +86,7 @@ export class MobEntity {
     while (dyaw < -Math.PI) dyaw += Math.PI * 2;
     while (dyaw > Math.PI) dyaw -= Math.PI * 2;
     this._renderYaw += dyaw * 0.25;
-    this._model.rotation.y = this._renderYaw;
+    this._model.rotation.y = modelRotationYFromYaw(this._renderYaw);
 
     this._model.visible = true;
     if (this.isBaby) this._model.scale.set(0.5, 0.5, 0.5);
@@ -132,6 +136,22 @@ export class MobEntity {
     if (this.breedCooldown > 0) this.breedCooldown--;
     if (this.idleTimer > 0) this.idleTimer--;
 
+    // Som ambiente (EntityLiving.onEntityUpdate): chance cresce a cada tick; depois de tocar, silêncio de ~80 ticks
+    this._soundTime = (this._soundTime || 0) + 1;
+    if (Math.random() * 1000 < this._soundTime) {
+      this._soundTime = -80;
+      MobEntity.onSound?.(this, 'ambient');
+    }
+    // Passos: a cada ~1,4 bloco andado no chão
+    if (this.onGround) {
+      const lx = this._lastStepX ?? this.pos.x, lz = this._lastStepZ ?? this.pos.z;
+      this._stepDist = (this._stepDist || 0) + Math.hypot(this.pos.x - lx, this.pos.z - lz);
+      if (this._stepDist > 1.4) { this._stepDist = 0; MobEntity.onSound?.(this, 'step'); }
+    }
+    this._lastStepX = this.pos.x; this._lastStepZ = this.pos.z;
+
+    if (this._teleportQueued) { this._teleportQueued = false; this.teleportRandomly(world); }
+
     // IA (RF-002) - Se sob efeito de knockback, a IA não altera a velocidade
     if (this.knockbackTicks > 0) {
       this.knockbackTicks--;
@@ -178,6 +198,27 @@ export class MobEntity {
         this.idleTimer = 0;
       }
     }
+  }
+
+  // Enderman: até 16 tentativas de achar chão firme com 2 blocos livres acima, num raio de 32 blocos
+  teleportRandomly(world) {
+    for (let i = 0; i < 16; i++) {
+      const nx = this.pos.x + (Math.random() - 0.5) * 64;
+      const nz = this.pos.z + (Math.random() - 0.5) * 64;
+      const top = Math.floor(this.pos.y + (Math.random() - 0.5) * 16);
+      for (let y = top; y > top - 16 && y > 1; y--) {
+        const here = stateId(world.getBlock(Math.floor(nx), y, Math.floor(nz)));
+        const up1 = stateId(world.getBlock(Math.floor(nx), y + 1, Math.floor(nz)));
+        const up2 = stateId(world.getBlock(Math.floor(nx), y + 2, Math.floor(nz)));
+        if (isSolid(here) && up1 === 0 && up2 === 0) {
+          this.pos.x = Math.floor(nx) + 0.5; this.pos.y = y + 1; this.pos.z = Math.floor(nz) + 0.5;
+          this.vel.x = this.vel.y = this.vel.z = 0;
+          MobEntity.onSound?.(this, 'teleport');
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   applyPhysics(world) {
@@ -236,11 +277,13 @@ export class MobEntity {
       this.vel.y = Math.min((this.vel.y || 0) / 2 + 0.4, 0.4);
     }
     if (attacker) this.knockbackTicks = 5;
+    if (this.type.canTeleport && source !== 'void') this._teleportQueued = true; // enderman some quando é atingido
 
     if (this.health <= 0) {
       this.health = 0;
       this.isDead = true;
     }
+    MobEntity.onSound?.(this, this.isDead ? 'death' : 'hurt');
     return true;
   }
 

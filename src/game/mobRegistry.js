@@ -133,7 +133,7 @@ export const MOB_TYPES = {
   }),
   skeleton: M('skeleton', 'Esqueleto', {
     category: 'hostile', width: 0.6, height: 1.99, eyeHeight: 1.74,
-    maxHealth: 20, armor: 0, speed: 0.25, followRange: 40,
+    maxHealth: 20, armor: 0, speed: 0.25, followRange: 16,
     attackDamage: 2, isUndead: true, burnsInSun: true, xp: 5,
     drops: [
       { id: 352, min: 0, max: 2 }, // bones
@@ -144,7 +144,7 @@ export const MOB_TYPES = {
       { type: 'swim', priority: 0 },
       { type: 'flee_sun', priority: 1 },
       { type: 'ranged_attack', priority: 3 },
-      { type: 'nearest_target', priority: 3, target: 'player', range: 40, checkInterval: 40 },
+      { type: 'nearest_target', priority: 3, target: 'player', range: 16, checkInterval: 40 },
       { type: 'wander', priority: 5 },
       { type: 'look_at_player', priority: 6 },
     ],
@@ -152,7 +152,7 @@ export const MOB_TYPES = {
   }),
   creeper: M('creeper', 'Creeper', {
     category: 'hostile', width: 0.6, height: 1.7, eyeHeight: 1.44,
-    maxHealth: 20, armor: 0, speed: 0.20, followRange: 40,
+    maxHealth: 20, armor: 0, speed: 0.25, followRange: 16,
     attackDamage: 0, xp: 5, // damage is explosion
     explosionPower: 3,
     drops: [{ id: 289, min: 0, max: 2 }], // gunpowder
@@ -161,7 +161,7 @@ export const MOB_TYPES = {
       { type: 'flee_sun', priority: 1 },
       { type: 'creeper_swell', priority: 2 },
       { type: 'melee_attack', priority: 3, noDamage: true },
-      { type: 'nearest_target', priority: 3, target: 'player', range: 40, checkInterval: 40 },
+      { type: 'nearest_target', priority: 3, target: 'player', range: 16, checkInterval: 40 },
       { type: 'avoid_entity', priority: 2, avoidType: 'cat' },
       { type: 'wander', priority: 5 },
       { type: 'look_at_player', priority: 6 },
