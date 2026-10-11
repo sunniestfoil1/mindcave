@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Laboratório — modelo, mão e grama</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #14161a; color: #e6e6e6; font: 13px/1.4 system-ui, sans-serif; }
+    header { padding: 8px 14px; background: #1d2026; border-bottom: 1px solid #2c3038; display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+    header b { font-size: 14px; }
+    header span { color: #8b93a1; }
+    main { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 38px); }
+    aside { padding: 12px; border-right: 1px solid #2c3038; overflow: auto; background: #181b20; }
+    aside h3 { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #8b93a1; }
+    aside h3:first-child { margin-top: 0; }
+    label { display: grid; grid-template-columns: 96px 1fr 44px; gap: 6px; align-items: center; margin: 3px 0; }
+    label.chk { grid-template-columns: 18px 1fr; }
+    input[type=range] { width: 100%; }
+    button { background: #2a4d8f; color: #fff; border: 0; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin: 2px 2px 2px 0; }
+    button.alt { background: #3a3f48; }
+    .views { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: #2c3038; }
+    .view { background: #0d0f12; position: relative; min-height: 360px; }
+    .view canvas { width: 100%; height: 100%; display: block; }
+    .view .tag { position: absolute; top: 6px; left: 8px; background: #000a; padding: 2px 8px; border-radius: 3px; font-size: 12px; pointer-events: none; }
+    #out { grid-column: 1 / -1; background: #101216; padding: 10px 14px; font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; max-height: 260px; overflow: auto; }
+    .ok { color: #6fdc8c; } .bad { color: #ff7b7b; }
+    @media (max-width: 1100px) { main { grid-template-columns: 1fr; } .views { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header><b>Laboratório</b><span>mesmo código do jogo (src/game), sem mapa. Só em desenvolvimento: não entra no build.</span></header>
+  <main>
+    <aside id="panel"></aside>
+    <section class="views">
+      <div class="view"><canvas id="cv-f5"></canvas><div class="tag">Terceira pessoa (F5)</div></div>
+      <div class="view"><canvas id="cv-hand"></canvas><div class="tag">Mão em 1ª pessoa</div></div>
+      <div class="view"><canvas id="cv-grass"></canvas><div class="tag">Grama</div></div>
+      <pre id="out"></pre>
+    </section>
+  </main>
+  <script type="module" src="/lab/lab.js"></script>
+</body>
+</html>
