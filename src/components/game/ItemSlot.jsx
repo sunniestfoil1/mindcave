@@ -63,7 +63,7 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
       const b = BLOCKS[item.id];
       if (b && (b.model === 'cube' || !b.model)) {
         const topTex = typeof b.faces === 'string' ? b.faces : (b.faces?.top || b.faces?.all || b.name);
-        const sideTex = typeof b.faces === 'string' ? b.faces : (b.faces?.side || b.faces?.all || b.name);
+        const sideTex = typeof b.faces === 'string' ? b.faces : (b.faces?.side || b.faces?.front || b.faces?.all || b.name);
         Promise.all([
           getPackUrl(MC + 'textures/blocks/' + topTex + '.png'),
           getPackUrl(MC + 'textures/blocks/' + sideTex + '.png')
@@ -89,7 +89,7 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
           sideImg.onerror = () => setImgUrl(topUrl);
         });
       } else if (b) {
-        const texName = typeof b.faces === 'string' ? b.faces : (b.faces?.all || b.faces?.side || b.faces?.top || b.name);
+        const texName = typeof b.faces === 'string' ? b.faces : (b.faces?.all || b.faces?.side || b.faces?.front || b.faces?.top || b.name);
         getPackUrl(MC + 'textures/blocks/' + texName + '.png').then(url => setImgUrl(url || null));
       }
     } else {
@@ -114,8 +114,8 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
     if (onRightClick) onRightClick();
   };
 
-  const handleMouseEnter = () => { setHover(true); if (onHover) onHover(item); };
-  const handleMouseLeave = () => { setHover(false); if (onHover) onHover(null); };
+  const handleMouseEnter = (e) => { setHover(true); if (onHover) onHover(item, e); };
+  const handleMouseLeave = (e) => { setHover(false); if (onHover) onHover(null, e); };
 
   const bg = item ? itemColor(item.id) : "rgba(139,139,139,0.15)";
   const durRatio = item ? getDurabilityRatio(item) : 1;
