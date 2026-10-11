@@ -42,9 +42,11 @@ class VoiceChatManager {
         this._startSpeechDetection();
       }
 
+      if (this._onVoiceStateChange) this._onVoiceStateChange();
       return stream;
     } catch (err) {
       console.warn('[VoiceChat] Microfone não disponível ou negado:', err);
+      if (this._onVoiceStateChange) this._onVoiceStateChange();
       return null;
     }
   }

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import ItemSlot from "./ItemSlot";
-import { ITEMS, ITEM_NAMES, itemColor, CREATIVE_TABS, TOOL_MATERIALS, ARMOR_MATERIALS } from "@/game/items";
+import { ITEMS, itemColor, CREATIVE_TABS, TOOL_MATERIALS, ARMOR_MATERIALS } from "@/game/items";
 import { BLOCKS } from "@/game/blocks";
 import { GUNS, ACCESSORIES, AMMO_TYPES } from "@/game/guns/registry";
 import { FOODS } from "@/game/survival";
@@ -12,7 +12,24 @@ const DECOR_BLOCK_IDS = new Set([18, 19, 30, 31, 37, 38, 39, 40, 47, 50, 51, 58,
 const TRANSPORT_BLOCK_IDS = new Set([27, 28, 66, 157]);
 const TECH_BLOCK_IDS = new Set([177]);
 
-// Retorna as categorias aplicáveis para um bloco ou item
+// Separação das abas superiores e inferiores idêntica ao Minecraft Java 1.8.9
+const TOP_TABS = [
+  { id: 'building', name: 'Construção', icon: '🧱' },
+  { id: 'decor', name: 'Decoração', icon: '🌸' },
+  { id: 'redstone', name: 'Redstone', icon: '⚡' },
+  { id: 'transport', name: 'Transporte', icon: '🛒' },
+  { id: 'misc', name: 'Diversos', icon: '🪣' },
+  { id: 'search', name: 'Pesquisar', icon: '🔍' },
+];
+
+const BOTTOM_TABS = [
+  { id: 'food', name: 'Comidas', icon: '🍎' },
+  { id: 'tools', name: 'Ferramentas', icon: '⛏️' },
+  { id: 'combat', name: 'Combate', icon: '⚔️' },
+  { id: 'materials', name: 'Materiais', icon: '💎' },
+  { id: 'technology', name: 'Tecnologia', icon: '⚙️' },
+];
+
 function getItemCategories(id, isBlock, def) {
   const cats = new Set();
   if (isBlock) {
@@ -22,7 +39,6 @@ function getItemCategories(id, isBlock, def) {
     if (TECH_BLOCK_IDS.has(id)) cats.add('technology');
     if (cats.size === 0) cats.add('building');
   } else {
-    // Itens
     if (def.category) cats.add(def.category);
     if (def.gun || def.accessory || (id >= 450 && id <= 468)) {
       cats.add('technology');
@@ -52,7 +68,6 @@ function MinecraftTooltip({ item, mousePos }) {
   const nameEn = item.nameEn || blockDef?.name || itemDef?.name || '';
   const rarity = itemDef?.rarity || (item.id === 399 || item.id === 466 ? 'epic' : item.id === 322 || item.id === 384 ? 'rare' : 'common');
 
-  // Cor do título baseada na raridade/material
   let nameColor = '#FFFFFF';
   if (rarity === 'epic') nameColor = '#FF55FF';
   else if (rarity === 'rare') nameColor = '#55FFFF';
@@ -60,11 +75,9 @@ function MinecraftTooltip({ item, mousePos }) {
   else if (itemDef?.tool?.material === 'diamond' || itemDef?.armor?.material === 'diamond') nameColor = '#55FFFF';
   else if (itemDef?.tool?.material === 'gold' || itemDef?.armor?.material === 'gold') nameColor = '#FFFF55';
 
-  // Stats de Ferramentas / Armas
   const weaponDamage = itemDef?.weaponDamage;
   const toolMat = itemDef?.tool ? TOOL_MATERIALS[itemDef.tool.material] : null;
 
-  // Stats de Armadura
   let armorPoints = null;
   let armorSlotName = '';
   if (itemDef?.armor) {
@@ -74,18 +87,12 @@ function MinecraftTooltip({ item, mousePos }) {
     armorSlotName = slots[itemDef.armor.slot] || 'No Corpo';
   }
 
-  // Stats de Comida
   const foodData = FOODS[item.id];
-
-  // Stats de Armas de Fogo
   const gunKey = itemDef?.gun;
   const gunDef = gunKey && GUNS[gunKey] ? GUNS[gunKey] : null;
   const ammoDef = AMMO_TYPES[gunDef?.ammoType];
-
-  // Acessórios
   const accDef = itemDef?.accessory && ACCESSORIES[itemDef.accessory] ? ACCESSORIES[itemDef.accessory] : null;
 
-  // Ajusta posição para não vazar da tela
   const tooltipWidth = 260;
   const tooltipHeight = 220;
   let posX = mousePos.x + 14;
@@ -110,19 +117,16 @@ function MinecraftTooltip({ item, mousePos }) {
         fontFamily: "'Minecraft', monospace, sans-serif",
       }}
     >
-      {/* Nome do Item */}
       <div className="font-bold text-sm tracking-wide" style={{ color: nameColor, textShadow: '1px 1px 1px #000000' }}>
         {namePt}
       </div>
 
-      {/* Nome Técnico em Inglês */}
       {nameEn && (
         <div className="text-[11px] text-stone-400 italic mb-1">
           minecraft:{nameEn}
         </div>
       )}
 
-      {/* Dano de Ataque */}
       {weaponDamage && (
         <div className="mt-1 pt-1 border-t border-purple-900/50">
           <div className="text-[11px] text-stone-400">Na Mão Principal:</div>
@@ -132,7 +136,6 @@ function MinecraftTooltip({ item, mousePos }) {
         </div>
       )}
 
-      {/* Atributos de Ferramenta */}
       {toolMat && (
         <div className="mt-1 pt-1 border-t border-purple-900/50 text-[11px] text-stone-300">
           <div>Material: <span className="text-white font-semibold">{toolMat.name}</span></div>
@@ -141,7 +144,6 @@ function MinecraftTooltip({ item, mousePos }) {
         </div>
       )}
 
-      {/* Atributos de Armadura */}
       {armorPoints !== null && (
         <div className="mt-1 pt-1 border-t border-purple-900/50">
           <div className="text-[11px] text-stone-400">{armorSlotName}:</div>
@@ -151,7 +153,6 @@ function MinecraftTooltip({ item, mousePos }) {
         </div>
       )}
 
-      {/* Atributos de Arma de Fogo */}
       {gunDef && (
         <div className="mt-1 pt-1 border-t border-purple-900/50 text-[11px] text-stone-300">
           <div className="text-[#FF5555] font-bold">Dano: {gunDef.damage} HP por disparo</div>
@@ -163,7 +164,6 @@ function MinecraftTooltip({ item, mousePos }) {
         </div>
       )}
 
-      {/* Acessório Balístico */}
       {accDef && (
         <div className="mt-1 pt-1 border-t border-purple-900/50 text-[11px] text-stone-300">
           <div className="text-[#55FF55] font-semibold">Slot: {accDef.slot}</div>
@@ -171,7 +171,6 @@ function MinecraftTooltip({ item, mousePos }) {
         </div>
       )}
 
-      {/* Atributos de Comida */}
       {foodData && (
         <div className="mt-1 pt-1 border-t border-purple-900/50 text-[11px]">
           <div className="text-[#FFAA00] font-semibold">Restaura +{foodData.hunger} Pontos de Fome</div>
@@ -182,21 +181,18 @@ function MinecraftTooltip({ item, mousePos }) {
         </div>
       )}
 
-      {/* Combustível */}
       {itemDef?.fuel && (
         <div className="text-[11px] text-[#FFAA00] mt-0.5">
           Combustível: {itemDef.fuel} ticks na Fornalha
         </div>
       )}
 
-      {/* Durabilidade Máxima */}
       {itemDef?.durability && (
         <div className="text-[11px] text-stone-400 mt-0.5">
           Durabilidade: {itemDef.durability} / {itemDef.durability}
         </div>
       )}
 
-      {/* Atributos de Bloco */}
       {blockDef && (
         <div className="mt-1 pt-1 border-t border-purple-900/50 text-[11px] text-stone-300">
           <div>Dureza: <span className="text-white font-medium">{blockDef.hardness < 0 ? 'Indestrutível (Bedrock)' : blockDef.hardness}</span></div>
@@ -212,7 +208,6 @@ function MinecraftTooltip({ item, mousePos }) {
         </div>
       )}
 
-      {/* Lore Técnico Minecraft F3+H */}
       <div className="mt-1.5 pt-1 border-t border-purple-900/40 text-[10px] text-stone-400">
         <div>#0{item.id.toString(16).padStart(4, '0').toUpperCase()} ({isBlock ? 'Bloco' : 'Item'})</div>
         <div>ID: #{item.id}</div>
@@ -250,11 +245,8 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
     };
   }, [onClose]);
 
-  // Monta a biblioteca completa de itens e blocos data-driven
   const allItems = useMemo(() => {
     const list = [];
-
-    // Blocos do jogo (IDs 1-255)
     for (const id in BLOCKS) {
       const numId = parseInt(id, 10);
       const b = BLOCKS[id];
@@ -270,8 +262,6 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
         block: b,
       });
     }
-
-    // Itens do jogo (IDs 256+)
     for (const id in ITEMS) {
       const numId = parseInt(id, 10);
       const it = ITEMS[id];
@@ -287,11 +277,9 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
         item: it,
       });
     }
-
     return list;
   }, []);
 
-  // Filtra itens com base na aba ou campo de pesquisa
   const filteredItems = useMemo(() => {
     if (tab === 'search') {
       if (!search.trim()) return allItems;
@@ -309,17 +297,14 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
   const maxScroll = Math.max(0, Math.ceil(filteredItems.length / 9) - 5);
   const pageItems = filteredItems.slice(scroll * 9, scroll * 9 + pageSize);
 
-  // Ação de pegar item da grade criativa
   const pickItem = (itemData, isShift, isRight = false) => {
     const max = itemData.maxStack || 64;
     if (isShift) {
-      // Shift-click coloca um stack cheio no primeiro slot vago da hotbar
       const newItem = { id: itemData.id, count: max, meta: 0 };
       addItem(inv, newItem);
       refresh();
       return;
     }
-
     if (isRight) {
       inv.cursor = { id: itemData.id, count: 1, meta: 0 };
     } else {
@@ -328,7 +313,6 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
     refresh();
   };
 
-  // Clique em slots da Hotbar
   const handleHotbarClick = (index, isLeft) => {
     const getSlot = () => inv.hotbar[index];
     const setSlot = (val) => { inv.hotbar[index] = val; };
@@ -342,7 +326,6 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
     refresh();
   };
 
-  // Limpar hotbar ou descartar item do cursor
   const clearHotbarOrCursor = () => {
     if (inv.cursor) {
       inv.cursor = null;
@@ -362,140 +345,180 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="relative bg-stone-800 border-2 border-stone-900 rounded-lg p-3.5 shadow-2xl"
-        style={{ fontFamily: "'Minecraft', monospace, sans-serif", width: 440 }}
+        className="relative"
+        style={{ fontFamily: "'Minecraft', monospace, sans-serif", width: 446 }}
         onMouseLeave={() => setHoveredItem(null)}
       >
-        {/* Cabeçalho */}
-        <div className="flex justify-between items-center mb-2 px-1">
-          <span className="text-white text-sm font-bold tracking-wide">Inventário Criativo</span>
-          <button
-            onClick={clearHotbarOrCursor}
-            title={inv.cursor ? "Descartar item no cursor" : "Limpar toda a barra de atalhos"}
-            className="px-2 py-0.5 text-[11px] bg-red-900/80 hover:bg-red-800 text-red-200 border border-red-700 rounded transition-colors"
-          >
-            {inv.cursor ? "🗑 Descartar" : "🗑 Limpar Barra"}
-          </button>
-        </div>
-
-        {/* Abas do Criativo */}
-        <div className="flex flex-wrap gap-1 mb-2.5">
-          {CREATIVE_TABS.map(t => {
+        {/* Abas Superiores Estilo Minecraft Java 1.8.9 */}
+        <div className="flex gap-1 px-3">
+          {TOP_TABS.map(t => {
             const isActive = tab === t.id;
             return (
               <button
                 key={t.id}
                 onClick={() => { setTab(t.id); setScroll(0); }}
                 className={
-                  "px-2 py-1 text-[11px] rounded transition-colors font-medium " +
+                  "px-2.5 py-1.5 text-xs font-bold transition-all relative select-none cursor-pointer " +
                   (isActive
-                    ? "bg-amber-600 text-white shadow-inner font-bold"
-                    : "bg-stone-700 text-stone-300 hover:bg-stone-600 hover:text-white")
+                    ? "bg-[#C6C6C6] text-[#303030] border-t-2 border-l-2 border-r-2 border-t-white border-l-white border-r-[#555555] rounded-t-md z-10 -mb-[2px] pb-2"
+                    : "bg-[#969696] text-[#454545] border-t-2 border-l-2 border-r-2 border-t-[#D0D0D0] border-l-[#D0D0D0] border-r-[#404040] rounded-t-sm hover:bg-[#A8A8A8] mt-1")
                 }
+                title={t.name}
               >
-                {t.name}
+                <span className="mr-1">{t.icon}</span>
+                <span className="text-[11px]">{t.name}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Campo de Pesquisa */}
-        {tab === 'search' && (
-          <div className="mb-2">
-            <input
-              type="text"
-              autoFocus
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setScroll(0); }}
-              placeholder="Pesquisar por nome ou ID..."
-              className="w-full px-2.5 py-1.5 bg-stone-900 text-white text-xs rounded border border-stone-600 focus:outline-none focus:border-amber-500 placeholder-stone-500"
-            />
-          </div>
-        )}
-
-        {/* Grade de Itens 5x9 com Texturas Reais 3D / 2D */}
-        <div className="relative bg-stone-900/90 p-1.5 rounded border border-stone-700/80 mb-2">
-          <div className="grid grid-cols-9 gap-1 min-h-[200px]">
-            {pageItems.map((item, idx) => (
-              <div
-                key={`${item.id}-${idx}`}
-                onMouseEnter={() => setHoveredItem(item)}
-              >
-                <ItemSlot
-                  item={{ id: item.id, count: 1 }}
-                  size={slotSize}
-                  onClick={() => pickItem(item, false, false)}
-                  onRightClick={() => pickItem(item, false, true)}
-                  onShiftClick={() => pickItem(item, true, false)}
-                  onHover={(it) => setHoveredItem(it ? item : null)}
-                />
-              </div>
-            ))}
-
-            {/* Espaços vazios preenchidos para manter proporção 5x9 */}
-            {Array.from({ length: Math.max(0, pageSize - pageItems.length) }).map((_, i) => (
-              <div
-                key={`empty-${i}`}
-                className="rounded-sm border border-black/20"
-                style={{ width: slotSize, height: slotSize, background: 'rgba(139, 139, 139, 0.08)' }}
-              />
-            ))}
+        {/* Contêiner Principal da GUI Clássica Java (#C6C6C6 Beveled) */}
+        <div
+          className="relative bg-[#C6C6C6] p-3 shadow-2xl border-2 border-t-white border-l-white border-r-[#555555] border-b-[#555555]"
+          style={{
+            boxShadow: '0 0 0 2px #000000, 0 12px 36px rgba(0,0,0,0.85)',
+          }}
+        >
+          {/* Cabeçalho da GUI */}
+          <div className="flex justify-between items-center mb-2 px-1">
+            <span className="text-[#3F3F3F] text-sm font-bold tracking-wide">
+              {CREATIVE_TABS.find(t => t.id === tab)?.name || 'Inventário Criativo'}
+            </span>
+            <button
+              onClick={clearHotbarOrCursor}
+              title={inv.cursor ? "Destruir item segurado no cursor" : "Destruir item e limpar a barra"}
+              className="px-2 py-0.5 text-[11px] bg-[#C6C6C6] hover:bg-[#D5D5D5] text-[#800000] font-bold border border-t-white border-l-white border-r-[#555555] border-b-[#555555] active:border-t-[#555555] active:border-l-[#555555] active:border-r-white active:border-b-white transition-all cursor-pointer"
+            >
+              {inv.cursor ? "🗑 Destruir Item" : "🗑 Limpar Barra"}
+            </button>
           </div>
 
-          {/* Indicador e Controle de Barra de Rolagem */}
-          {maxScroll > 0 && (
-            <div className="absolute right-[-14px] top-2 bottom-2 w-2.5 bg-stone-950 rounded-full overflow-hidden border border-stone-700">
-              <div
-                className="w-full bg-amber-500 rounded-full transition-all duration-75"
-                style={{
-                  height: `${Math.max(15, (5 / (maxScroll + 5)) * 100)}%`,
-                  top: `${(scroll / maxScroll) * (100 - Math.max(15, (5 / (maxScroll + 5)) * 100))}%`,
-                  position: 'relative'
-                }}
+          {/* Campo de Pesquisa em Baixo-Relevo */}
+          {tab === 'search' && (
+            <div className="mb-2.5 px-0.5">
+              <input
+                type="text"
+                autoFocus
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setScroll(0); }}
+                placeholder="Pesquisar itens e blocos..."
+                className="w-full px-2 py-1 bg-black text-white text-xs border-2 border-t-[#373737] border-l-[#373737] border-r-white border-b-white focus:outline-none placeholder-stone-500 font-mono"
               />
             </div>
           )}
-        </div>
 
-        {/* Navegação de Página */}
-        <div className="flex justify-between items-center mb-2 px-1 text-xs text-stone-400">
-          <button
-            onClick={() => setScroll(Math.max(0, scroll - 1))}
-            disabled={scroll === 0}
-            className="px-3 py-1 bg-stone-700 hover:bg-stone-600 text-white rounded disabled:opacity-30 disabled:pointer-events-none transition-colors"
-          >
-            ▲ Anterior
-          </button>
-          <span>Página {scroll + 1} de {maxScroll + 1} ({filteredItems.length} itens)</span>
-          <button
-            onClick={() => setScroll(Math.min(maxScroll, scroll + 1))}
-            disabled={scroll >= maxScroll}
-            className="px-3 py-1 bg-stone-700 hover:bg-stone-600 text-white rounded disabled:opacity-30 disabled:pointer-events-none transition-colors"
-          >
-            Próxima ▼
-          </button>
-        </div>
+          {/* Grade de 45 Slots com Cavidades Chanfradas Minecraft (#8B8B8B Inset) */}
+          <div className="relative mb-2">
+            <div className="grid grid-cols-9 gap-1 p-1.5 bg-[#8B8B8B] border-2 border-t-[#373737] border-l-[#373737] border-r-white border-b-white min-h-[200px]">
+              {pageItems.map((item, idx) => (
+                <div
+                  key={`${item.id}-${idx}`}
+                  onMouseEnter={() => setHoveredItem(item)}
+                  className="bg-[#8B8B8B] border border-t-[#373737] border-l-[#373737] border-r-white border-b-white hover:bg-white/20 transition-colors"
+                >
+                  <ItemSlot
+                    item={{ id: item.id, count: 1 }}
+                    size={slotSize}
+                    onClick={() => pickItem(item, false, false)}
+                    onRightClick={() => pickItem(item, false, true)}
+                    onShiftClick={() => pickItem(item, true, false)}
+                    onHover={(it) => setHoveredItem(it ? item : null)}
+                  />
+                </div>
+              ))}
 
-        {/* Barra de Acesso Rápido (Hotbar) com Renderização Completa */}
-        <div className="pt-2 border-t border-stone-700">
-          <div className="text-[11px] text-stone-400 mb-1 px-1">Barra de Acesso Rápido:</div>
-          <div className="grid grid-cols-9 gap-1 bg-stone-900/60 p-1.5 rounded border border-stone-700/60">
-            {inv.hotbar.map((slotItem, i) => (
-              <ItemSlot
-                key={`hotbar-${i}`}
-                item={slotItem}
-                size={slotSize}
-                onClick={() => handleHotbarClick(i, true)}
-                onRightClick={() => handleHotbarClick(i, false)}
-                onShiftClick={() => handleHotbarShift(i)}
-                onHover={(it) => setHoveredItem(it)}
-              />
-            ))}
+              {/* Slots vazios completando a grade 5x9 */}
+              {Array.from({ length: Math.max(0, pageSize - pageItems.length) }).map((_, i) => (
+                <div
+                  key={`empty-${i}`}
+                  className="bg-[#8B8B8B] border border-t-[#373737] border-l-[#373737] border-r-white border-b-white opacity-40"
+                  style={{ width: slotSize, height: slotSize }}
+                />
+              ))}
+            </div>
+
+            {/* Scrollbar autêntica estilo Java Minecraft */}
+            {maxScroll > 0 && (
+              <div className="absolute right-[-14px] top-1.5 bottom-1.5 w-3 bg-[#242424] border border-[#373737] overflow-hidden">
+                <div
+                  className="w-full bg-[#C6C6C6] border-t border-l border-white border-r border-b border-[#555555] transition-all duration-75 cursor-pointer"
+                  style={{
+                    height: `${Math.max(16, (5 / (maxScroll + 5)) * 100)}%`,
+                    top: `${(scroll / maxScroll) * (100 - Math.max(16, (5 / (maxScroll + 5)) * 100))}%`,
+                    position: 'relative',
+                  }}
+                />
+              </div>
+            )}
           </div>
+
+          {/* Navegação de Página */}
+          <div className="flex justify-between items-center mb-2 px-1 text-xs text-[#404040] font-bold">
+            <button
+              onClick={() => setScroll(Math.max(0, scroll - 1))}
+              disabled={scroll === 0}
+              className="px-2.5 py-0.5 bg-[#C6C6C6] hover:bg-[#D5D5D5] border border-t-white border-l-white border-r-[#555555] border-b-[#555555] active:border-t-[#555555] active:border-l-[#555555] active:border-r-white active:border-b-white disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+            >
+              ▲ Anterior
+            </button>
+            <span>Página {scroll + 1} de {maxScroll + 1} ({filteredItems.length} itens)</span>
+            <button
+              onClick={() => setScroll(Math.min(maxScroll, scroll + 1))}
+              disabled={scroll >= maxScroll}
+              className="px-2.5 py-0.5 bg-[#C6C6C6] hover:bg-[#D5D5D5] border border-t-white border-l-white border-r-[#555555] border-b-[#555555] active:border-t-[#555555] active:border-l-[#555555] active:border-r-white active:border-b-white disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+            >
+              Próxima ▼
+            </button>
+          </div>
+
+          {/* Barra de Acesso Rápido (Hotbar Clássica) */}
+          <div className="pt-2 border-t-2 border-t-[#A0A0A0] border-b-2 border-b-white">
+            <div className="text-[11px] text-[#404040] font-bold mb-1 pl-1">Barra de Acesso Rápido:</div>
+            <div className="grid grid-cols-9 gap-1 p-1 bg-[#8B8B8B] border-2 border-t-[#373737] border-l-[#373737] border-r-white border-b-white">
+              {inv.hotbar.map((slotItem, i) => (
+                <div
+                  key={`hotbar-${i}`}
+                  className="bg-[#8B8B8B] border border-t-[#373737] border-l-[#373737] border-r-white border-b-white hover:bg-white/20 transition-colors"
+                >
+                  <ItemSlot
+                    item={slotItem}
+                    size={slotSize}
+                    onClick={() => handleHotbarClick(i, true)}
+                    onRightClick={() => handleHotbarClick(i, false)}
+                    onShiftClick={() => handleHotbarShift(i)}
+                    onHover={(it) => setHoveredItem(it)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Abas Inferiores Estilo Minecraft Java 1.8.9 */}
+        <div className="flex gap-1 px-3 -mt-[2px]">
+          {BOTTOM_TABS.map(t => {
+            const isActive = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => { setTab(t.id); setScroll(0); }}
+                className={
+                  "px-2.5 py-1.5 text-xs font-bold transition-all relative select-none cursor-pointer " +
+                  (isActive
+                    ? "bg-[#C6C6C6] text-[#303030] border-b-2 border-l-2 border-r-2 border-b-[#555555] border-l-white border-r-[#555555] rounded-b-md z-10 -mt-[2px] pt-2"
+                    : "bg-[#969696] text-[#454545] border-b-2 border-l-2 border-r-2 border-b-[#404040] border-l-[#D0D0D0] border-r-[#404040] rounded-b-sm hover:bg-[#A8A8A8] mb-1")
+                }
+                title={t.name}
+              >
+                <span className="mr-1">{t.icon}</span>
+                <span className="text-[11px]">{t.name}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Item flutuante no cursor */}
+      {/* Item segurado no cursor */}
       {inv.cursor && (
         <div
           className="fixed pointer-events-none z-[120]"

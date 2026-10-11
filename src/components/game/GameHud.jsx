@@ -119,17 +119,31 @@ export default function GameHud({ hud, onPause }) {
         )}
         {hud.voiceChat && (
           <button
-            onClick={() => voiceChat.toggleMute()}
+            onClick={async () => {
+              if (!hud.voiceChat.active) {
+                await voiceChat.initLocalMicrophone();
+              } else {
+                voiceChat.toggleMute();
+              }
+            }}
             className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 font-mono transition-all cursor-pointer ${
-              hud.voiceChat.muted
+              !hud.voiceChat.active
+                ? 'bg-stone-800/80 text-stone-300 hover:bg-stone-700 border border-stone-600'
+                : hud.voiceChat.muted
                 ? 'bg-red-900/70 text-red-200 border border-red-500/30'
                 : hud.voiceChat.speaking
                 ? 'bg-green-600/80 text-white border border-green-400 animate-pulse'
-                : 'bg-black/40 text-white/80 hover:bg-white/20 border border-white/10'
+                : 'bg-emerald-900/60 text-emerald-200 border border-emerald-500/40'
             }`}
-            title="Clique para alternar o microfone (Mute/Unmute)"
+            title={!hud.voiceChat.active ? "Clique para solicitar permissão e ativar microfone" : "Clique para alternar o microfone (Mute/Unmute)"}
           >
-            {hud.voiceChat.muted ? '🔇 Mic Mutado' : hud.voiceChat.speaking ? '🎙️ Falando...' : '🎤 Mic Ativo'}
+            {!hud.voiceChat.active
+              ? '🎤 Ativar Mic'
+              : hud.voiceChat.muted
+              ? '🔇 Mic Mutado'
+              : hud.voiceChat.speaking
+              ? '🎙️ Falando...'
+              : '🎤 Mic Ativo'}
           </button>
         )}
         {hud.musicTrack && !hud.f3 && (

@@ -86,7 +86,8 @@ export function JavaSlider({ label, value, min, max, step = 1, format, onChange,
 
   const pct = max > min ? (value - min) / (max - min) : 0;
   const knobX = Math.round(pct * (width - 8));
-  const displayText = format ? format(value) : `${label}: ${value}`;
+  const formattedVal = value === 0 ? 'DESATIVADO' : (format ? format(value) : `${value}%`);
+  const displayText = label ? `${label}: ${formattedVal}` : formattedVal;
 
   const updateFromMouse = useCallback((clientX) => {
     if (disabled || !trackRef.current) return;

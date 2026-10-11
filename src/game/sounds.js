@@ -79,12 +79,31 @@ export function initAudio() {
         keepAliveOsc.connect(keepAliveGain);
         keepAliveOsc.start();
       } catch (e) {}
+
+      updateAudioVolumes();
     }
   }
   if (audioCtx && audioCtx.state === 'suspended') {
     audioCtx.resume().catch(() => {});
   }
 }
+
+export function updateAudioVolumes() {
+  if (!audioCtx) return;
+  const masterVol = (settingsStore.get('user.volumeMaster') ?? 100) / 100;
+  const musicVol = (settingsStore.get('user.volumeMusic') ?? 100) / 100;
+  const blocksVol = (settingsStore.get('user.volumeBlocks') ?? 100) / 100;
+  const ambientVol = (settingsStore.get('user.volumeAmbient') ?? 100) / 100;
+
+  if (masterGain) masterGain.gain.value = masterVol;
+  if (musicGain) musicGain.gain.value = musicVol;
+  if (sfxGain) sfxGain.gain.value = blocksVol;
+  if (ambientGain) ambientGain.gain.value = ambientVol * 0.6;
+}
+
+settingsStore.subscribe(() => {
+  updateAudioVolumes();
+});
 
 // Atualiza a posição e orientação dos ouvidos do jogador no Web Audio API
 export function updateAudioListener(pos, dir) {
