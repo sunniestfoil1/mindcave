@@ -153,8 +153,13 @@ export async function loadDeltas(worldId) {
       for (const d of data) {
         const key = (d.cx + 32768) * 65536 + (d.cz + 32768);
         if (!map.has(key)) {
-          const rawData = typeof d.data === 'string' ? JSON.parse(d.data) : d.data;
-          map.set(key, decodeDelta(rawData));
+          let rawData = d.data;
+          if (typeof rawData === 'string' && rawData.startsWith('{')) {
+            try { const parsed = JSON.parse(rawData); rawData = parsed.b64 || parsed; } catch {}
+          } else if (rawData && typeof rawData === 'object' && rawData.b64) {
+            rawData = rawData.b64;
+          }
+          if (rawData) map.set(key, decodeDelta(rawData));
         }
       }
     }
@@ -182,7 +187,7 @@ export async function saveDirtyChunks(worldId, chunks) {
         world_id: worldId,
         cx: c.cx,
         cz: c.cz,
-        data: typeof data === 'string' ? JSON.parse(data) : data,
+        data: { b64: data },
         updated_at: new Date().toISOString()
       }, { onConflict: 'id' }).catch(() => {});
     }

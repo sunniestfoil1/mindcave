@@ -75,7 +75,15 @@ export class MobEntity {
   updateModel(time) {
     if (!this._model) return;
     this._model.position.set(this.pos.x, this.pos.y, this.pos.z);
-    this._model.rotation.y = this.yaw;
+    
+    // Suavização angular suave de yaw do corpo (evita estalos ou giros instantâneos)
+    if (this._renderYaw === undefined) this._renderYaw = this.yaw;
+    let dyaw = this.yaw - this._renderYaw;
+    while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+    this._renderYaw += dyaw * 0.25;
+    this._model.rotation.y = this._renderYaw;
+
     this._model.visible = true;
     if (this.isBaby) this._model.scale.set(0.5, 0.5, 0.5);
     animateMobModel(this._model, this, time);
@@ -133,6 +141,12 @@ export class MobEntity {
 
     // Física (RF-004)
     this.applyPhysics(world);
+
+    // MCP 1.8.9: Avanço de limbSwing e limbSwingAmount baseado no deslocamento horizontal real
+    const horizSpd = Math.hypot(this.vel.x, this.vel.z);
+    this._limbSwing = (this._limbSwing || 0) + horizSpd * 1.8;
+    const targetAmp = Math.min(1.0, horizSpd / (this.type.speed || 0.23));
+    this._limbSwingAmount = (this._limbSwingAmount || 0) + (targetAmp - (this._limbSwingAmount || 0)) * 0.35;
 
     // Queimando
     if (this.fireTicks > 0) {

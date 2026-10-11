@@ -274,13 +274,21 @@ class FleeSunGoal extends Goal {
     return false;
   }
   canContinue(mob, world, ctx) { return this.canStart(mob, world, ctx); }
+  start(mob) {
+    mob._fleeTimer = 0;
+    mob._fleeDir = mob.yaw || 0;
+  }
   tick(mob, world) {
-    // Procurar sombra — move em direção oposta ao sol
-    const ang = Math.random() * Math.PI * 2;
+    // Move em uma direção consistente por 40-80 ticks em vez de sortear a cada 50ms (evita giro de 1200 RPM)
+    if (!mob._fleeTimer || mob._fleeTimer <= 0) {
+      mob._fleeTimer = 40 + Math.floor(Math.random() * 40);
+      mob._fleeDir = Math.random() * Math.PI * 2;
+    }
+    mob._fleeTimer--;
     const sp = mob.type.speed;
-    mob.vel.x = Math.cos(ang) * sp;
-    mob.vel.z = Math.sin(ang) * sp;
-    mob.yaw = ang;
+    mob.vel.x = -Math.sin(mob._fleeDir) * sp;
+    mob.vel.z = Math.cos(mob._fleeDir) * sp;
+    mob.yaw = mob._fleeDir;
     // Queima
     if (mob.ticksAlive % 20 === 0) {
       mob.fireTicks = Math.max(mob.fireTicks || 0, 160);

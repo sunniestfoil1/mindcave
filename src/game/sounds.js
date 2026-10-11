@@ -88,6 +88,17 @@ export function initAudio() {
   }
 }
 
+if (typeof window !== 'undefined') {
+  const resumeOnGesture = () => {
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+  };
+  window.addEventListener('pointerdown', resumeOnGesture, { passive: true });
+  window.addEventListener('keydown', resumeOnGesture, { passive: true });
+  window.addEventListener('touchstart', resumeOnGesture, { passive: true });
+}
+
 export function updateAudioVolumes() {
   if (!audioCtx) return;
   const masterVol = (settingsStore.get('user.volumeMaster') ?? 100) / 100;

@@ -71,9 +71,10 @@ export class WebRTCConnection {
         }
       };
 
-      if (voiceChat.localStream) {
-        for (const track of voiceChat.localStream.getAudioTracks()) {
-          this.pc.addTrack(track, voiceChat.localStream);
+      const outStream = voiceChat.getOutgoingStream();
+      if (outStream) {
+        for (const track of outStream.getAudioTracks()) {
+          this.pc.addTrack(track, outStream);
         }
       }
 

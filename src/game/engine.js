@@ -273,9 +273,6 @@ export class GameEngine {
     this.bindInput();
     musicManager.start();
     voiceChat._onVoiceStateChange = () => this.emitHud();
-    if (this.netManager) {
-      voiceChat.initLocalMicrophone();
-    }
     this.lastTime = performance.now();
     this.fpsTime = this.lastTime;
     this.loop = this.loop.bind(this);
