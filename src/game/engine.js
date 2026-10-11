@@ -341,7 +341,7 @@ export class GameEngine {
       this.emitHud();
       return;
     }
-    if (down && (e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === keys.sprint)) {
+    if (down && !e.repeat && (e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === keys.sprint)) {
       this.sprintToggled = !this.sprintToggled;
     }
     if (down && (e.code === 'KeyE' || e.code === keys.inventory)) {
@@ -386,7 +386,7 @@ export class GameEngine {
     }
     if (down && (e.code === 'Escape')) return;
     this.keys[e.code] = down;
-    if (down) {
+    if (down && !e.repeat) { // repetição de tecla (segurar W/espaço) não conta como toque duplo
       if (e.code === keys.forward) {
         const now = performance.now();
         this.wTapCount = now - this.lastWTap < 350 ? this.wTapCount + 1 : 1;
