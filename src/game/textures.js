@@ -314,6 +314,9 @@ export function makeAtlas() {
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestMipmapNearestFilter;
   texture.generateMipmaps = true;
+  // Alfa premultiplicado: o mipmap mistura cor ponderada pelo alfa. Sem isso o preto dos texels transparentes
+  // escurece a borda de grama alta, flores e folhas (contorno escuro). O shader desfaz a premultiplicação.
+  texture.premultiplyAlpha = true;
   texture.anisotropy = 4; // sem colorSpace: valores sRGB crus (ColorManagement desligado — ver materials.js)
   texture.needsUpdate = true;
 

@@ -70,7 +70,10 @@ void main() {
   vec2 atlasUv = vTileOrigin + fract(vUv) * uTileSize;
   vec4 tex = texture2D(map, atlasUv);
   if (tex.a < 0.5) discard;
-  vec3 tintc = tex.a < 0.97 ? vec3(1.0) : vColor;
+  tex.rgb /= tex.a; // atlas premultiplicado
+  // A flag "não tingir" (alfa 0.5–0.97) vem do texel exato: o mipmap também gera alfa nessa faixa nas bordas dos recortes
+  float flagA = textureLod(map, atlasUv, 0.0).a;
+  vec3 tintc = flagA < 0.97 ? vec3(1.0) : vColor;
   vec3 col = tex.rgb * tintc * lightmap(vLight) * vAo;
   float fog = smoothstep(uFogNear, uFogFar, vViewDist);
   col = mix(col, uFogColor, fog);
@@ -86,6 +89,7 @@ ${LIGHTMAP}
 void main() {
   vec2 atlasUv = vTileOrigin + fract(vUv) * uTileSize;
   vec4 tex = texture2D(map, atlasUv);
+  if (tex.a > 0.0) tex.rgb /= tex.a; // atlas premultiplicado
   vec3 col = tex.rgb * vColor * lightmap(vLight) * vAo;
   float fog = smoothstep(uFogNear, uFogFar, vViewDist);
   col = mix(col, uFogColor, fog);
