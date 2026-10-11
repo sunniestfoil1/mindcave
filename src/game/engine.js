@@ -1051,7 +1051,7 @@ export class GameEngine {
       this.updatePlayerModel();
       this.updateRemotePlayers();
       if (this.itemEntities) {
-        const inv = this.player.inventory || this.player.hotbar;
+        const inv = this.inventory || this.player.inventory;
         this.itemEntities.update(0.05, this.player, inv, this.world, this.worldTime);
       }
       if (this.mobs) this.mobs.renderUpdate(this.worldTime / 20, this.player.pos);
