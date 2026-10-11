@@ -1,7 +1,7 @@
 // Biblioteca de assets: lista, busca, upload — PRD 10 RF-002, RF-010..011
 import React, { useState, useEffect, useCallback } from "react";
 import { Upload, Search, Trash2, FileBox, Image, Music, Package } from "lucide-react";
-import { uploadAsset, listAssets, deleteAsset, detectAssetType } from "@/studio/assetStore";
+import { uploadAsset, listAssets, deleteAsset } from "@/studio/assetStore";
 
 const TYPE_ICONS = { model: FileBox, texture: Image, audio: Music, package: Package, skin: Image };
 const TYPE_LABELS = { model: 'Modelo', texture: 'Textura', audio: 'Áudio', package: 'Pacote', skin: 'Skin' };

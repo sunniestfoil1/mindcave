@@ -8,7 +8,7 @@ import { getWorld, loadDeltas, loadPlayer, savePlayer, saveDirtyChunks, touchWor
 import { seedFromString } from "@/game/prng";
 import { DEFAULT_HOTBAR, CREATIVE_DEFAULT_HOTBAR } from "@/game/hotbar";
 import { stateId, chunkCoord } from "@/game/chunk";
-import { isWater, isLava, isSolid, getBlock } from "@/game/blocks";
+import { isWater, getBlock } from "@/game/blocks";
 import GameHud from "@/components/game/GameHud";
 import Options from "@/pages/Options";
 import { settingsStore } from "@/game/settingsStore";
@@ -17,6 +17,7 @@ import CreativeUI from "@/components/game/CreativeUI";
 import CraftingTableUI from "@/components/game/CraftingTableUI";
 import FurnaceUI from "@/components/game/FurnaceUI";
 import ChestUI from "@/components/game/ChestUI";
+import { playChestOpenSound } from "@/game/sounds";
 import DeathScreen from "@/components/game/DeathScreen";
 import AchievementToast from "@/components/game/AchievementToast";
 import StatsScreen from "@/components/game/StatsScreen";
@@ -26,12 +27,11 @@ import ChatUI from "@/components/game/ChatUI";
 import ConnectionScreen from "@/components/game/ConnectionScreen";
 import OpenToLANDialog from "@/components/game/OpenToLANDialog";
 import { roomManager } from "@/game/net/roomManager";
-import { NetClient } from "@/game/net/netManager";
 import { SaveQueue } from "@/game/saveQueue";
 import { serializeStats } from "@/game/stats";
 import { serializeAchievements } from "@/game/achievements";
-import { createInventory, serializeInventory, deserializeInventory } from "@/game/inventory";
-import { serializeSurvival, deserializeSurvival } from "@/game/survival";
+import { serializeInventory } from "@/game/inventory";
+import { serializeSurvival } from "@/game/survival";
 import { createFurnaceState } from "@/game/furnace";
 import { getOrCreateContainer } from "@/game/containers";
 
@@ -267,6 +267,7 @@ export default function Game() {
           },
           onOpenChest: (x, y, z) => {
             const c = getOrCreateContainer(cw, x, y, z);
+            playChestOpenSound({ x: x + 0.5, y: y + 0.5, z: z + 0.5 });
             setChestContainer(c);
             setShowChest(true);
             document.exitPointerLock?.();

@@ -264,7 +264,7 @@ function runChecks() {
   window.__labResult = res;
   return res;
 }
-window.__lab = { runChecks, player, anim, ui, model, fpsArm, camHand, THREE, sky, camMobs, mobRows };
+window.__lab = { runChecks, player, anim, ui, model, fpsArm, camHand, THREE, sky, camMobs, mobRows, rSky, sceneSky, camSky };
 
 (async () => {
   log('carregando pack de texturas…');

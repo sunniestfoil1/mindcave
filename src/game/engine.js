@@ -37,7 +37,7 @@ import { lookDirFromAngles } from './viewMath';
 import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel } from './playerModel';
 import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
 import { initBiomeTint } from './biomeTint';
-import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener } from './sounds';
+import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener } from './sounds';
 import { createNametag } from './nametag';
 import { ParticleManager } from './particles';
 import { ItemEntityManager } from './itemEntity';
@@ -854,6 +854,13 @@ export class GameEngine {
     }
     if (p.effects && p.effects.length > 0) tickEffects(p);
 
+    // Chuva (laço de som enquanto chove)
+    if (this.weather) {
+      const raining = this.weather.isRaining();
+      if (raining && !this._rainSound) { this._rainSound = true; startRainSound(); }
+      else if (!raining && this._rainSound) { this._rainSound = false; stopRainSound(); }
+    }
+
     // Clima (PRD 05)
     if (this.weather) {
       this.weather.tick(this.worldTime, p, this.world, this.gameRules);
@@ -1472,6 +1479,8 @@ export class GameEngine {
     const time = getMiningTime(hit.id, tool, p.effects, this.inFluid === 'water', p.onGround);
     if (time === Infinity || time === 0) return;
     this.miningProgress += 1 / time;
+    this._digTick = (this._digTick || 0) + 1;
+    if (this._digTick % 4 === 0) playDigSound(hit.id, { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 });
     if (this.miningProgress >= 1) {
       this.breakBlockSurvival(hit, tool);
       this.miningTarget = null;
@@ -1568,7 +1577,9 @@ export class GameEngine {
   tickEating(p) {
     if (!p.eating) return;
     p.eatingTicks++;
+    if (p.eatingTicks >= 7 && p.eatingTicks % 4 === 0 && p.eatingTicks < 32) playEatSound(p.pos);
     if (p.eatingTicks >= 32) {
+      playBurpSound(p.pos);
       const slot = p.hotbar[p.selectedSlot];
       if (slot && slot.id && isFood(slot.id)) {
         eatFood(p, slot.id);
@@ -1664,6 +1675,7 @@ export class GameEngine {
 
   shootArrow(p, charge) {
     if (!this.projectiles) return;
+    playBowSound(p.pos);
     this.projectiles.spawnArrow(p, charge, {
       onHitEntity: (proj, entity) => {
         if (entity) entity._lastAttacker = p.nomeJogador || p.name;
@@ -1833,6 +1845,7 @@ export class GameEngine {
   }
 
   detonate(pos, power) {
+    playExplodeSound(pos);
     const result = explode(this.world, pos, power, {
       fire: false,
       breakBlocks: this.gameRules.explosionsBreakBlocks !== false,

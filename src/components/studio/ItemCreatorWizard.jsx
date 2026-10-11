@@ -1,8 +1,8 @@
 // Assistente de criação de itens customizados — PRD 10 RF-060..061
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import { Check, ChevronRight, ChevronLeft, Wand2 } from "lucide-react";
 import { createCustomItem, getNextCustomId } from "@/studio/customItemRegistry";
-import { ITEMS, ITEM_NAMES } from "@/game/items";
+import { ITEMS } from "@/game/items";
 import { BLOCKS } from "@/game/blocks";
 
 const ITEM_TYPES = [

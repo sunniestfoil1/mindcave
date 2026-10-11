@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { roomManager } from '@/game/net/roomManager';
 import { NetHost } from '@/game/net/netManager';
-import { X, Lock, Globe, KeyRound, Eye, EyeOff, Wifi } from 'lucide-react';
+import { X, Lock, Globe, KeyRound, Wifi } from 'lucide-react';
 
 const VIS_OPTIONS = [
   { value: 'public', label: 'Aberto para todos', desc: 'Aparece na lista de mundos online', icon: Globe },

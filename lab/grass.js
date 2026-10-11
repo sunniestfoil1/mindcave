@@ -5,6 +5,7 @@ import { createSharedUniforms, makeOpaqueMaterial } from '/src/game/materials.js
 import { MeshMirror } from '/src/game/meshCore.js';
 import { fillSectionMesh } from '/src/game/sectionMesh.js';
 import { chunkKey, createChunkData, chunkIndex, packState } from '/src/game/chunk.js';
+import { generateChunk } from '/src/game/worldgen.js';
 
 export async function setup(scene, camera, renderer, api) {
   const atlas = makeAtlas();
@@ -36,16 +37,36 @@ export async function setup(scene, camera, renderer, api) {
   for (let y = 61; y <= 62; y++) for (let x = 1; x <= 2; x++) for (let z = 8; z <= 9; z++) blocks[chunkIndex(x, y, z)] = packState(18, 0);
   const tint = new Uint8Array(256 * 9);
   for (let i = 0; i < 256; i++) { tint.set([124, 189, 107, 72, 181, 24, 63, 118, 228], i * 9); } // grama, folhagem, água (planície)
+  // ?real=cx,cz troca o terreno de brinquedo por chunks gerados pelo próprio jogo (árvores, relevo)
+  const real = new URLSearchParams(location.search).get('real');
   const mirror = new MeshMirror();
   mirror.init({ tiles: atlas.tiles, seed: 1, genOpts: null });
-  mirror.setChunk(chunkKey(0, 0), 0, 0, blocks, tint, 1);
-  const geo = mirror.mesh(chunkKey(0, 0), 0, 0, 3, false);
-  const mesh = fillSectionMesh(scene, null, geo.opaque, mat, 0, 0, 3, 0);
-  if (!mesh) throw new Error('malha da grama vazia');
-  api.mesh = mesh; api.mat = mat; api.uniforms = uniforms; api.atlas = atlas;
-  api.ready = true;
+  let target = new THREE.Vector3(8, 60.6, 8);
+  if (real) {
+    const [rcx, rcz] = real.split(',').map(Number);
+    let topY = 0;
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const d = generateChunk(29270812, rcx + dx, rcz + dz, { generatorId: 'open_world' });
+      mirror.setChunk(chunkKey(rcx + dx, rcz + dz), rcx + dx, rcz + dz, d, tint, 1);
+    }
+    for (let sy = 0; sy < 16; sy++) {
+      const g = mirror.mesh(chunkKey(rcx, rcz), rcx, rcz, sy, false);
+      if (g.opaque) { fillSectionMesh(scene, null, g.opaque, mat, 0, rcx, sy, rcz); topY = Math.max(topY, sy * 16 + 16); }
+    }
+    const cd = generateChunk(29270812, rcx, rcz, { generatorId: 'open_world' });
+    let sy0 = 0;
+    for (let y = 255; y > 0; y--) if (cd[chunkIndex(8, y, 8)] !== 0) { sy0 = y; break; }
+    target = new THREE.Vector3(rcx * 16 + 8, sy0 + 2, rcz * 16 + 8);
+    api.mat = mat; api.uniforms = uniforms; api.atlas = atlas; api.ready = true;
+  } else {
+    mirror.setChunk(chunkKey(0, 0), 0, 0, blocks, tint, 1);
+    const geo = mirror.mesh(chunkKey(0, 0), 0, 0, 3, false);
+    const mesh = fillSectionMesh(scene, null, geo.opaque, mat, 0, 0, 3, 0);
+    if (!mesh) throw new Error('malha da grama vazia');
+    api.mesh = mesh; api.mat = mat; api.uniforms = uniforms; api.atlas = atlas;
+    api.ready = true;
+  }
 
-  const target = new THREE.Vector3(8, 60.6, 8);
   api.update = () => {
     const ui = window.__lab ? window.__lab.ui : { gDist: 4, gAng: 30, gPitch: 40 };
     const a = (ui.gAng ?? 30) * Math.PI / 180, p = (ui.gPitch ?? 40) * Math.PI / 180, d = ui.gDist ?? 4;

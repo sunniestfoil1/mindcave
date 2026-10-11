@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { Search, RotateCcw, ArrowLeft } from "lucide-react";
 
 export default function SettingsLayout({ title, children, onBack, onReset, search, onSearch }) {

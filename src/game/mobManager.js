@@ -52,7 +52,8 @@ export class MobManager {
           });
         }
       },
-      onExplode: (pos, power) => this._explode(pos, power, player, ctx),
+      // Usa a explosão do motor (raios, drops, cadeia de TNT, som); a esfera simples fica só como reserva sem motor
+      onExplode: (pos, power) => (ctx.onExplode ? ctx.onExplode(pos, power) : this._explode(pos, power, player, ctx)),
       onBreed: (p1) => {
         const baby = new MobEntity(p1.typeId, { x: p1.pos.x, y: p1.pos.y, z: p1.pos.z });
         baby.isBaby = true;

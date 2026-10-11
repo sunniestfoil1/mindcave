@@ -6,7 +6,8 @@ import { getBlock, isWater, isLava, isFluid, isReplaceable, lightEmission } from
 const WATER_TICK = 5;
 const LAVA_TICK = 30;
 const MAX_FLOW = 7;
-const COLD_CHUNKS_PER_RUN = 6; // primeira varredura de chunks novos é espalhada (varrer 80 de uma vez trava ~150 ms)
+const PROCESS_BUDGET_MS = 6;
+const COLD_CHUNKS_PER_RUN = 3; // primeira varredura de chunks novos é espalhada (varrer 80 de uma vez trava ~150 ms)
 
 // Retorna o nível de fluido de um estado (0 = fonte, 1-7 = corrente, 8 = queda)
 export function fluidLevel(state) {
@@ -158,8 +159,11 @@ export function tickFluids(world, tickCount, playerPos) {
     }
   }
 
+  // Orçamento por tick: o que sobrar fica ativo e é reprocessado no próximo ciclo desse chunk
+  const t0 = performance.now();
   for (const u of updates) {
     processFluidBlock(world, u.x, u.y, u.z, u.state, simTick);
+    if (performance.now() - t0 > PROCESS_BUDGET_MS) break;
   }
 }
 

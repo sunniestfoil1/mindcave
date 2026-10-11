@@ -1,10 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { mindcaveApi } from '@/api/supabaseClient';
 import { resolveUser } from '@/game/guestIdentity';
 import { listWorlds, deleteWorld, createWorld } from '@/game/save';
 import { GuiScreen, GuiButton, GuiText, GuiList, useGui } from '@/components/java';
-import { settingsStore } from '@/game/settingsStore';
 
 const GAME_MODES = {
   creative: 'Criativo', survival: 'Sobrevivência', adventure: 'Aventura', hardcore: 'Hardcore',

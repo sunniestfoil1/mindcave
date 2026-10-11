@@ -314,7 +314,7 @@ export function playBowSound(pos) {
 }
 
 export function playBowHitSound(pos) {
-  playSound(`random/bowhit.ogg`, { pos, volume: 0.8 });
+  playEvent('entity.arrow.hit', { pos, volume: 0.8 });
 }
 
 // Comida / Mastigação
@@ -332,7 +332,7 @@ export function playFuseSound(pos) {
 }
 
 export function playExplodeSound(pos) {
-  playSound(`random/explode.ogg`, { pos, volume: 1.0 });
+  playEvent('entity.generic.explode', { pos, volume: 1.0 });
 }
 
 // XP / Level Up / Item Pop
@@ -351,25 +351,25 @@ export function playClickSound() {
 
 // Baú (Open/Close)
 export function playChestOpenSound(pos) {
-  playSound(`random/chestopen.ogg`, { pos, volume: 0.6 });
+  playEvent('block.chest.open', { pos, volume: 0.6 });
 }
 
 export function playChestCloseSound(pos) {
-  playSound(`random/chestclosed.ogg`, { pos, volume: 0.6 });
+  playEvent('block.chest.close', { pos, volume: 0.6 });
 }
 
 // Porta (Open/Close)
 export function playDoorOpenSound(pos) {
-  playSound(`random/door_open.ogg`, { pos, volume: 0.7 });
+  playEvent('block.wooden_door.open', { pos, volume: 0.7 });
 }
 
 export function playDoorCloseSound(pos) {
-  playSound(`random/door_close.ogg`, { pos, volume: 0.7 });
+  playEvent('block.wooden_door.close', { pos, volume: 0.7 });
 }
 
 // Respingo na água
 export function playSplashSound(pos) {
-  playSound(`game/neutral/swim/splash.ogg`, { pos, volume: 0.7 });
+  playEvent('entity.generic.splash', { pos, volume: 0.7 });
 }
 
 // Som de chuva (Loop)
@@ -390,20 +390,12 @@ export function stopRainSound() {
 
 // Armadura (Equipar / Quebrar)
 export function playArmorEquipSound(armorType = 'generic', pos) {
-  const typeMap = {
-    diamond: 'equip_diamond.ogg',
-    iron: 'equip_iron.ogg',
-    gold: 'equip_gold.ogg',
-    leather: 'equip_leather.ogg',
-    chain: 'equip_chain.ogg',
-    generic: 'equip_generic.ogg',
-  };
-  const filename = typeMap[armorType] || typeMap.generic;
-  playSound(`item/armor/${filename}`, { pos, volume: 0.8 });
+  const known = ['diamond', 'iron', 'gold', 'leather', 'chain'];
+  playEvent(`item.armor.equip_${known.includes(armorType) ? armorType : 'generic'}`, { pos, volume: 0.8 });
 }
 
 export function playArmorBreakSound(pos) {
-  playSound(`random/break.ogg`, { pos, volume: 0.9, pitch: 0.9 + Math.random() * 0.2 });
+  playEvent('entity.item.break', { pos, volume: 0.9 });
 }
 
 // === Eventos de som (sounds.json do pacote de áudio) ===
