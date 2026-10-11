@@ -76,7 +76,7 @@ export function applyDamage(p, amount, source, opts = {}) {
   if (ARMOR_REDUCES.has(source)) {
     const armor = p.inventory ? computeArmorPoints(p.inventory) : (p.armor || 0);
     p.armor = armor;
-    finalDamage = amount * (1 - Math.min(20, armor) / 25);
+    finalDamage = effectiveAmount * (1 - Math.min(20, armor) / 25);
   }
 
   // Resistência (-20% por nível, V = imune)

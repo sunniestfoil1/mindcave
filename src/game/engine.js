@@ -787,7 +787,10 @@ export class GameEngine {
       if (entHit) {
         const res = attackEntity(p, entHit.entity, this.world, { item: heldItem });
         if (res && res.hit && entHit.entity.isPlayer && this.netManager) {
-          this.netManager.sendHit?.(entHit.entity.id, res.damage, entHit.entity.vel, res.crit);
+          this.netManager.sendHit?.(entHit.entity.id, {
+            damage: res.damage, crit: res.crit, sprinting: res.sprinting, kbLevel: res.kbLevel,
+            attackerPos: { x: p.pos.x, y: p.pos.y, z: p.pos.z },
+          });
         }
       }
     }

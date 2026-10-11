@@ -143,6 +143,8 @@ function createProceduralMobTexture(mobType, texW, texH) {
 function processMobTextureDynamic(sourceCanvas) {
   const W = sourceCanvas.width;
   const H = sourceCanvas.height;
+  // Textura 64x32: os UVs dos builders usam altura 32. Aumentar o canvas desloca o V e a malha amostra a metade vazia.
+  if (H <= W / 2) return sourceCanvas;
   const U = W / 8; // Unidade base dinâmica
 
   const targetCanvas = document.createElement('canvas');

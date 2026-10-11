@@ -161,35 +161,28 @@ export function attackEntity(attacker, target, world, opts = {}) {
   const item = opts.item || (attacker.hotbar && attacker.hotbar[attacker.selectedSlot]) || null;
   const { damage, crit } = calculateAttackDamage(attacker, item, world);
 
-  // Janela de invulnerabilidade (10 ticks / 500ms — MC 1.8.9)
-  // Cálculo de Dano Concorrente: se o dano B for maior que o A original, aplica apenas a diferença
-  let actualDamage = damage;
-  if (target.hurtResistantTime > 0) {
-    if (damage <= (target.lastDamage || 0)) {
-      return { hit: false, reason: 'invuln' };
-    }
-    actualDamage = Math.max(0, damage - (target.lastDamage || 0));
-    target.lastDamage = damage;
-  } else {
-    target.lastDamage = damage;
-  }
-
-  // Bloqueio do alvo
-  if (isBlocking(target) && canBlockDamage('attack')) {
-    actualDamage = getBlockedDamage(actualDamage);
-  }
-
-  // Knockback (RF-005)
   const sprinting = attacker.sprinting;
   const kbLevel = (item && item.enchants && item.enchants.knockback) || 0;
-  const kbVector = applyKnockback(target, attacker.pos, sprinting, kbLevel);
+  let actualDamage = damage;
 
-  // Registrar atacante para mensagem de morte (RF-008)
-  target._lastAttacker = attacker.nomeJogador || attacker.name || 'alguém';
-  target._lastWeapon = item && item.id ? (getItem(item.id)?.namePt || null) : null;
-
-  // Aplicar dano
-  applyDamageToTarget(target, actualDamage, 'attack');
+  if (target.isPlayer) {
+    // Jogador remoto: a vítima é a autoridade (janela de 10 ticks, armadura e knockback) — ver receiveRemoteHit.
+    target._lastAttacker = attacker.nomeJogador || attacker.name || 'alguém';
+  } else if (typeof target.applyDamage === 'function') {
+    // Mob: applyDamage próprio faz a janela de 10 ticks e o dano concorrente (B − A)
+    if (!target.applyDamage(damage, 'attack', attacker, { knockback: false })) {
+      return { hit: false, reason: 'invuln' };
+    }
+    applyKnockback(target, attacker.pos, sprinting, kbLevel);
+  } else {
+    // Alvo com estado de jogador (survival.applyDamage cuida da janela e do dano concorrente)
+    const blocked = isBlocking(target) && canBlockDamage('attack');
+    if (blocked) actualDamage = getBlockedDamage(damage);
+    target._lastAttacker = attacker.nomeJogador || attacker.name || 'alguém';
+    target._lastWeapon = item && item.id ? (getItem(item.id)?.namePt || null) : null;
+    if (!applyDamage(target, actualDamage, 'attack')) return { hit: false, reason: 'invuln' };
+    applyKnockback(target, attacker.pos, sprinting, kbLevel);
+  }
 
   // Gastar exaustão (RF-004.5)
   if (attacker.exhaustion !== undefined) {
@@ -212,12 +205,16 @@ export function attackEntity(attacker, target, world, opts = {}) {
     attacker.vel.z *= 0.6;
   }
 
-  return { hit: true, damage: actualDamage, crit, kbLevel, blocked: isBlocking(target) };
+  return { hit: true, damage: actualDamage, crit, kbLevel, sprinting, blocked: isBlocking(target) };
 }
 
-// Aplica dano respeitando a janela de invulnerabilidade — reaproveita applyDamage do survival
-function applyDamageToTarget(target, amount, source) {
-  applyDamage(target, amount, source, { bypass: false });
+// Golpe recebido de outro jogador (online). Roda no cliente da vítima: janela de 10 ticks, armadura e knockback reais.
+export function receiveRemoteHit(player, hit) {
+  if (!player || player.isDead) return false;
+  if (!applyDamage(player, hit.damage || 1, 'attack')) return false;
+  if (hit.attackerPos) applyKnockback(player, hit.attackerPos, !!hit.sprinting, hit.kbLevel || 0);
+  if (player.isDead) player.deathMessage = `${hit.fromName || 'Outro jogador'} derrotou você`;
+  return true;
 }
 
 // === Mensagem de morte PvP (RF-008) ===

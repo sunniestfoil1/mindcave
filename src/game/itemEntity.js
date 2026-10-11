@@ -8,6 +8,22 @@ import { stateId } from './chunk';
 
 const GRAVITY = 18.0;
 
+// Recursos compartilhados: criar geometria/material por drop gerava alocação de GPU e compilação de shader no primeiro drop.
+const BLOCK_GEO = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+const PLANE_GEO = new THREE.PlaneGeometry(0.3, 0.3);
+const blockMats = new Map();
+const planeMats = new Map();
+function blockMat(color) {
+  let m = blockMats.get(color);
+  if (!m) { m = new THREE.MeshLambertMaterial({ color, fog: false }); blockMats.set(color, m); }
+  return m;
+}
+function planeMat(color) {
+  let m = planeMats.get(color);
+  if (!m) { m = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, fog: false }); planeMats.set(color, m); }
+  return m;
+}
+
 function createItemMesh(item, count = 1) {
   const group = new THREE.Group();
   const block = getBlock(item.id);
@@ -26,16 +42,10 @@ function createItemMesh(item, count = 1) {
     let mesh;
     if (isBlock) {
       // Bloco 3D em miniatura (0.28m)
-      const geo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
-      const color = block.color || 0x888888;
-      const mat = new THREE.MeshLambertMaterial({ color, fog: false });
-      mesh = new THREE.Mesh(geo, mat);
+      mesh = new THREE.Mesh(BLOCK_GEO, blockMat(block.color || 0x888888));
     } else {
       // Item 2D/3D (Placa com recorte ou miniatura)
-      const geo = new THREE.PlaneGeometry(0.3, 0.3);
-      const color = itemDef?.color || 0xffffff;
-      const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, fog: false });
-      mesh = new THREE.Mesh(geo, mat);
+      mesh = new THREE.Mesh(PLANE_GEO, planeMat(itemDef?.color || 0xffffff));
     }
 
     // Deslocamento sutil para renderizar o efeito de agrupamento em monte
@@ -53,15 +63,19 @@ export class ItemEntityManager {
   constructor(scene) {
     this.scene = scene;
     this.items = [];
+    // Pré-aquecimento: um item minúsculo e fora da vista força a compilação dos dois shaders já no carregamento
+    for (const mat of [blockMat(0x888888), planeMat(0xffffff)]) {
+      const w = new THREE.Mesh(mat === blockMats.get(0x888888) ? BLOCK_GEO : PLANE_GEO, mat);
+      w.position.set(0, -1000, 0);
+      w.scale.setScalar(0.001);
+      w.frustumCulled = false;
+      scene.add(w);
+    }
   }
 
   rebuildMesh(e) {
     if (e.mesh) {
       this.scene.remove(e.mesh);
-      e.mesh.traverse(c => {
-        if (c.geometry) c.geometry.dispose();
-        if (c.material) c.material.dispose();
-      });
     }
     e.mesh = createItemMesh({ id: e.id, meta: e.meta }, e.count);
     e.mesh.position.set(e.pos.x, e.pos.y, e.pos.z);
@@ -211,10 +225,6 @@ export class ItemEntityManager {
     const e = this.items[index];
     if (e && e.mesh) {
       this.scene.remove(e.mesh);
-      e.mesh.traverse(c => {
-        if (c.geometry) c.geometry.dispose();
-        if (c.material) c.material.dispose();
-      });
     }
     this.items.splice(index, 1);
   }

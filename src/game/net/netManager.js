@@ -6,6 +6,7 @@ import { roomManager } from './roomManager';
 import { WebRTCConnection } from './webrtc';
 import { parseChatMessage, FloodController, systemMessage, joinMessage, leaveMessage, checkMention } from './chatSystem';
 import { playHurtSound } from '@/game/sounds';
+import { receiveRemoteHit } from '@/game/combat';
 
 // === HOST ===
 export class NetHost {
@@ -170,7 +171,7 @@ export class NetHost {
       case 'hit': {
         const isTargetHost = msg.targetId === (this.user?.id || 'host');
         if (isTargetHost) {
-          this._applyIncomingHit(msg.damage, msg.kbVector, userName);
+          this._applyIncomingHit({ ...msg, fromName: userName });
         } else {
           // Repassa para o convidado alvo
           const targetPeer = this.peers.get(msg.targetId);
@@ -277,34 +278,15 @@ export class NetHost {
     this.broadcast({ t: 'BLOCK_CHANGE', x, y, z, blockState });
   }
 
-  sendHit(targetId, damage, kbVector, crit) {
+  sendHit(targetId, hit) {
+    const msg = { t: 'hit', targetId, ...hit, fromName: this.user?.full_name || 'Host' };
     const peer = this.peers.get(targetId);
-    if (peer) {
-      peer.conn.send({ t: 'hit', targetId, damage, kbVector, crit, fromName: this.user?.full_name || 'Host' });
-    } else {
-      this.broadcast({ t: 'hit', targetId, damage, kbVector, crit, fromName: this.user?.full_name || 'Host' });
-    }
+    if (peer) peer.conn.send(msg);
+    else this.broadcast(msg);
   }
 
-  _applyIncomingHit(damage, kbVector, fromName) {
-    if (!this.engine?.player) return;
-    const p = this.engine.player;
-    if (p.isDead) return;
-    p.hurtTime = 10;
-    p.hurtResistantTime = 10;
-    p.lastDamage = damage;
-    if (p.health !== undefined) {
-      p.health = Math.max(0, p.health - (damage || 1));
-      if (p.health <= 0) {
-        p.isDead = true;
-        p.deathMessage = `${fromName || 'Outro jogador'} derrotou você`;
-      }
-    }
-    if (kbVector && p.vel) {
-      p.vel.x = kbVector.x || 0;
-      p.vel.y = kbVector.y || 0.4;
-      p.vel.z = kbVector.z || 0;
-    }
+  _applyIncomingHit(hit) {
+    if (!receiveRemoteHit(this.engine?.player, hit)) return;
     playHurtSound();
     this.engine.emitHud?.();
   }
@@ -416,7 +398,7 @@ export class NetClient {
       }
       case 'hit': {
         if (msg.targetId === (this.user?.id || 'guest')) {
-          this._applyIncomingHit(msg.damage, msg.kbVector, msg.fromName);
+          this._applyIncomingHit(msg);
         }
         break;
       }
@@ -494,29 +476,12 @@ export class NetClient {
     this.conn?.send({ t: 'move', x, y, z, yaw, pitch }, false);
   }
 
-  sendHit(targetId, damage, kbVector, crit) {
-    this.conn?.send({ t: 'hit', targetId, damage, kbVector, crit, fromName: this.user?.full_name || 'Player' });
+  sendHit(targetId, hit) {
+    this.conn?.send({ t: 'hit', targetId, ...hit, fromName: this.user?.full_name || 'Player' });
   }
 
-  _applyIncomingHit(damage, kbVector, fromName) {
-    if (!this.engine?.player) return;
-    const p = this.engine.player;
-    if (p.isDead) return;
-    p.hurtTime = 10;
-    p.hurtResistantTime = 10;
-    p.lastDamage = damage;
-    if (p.health !== undefined) {
-      p.health = Math.max(0, p.health - (damage || 1));
-      if (p.health <= 0) {
-        p.isDead = true;
-        p.deathMessage = `${fromName || 'Outro jogador'} derrotou você`;
-      }
-    }
-    if (kbVector && p.vel) {
-      p.vel.x = kbVector.x || 0;
-      p.vel.y = kbVector.y || 0.4;
-      p.vel.z = kbVector.z || 0;
-    }
+  _applyIncomingHit(hit) {
+    if (!receiveRemoteHit(this.engine?.player, hit)) return;
     playHurtSound();
     this.engine.emitHud?.();
   }

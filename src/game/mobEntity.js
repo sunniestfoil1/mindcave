@@ -204,12 +204,17 @@ export class MobEntity {
     this.onGround = res.onGround;
   }
 
-  applyDamage(amount, source, attacker) {
+  applyDamage(amount, source, attacker, opts = {}) {
     if (this.isDead) return false;
-    if (this.hurtResistantTime > 0 && amount <= this.lastDamage) return false;
+    // Janela de 10 ticks (1.8.9): golpe maior só aplica a diferença
+    let applied = amount;
+    if (this.hurtResistantTime > 0) {
+      if (amount <= this.lastDamage) return false;
+      applied = amount - this.lastDamage;
+    }
 
     // Armadura natural
-    let dmg = amount * (1 - Math.min(20, this.type.armor || 0) / 25);
+    let dmg = applied * (1 - Math.min(20, this.type.armor || 0) / 25);
 
     this.health -= dmg;
     this.hurtTime = 10;
@@ -221,14 +226,16 @@ export class MobEntity {
       this._lastAttacker = attacker;
       this.angerLevel = 20;
       this.target = attacker;
+    }
+    if (attacker && opts.knockback !== false) {
       // Knockback
       const dx = this.pos.x - attacker.pos.x, dz = this.pos.z - attacker.pos.z;
       const d = Math.hypot(dx, dz) || 1;
       this.vel.x = (this.vel.x || 0) / 2 + (dx / d) * 0.4;
       this.vel.z = (this.vel.z || 0) / 2 + (dz / d) * 0.4;
       this.vel.y = Math.min((this.vel.y || 0) / 2 + 0.4, 0.4);
-      this.knockbackTicks = 5;
     }
+    if (attacker) this.knockbackTicks = 5;
 
     if (this.health <= 0) {
       this.health = 0;
