@@ -135,7 +135,65 @@ function createProceduralMobTexture(mobType, texW, texH) {
   return { texture, canvas: cv };
 }
 
-function getMobMaterial(mobType, texW = 64, texH = 32) {
+// === INSTRUÇÃO PARA ANÁLISE DINÂMICA DE IMAGEM (TEXTURAS MINECRAFT) ===
+// 1. Grade Base Proporcional: U = image.width / 8
+// 2. Identificação das Regiões do Corpo (Cabeça: 0 a 4U, Tronco: 2U a 5U, Membros: 5U a 8U e 0 a 2U inferior)
+// 3. Dissecação do Cubo: Linha de Cima (Topo e Base deslocados a 1U), Linha de Baixo (Direita, Frente, Esquerda, Traseira)
+// 4. Adaptação com Escaneamento de Alpha e Auto-Espelhamento para membros esquerdos se transparente ou se textura clássica compactada (64x32).
+function processMobTextureDynamic(sourceCanvas) {
+  const W = sourceCanvas.width;
+  const H = sourceCanvas.height;
+  const U = W / 8; // Unidade base dinâmica
+
+  const targetCanvas = document.createElement('canvas');
+  targetCanvas.width = W;
+  targetCanvas.height = Math.max(H, W); // Garante proporção completa 64x64
+  const ctx = targetCanvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  // 1. Copia a textura original
+  ctx.drawImage(sourceCanvas, 0, 0);
+
+  // 2. Escaneamento do canal Alpha na área dos membros esquerdos
+  let needsMirroring = false;
+  if (H <= W / 2) {
+    // Imagem clássica 64x32: os membros esquerdos não existem fisicamente na textura
+    needsMirroring = true;
+  } else {
+    try {
+      const imgData = ctx.getImageData(Math.floor(2 * U), Math.floor(6 * U), Math.floor(4 * U), Math.floor(2 * U));
+      let nonZeroAlpha = 0;
+      for (let i = 3; i < imgData.data.length; i += 4) {
+        if (imgData.data[i] > 10) nonZeroAlpha++;
+      }
+      if (nonZeroAlpha < 16) needsMirroring = true;
+    } catch {}
+  }
+
+  // 3. Regra de Adaptação de Evidência: gera braço e perna esquerdos espelhando horizontalmente
+  if (needsMirroring) {
+    const limbW = Math.floor(2 * U);
+    const limbH = Math.floor(2 * U);
+
+    // Perna esquerda espelhada em (2U, 6U) a partir da perna direita (0, 2U)
+    ctx.save();
+    ctx.translate(Math.floor(2 * U) + limbW, Math.floor(6 * U));
+    ctx.scale(-1, 1);
+    ctx.drawImage(sourceCanvas, 0, Math.floor(2 * U), limbW, limbH, 0, 0, limbW, limbH);
+    ctx.restore();
+
+    // Braço esquerdo espelhado em (4U, 6U) a partir do braço direito (5U, 2U)
+    ctx.save();
+    ctx.translate(Math.floor(4 * U) + limbW, Math.floor(6 * U));
+    ctx.scale(-1, 1);
+    ctx.drawImage(sourceCanvas, Math.floor(5 * U), Math.floor(2 * U), limbW, limbH, 0, 0, limbW, limbH);
+    ctx.restore();
+  }
+
+  return targetCanvas;
+}
+
+function getMobMaterial(mobType, texW = 64, texH = 64) {
   const key = `${mobType}_${texW}_${texH}`;
   let mat = _matMap.get(key);
   if (mat) return mat;
@@ -148,16 +206,17 @@ function getMobMaterial(mobType, texW = 64, texH = 32) {
   });
   _matMap.set(key, mat);
 
-  // Carregar a textura oficial descompactada do resource pack
+  // Carregar a textura oficial descompactada do resource pack em assets/minecraft/textures/entity/
   const path = MOB_PACK_PATHS[mobType];
   if (path) {
     getPackCanvas(MC + path).then(packCanvas => {
       if (packCanvas) {
-        canvas.width = packCanvas.width;
-        canvas.height = packCanvas.height;
+        const processed = processMobTextureDynamic(packCanvas);
+        canvas.width = processed.width;
+        canvas.height = processed.height;
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(packCanvas, 0, 0);
+        ctx.drawImage(processed, 0, 0);
         texture.needsUpdate = true;
       }
     }).catch(() => {});
