@@ -230,18 +230,25 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
     window.addEventListener('mousemove', handleMouse);
     const handleKey = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-        if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation?.();
+          onClose();
+        }
         return;
       }
       if (e.key === 'Escape' || e.key === 'e' || e.key === 'E' || e.code === 'KeyE') {
         e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
         onClose();
       }
     };
-    window.addEventListener('keydown', handleKey);
+    window.addEventListener('keydown', handleKey, true);
     return () => {
       window.removeEventListener('mousemove', handleMouse);
-      window.removeEventListener('keydown', handleKey);
+      window.removeEventListener('keydown', handleKey, true);
     };
   }, [onClose]);
 

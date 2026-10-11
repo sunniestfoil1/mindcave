@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { mindcaveApi } from "@/api/supabaseClient";
 import { resolveUser } from "@/game/guestIdentity";
@@ -112,6 +112,45 @@ export default function Game() {
   const [playerNames, setPlayerNames] = useState([]);
   const [user, setUser] = useState(null);
 
+  const guiClosingCooldownRef = useRef(0);
+  const showInventoryRef = useRef(false);
+  const showCreativeRef = useRef(false);
+  const showCraftingTableRef = useRef(false);
+  const showFurnaceRef = useRef(false);
+  const showChestRef = useRef(false);
+  const showStatsRef = useRef(false);
+  const showOptionsRef = useRef(false);
+  const showOpenToLANRef = useRef(false);
+
+  useEffect(() => { showInventoryRef.current = showInventory; }, [showInventory]);
+  useEffect(() => { showCreativeRef.current = showCreative; }, [showCreative]);
+  useEffect(() => { showCraftingTableRef.current = showCraftingTable; }, [showCraftingTable]);
+  useEffect(() => { showFurnaceRef.current = showFurnace; }, [showFurnace]);
+  useEffect(() => { showChestRef.current = showChest; }, [showChest]);
+  useEffect(() => { showStatsRef.current = showStats; }, [showStats]);
+  useEffect(() => { showOptionsRef.current = showOptions; }, [showOptions]);
+  useEffect(() => { showOpenToLANRef.current = showOpenToLAN; }, [showOpenToLAN]);
+
+  const closeAllGuis = useCallback(() => {
+    guiClosingCooldownRef.current = Date.now() + 400;
+    setShowInventory(false);
+    setShowCreative(false);
+    setShowCraftingTable(false);
+    setShowFurnace(false);
+    setShowChest(false);
+    setShowStats(false);
+    setShowOpenToLAN(false);
+    setShowOptions(false);
+    if (engineRef.current) {
+      engineRef.current.paused = false;
+      engineRef.current.emitHud();
+    }
+    safePointerLock(canvasRef.current);
+  }, []);
+
+  const closeAllGuisRef = useRef(closeAllGuis);
+  useEffect(() => { closeAllGuisRef.current = closeAllGuis; }, [closeAllGuis]);
+
   useEffect(() => {
     let cancelled = false;
     let engine;
@@ -202,24 +241,33 @@ export default function Game() {
           onToggleInventory: () => {
             const p = engineRef.current?.player;
             if (p?.isDead) return;
+            const anyGuiOpen = showInventoryRef.current || showCreativeRef.current ||
+              showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current ||
+              showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current;
+            if (anyGuiOpen) {
+              closeAllGuisRef.current();
+              return;
+            }
             setShowOptions(false);
             setShowStats(false);
             setShowOpenToLAN(false);
-            if (p?.gameMode === 'creative') setShowCreative(s => !s);
-            else setShowInventory(s => !s);
+            if (p?.gameMode === 'creative') setShowCreative(true);
+            else setShowInventory(true);
             document.exitPointerLock?.();
           },
           onOpenCraftingTable: () => {
-            setShowCrafting(true);
+            setShowCraftingTable(true);
             document.exitPointerLock?.();
           },
           onOpenFurnace: (x, y, z) => {
-            setFurnacePos({ x, y, z });
+            const fs = createFurnaceState(x, y, z);
+            setFurnaceState(fs);
             setShowFurnace(true);
             document.exitPointerLock?.();
           },
           onOpenChest: (x, y, z) => {
-            setChestPos({ x, y, z });
+            const c = getOrCreateContainer(cw, x, y, z);
+            setChestContainer(c);
             setShowChest(true);
             document.exitPointerLock?.();
           },
@@ -309,6 +357,8 @@ export default function Game() {
     safePointerLock(canvasRef.current);
   };
 
+  const isAnyGuiOpen = showInventory || showCreative || showCraftingTable || showFurnace || showChest || showStats || showOptions || showOpenToLAN || (Date.now() < guiClosingCooldownRef.current);
+
   return (
     <div className="fixed inset-0 bg-black">
       <canvas ref={canvasRef} className="w-full h-full block" />
@@ -339,7 +389,7 @@ export default function Game() {
           </div>
         </div>
       )}
-      {hud && !showOptions && <GameHud hud={{ ...hud, hasGuiOpen: showInventory || showCreative || showCraftingTable || showFurnace || showChest || showStats || showOptions || showOpenToLAN, onExit: handleExit, onOptions: () => { document.exitPointerLock?.(); setShowOptions(true); }, onStats: () => { document.exitPointerLock?.(); setShowStats(true); }, onOpenToLAN: () => { document.exitPointerLock?.(); setShowOpenToLAN(true); } }} onPause={handleResume} />}
+      {hud && !showOptions && <GameHud hud={{ ...hud, hasGuiOpen: isAnyGuiOpen, onExit: handleExit, onOptions: () => { document.exitPointerLock?.(); setShowOptions(true); }, onStats: () => { document.exitPointerLock?.(); setShowStats(true); }, onOpenToLAN: () => { document.exitPointerLock?.(); setShowOpenToLAN(true); } }} onPause={handleResume} />}
       <PerformancePanel visible={!!hud?.f3} />
 
       {/* Diagnóstico de spawn/render — só com F3 aberto */}
@@ -359,28 +409,28 @@ export default function Game() {
 
       {/* Inventário sobrevivência (PRD 06) */}
       {showInventory && !hud?.isDead && engineRef.current?.inventory && (
-        <InventoryUI inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={() => { setShowInventory(false); safePointerLock(canvasRef.current); }} />
+        <InventoryUI inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} />
       )}
       {/* Inventário criativo (PRD 06) */}
       {showCreative && !hud?.isDead && engineRef.current?.inventory && (
-        <CreativeUI inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={() => { setShowCreative(false); safePointerLock(canvasRef.current); }} />
+        <CreativeUI inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} />
       )}
       {/* Bancada de trabalho (PRD 06) */}
       {showCraftingTable && !hud?.isDead && engineRef.current?.inventory && (
-        <CraftingTableUI inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={() => { setShowCraftingTable(false); safePointerLock(canvasRef.current); }} />
+        <CraftingTableUI inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} />
       )}
       {/* Fornalha (PRD 06) */}
       {showFurnace && furnaceState && !hud?.isDead && engineRef.current?.inventory && (
-        <FurnaceUI furnace={furnaceState} inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={() => { setShowFurnace(false); safePointerLock(canvasRef.current); }} />
+        <FurnaceUI furnace={furnaceState} inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} />
       )}
       {/* Baú (PRD 06) */}
       {showChest && chestContainer && !hud?.isDead && engineRef.current?.inventory && (
-        <ChestUI container={chestContainer} inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={() => { setShowChest(false); safePointerLock(canvasRef.current); }} />
+        <ChestUI container={chestContainer} inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} />
       )}
 
       {showOptions && (
         <div className="absolute inset-0 z-50">
-          <Options onClose={() => setShowOptions(false)} worldId={worldId} />
+          <Options onClose={closeAllGuis} worldId={worldId} />
         </div>
       )}
 
@@ -388,7 +438,7 @@ export default function Game() {
       {achievementToast && <AchievementToast toast={achievementToast} onClose={() => setAchievementToast(null)} />}
 
       {/* Estatísticas (PRD 12 RF-031) */}
-      {showStats && <StatsScreen stats={hud?.stats} achievements={hud?.achievements} onClose={() => { setShowStats(false); safePointerLock(canvasRef.current); }} />}
+      {showStats && <StatsScreen stats={hud?.stats} achievements={hud?.achievements} onClose={closeAllGuis} />}
 
       {/* Saves pendentes (PRD 12 RF-012) */}
       {savePending > 0 && (
@@ -411,7 +461,7 @@ export default function Game() {
           user={{ id: user?.id || 'guest', full_name: user?.full_name || 'Player' }}
           netHost={netManager}
           onNetHostChange={(host) => { setNetManager(host); engineRef.current.netManager = host; }}
-          onClose={() => { setShowOpenToLAN(false); safePointerLock(canvasRef.current); }}
+          onClose={closeAllGuis}
         />
       )}
 

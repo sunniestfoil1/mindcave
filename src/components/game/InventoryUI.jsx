@@ -19,9 +19,17 @@ export default function InventoryUI({ inv, onUpdate, onClose, hud }) {
   }, []);
 
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape' || e.key === 'e' || e.key === 'E') { e.preventDefault(); onClose(); } };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    const handler = (e) => {
+      if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
+      if (e.key === 'Escape' || e.key === 'e' || e.key === 'E' || e.code === 'KeyE') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
   }, [onClose]);
 
   // Atualiza resultado do crafting 2x2

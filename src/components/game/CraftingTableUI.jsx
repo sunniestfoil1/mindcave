@@ -20,9 +20,17 @@ export default function CraftingTableUI({ inv, onUpdate, onClose }) {
   useEffect(() => {
     const h = (e) => setMouse({ x: e.clientX, y: e.clientY });
     window.addEventListener('mousemove', h);
-    const kh = (e) => { if (e.key === 'Escape' || e.key === 'e' || e.key === 'E') { e.preventDefault(); onClose(); } };
-    window.addEventListener('keydown', kh);
-    return () => { window.removeEventListener('mousemove', h); window.removeEventListener('keydown', kh); };
+    const kh = (e) => {
+      if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
+      if (e.key === 'Escape' || e.key === 'e' || e.key === 'E' || e.code === 'KeyE') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', kh, true);
+    return () => { window.removeEventListener('mousemove', h); window.removeEventListener('keydown', kh, true); };
   }, [onClose]);
 
   // Crafting 3x3
