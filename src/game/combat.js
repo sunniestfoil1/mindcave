@@ -80,21 +80,31 @@ export function calculateAttackDamage(attacker, item, world) {
 // === Knockback 1.8.9 (RF-005) ===
 export function applyKnockback(target, attackerPos, sprinting, knockbackLevel = 0) {
   const tp = target.pos, ap = attackerPos;
-  let dx = tp.x - ap.x, dz = tp.z - ap.z;
-  const len = Math.hypot(dx, dz);
-  if (len > 0.001) { dx /= len; dz /= len; }
-  else { dx = 0; dz = 1; }
+  const dx = tp.x - ap.x;
+  const dz = tp.z - ap.z;
+  const d = Math.hypot(dx, dz);
+  const normX = d > 0.0001 ? dx / d : 0;
+  const normZ = d > 0.0001 ? dz / d : 1;
 
-  // Nível efetivo: sprint adiciona +1
-  const effLevel = knockbackLevel + (sprinting ? 1 : 0);
-  const kbH = 0.4 + 0.5 * effLevel;
-  const kbV = 0.4 + 0.1 * effLevel;
+  // Nível efetivo: sprint adiciona +1 ao knockback horizontal
+  const effKb = 0.4 + (sprinting ? 0.4 : 0) + (knockbackLevel * 0.5);
 
-  if (!target.vel) return;
-  // 1.8: velocidade do alvo / 2 + vetor do golpe
-  target.vel.x = target.vel.x / 2 + dx * kbH;
-  target.vel.z = target.vel.z / 2 + dz * kbH;
-  target.vel.y = Math.min((target.vel.y || 0) / 2 + kbV, 0.4);
+  if (!target.vel) target.vel = { x: 0, y: 0, z: 0 };
+  const curVx = target.vel.x || 0;
+  const curVz = target.vel.z || 0;
+
+  // Fórmula oficial 1.8.9: (V_atual / 2) + direção_normalizada * 0.4
+  target.vel.x = (curVx / 2) + normX * effKb;
+  target.vel.z = (curVz / 2) + normZ * effKb;
+
+  // Impulso vertical se no chão
+  if (target.onGround !== false) {
+    target.vel.y = 0.4;
+  } else {
+    target.vel.y = Math.min((target.vel.y || 0) / 2 + 0.35, 0.4);
+  }
+
+  return { x: target.vel.x, y: target.vel.y, z: target.vel.z };
 }
 
 // === Bloqueio com espada (RF-006) ===
@@ -151,21 +161,28 @@ export function attackEntity(attacker, target, world, opts = {}) {
   const item = opts.item || (attacker.hotbar && attacker.hotbar[attacker.selectedSlot]) || null;
   const { damage, crit } = calculateAttackDamage(attacker, item, world);
 
-  // Janela de invulnerabilidade (10 ticks — RF-001)
-  if (target.hurtResistantTime > 0 && damage <= (target.lastDamage || 0)) {
-    return { hit: false, reason: 'invuln' };
+  // Janela de invulnerabilidade (10 ticks / 500ms — MC 1.8.9)
+  // Cálculo de Dano Concorrente: se o dano B for maior que o A original, aplica apenas a diferença
+  let actualDamage = damage;
+  if (target.hurtResistantTime > 0) {
+    if (damage <= (target.lastDamage || 0)) {
+      return { hit: false, reason: 'invuln' };
+    }
+    actualDamage = Math.max(0, damage - (target.lastDamage || 0));
+    target.lastDamage = damage;
+  } else {
+    target.lastDamage = damage;
   }
 
   // Bloqueio do alvo
-  let actualDamage = damage;
   if (isBlocking(target) && canBlockDamage('attack')) {
-    actualDamage = getBlockedDamage(damage);
+    actualDamage = getBlockedDamage(actualDamage);
   }
 
   // Knockback (RF-005)
   const sprinting = attacker.sprinting;
   const kbLevel = (item && item.enchants && item.enchants.knockback) || 0;
-  applyKnockback(target, attacker.pos, sprinting, kbLevel);
+  const kbVector = applyKnockback(target, attacker.pos, sprinting, kbLevel);
 
   // Registrar atacante para mensagem de morte (RF-008)
   target._lastAttacker = attacker.nomeJogador || attacker.name || 'alguém';

@@ -500,6 +500,7 @@ export class GameEngine {
     playBlockBreakSound(hit.id, { x: hit.x, y: hit.y, z: hit.z });
     this.world.setBlock(hit.x, hit.y, hit.z, 0);
     this.onBlockChange?.(hit.x, hit.y, hit.z, 0);
+    this.netManager?.sendBlockChange?.(hit.x, hit.y, hit.z, 0);
     this.breakCd = 5;
   }
 
@@ -543,6 +544,7 @@ export class GameEngine {
     playBlockPlaceSound(slot.id, { x: px, y: py, z: pz });
     this.world.setBlock(px, py, pz, newState);
     this.onBlockChange?.(px, py, pz, newState);
+    this.netManager?.sendBlockChange?.(px, py, pz, newState);
     if (this.player.gameMode === 'survival' || this.player.gameMode === 'adventure') {
       slot.count = (slot.count || 1) - 1;
       if (slot.count <= 0) {
@@ -786,7 +788,10 @@ export class GameEngine {
       recordClick(this.cps);
       const entHit = this.raycastEntity();
       if (entHit) {
-        attackEntity(p, entHit.entity, this.world, { item: heldItem });
+        const res = attackEntity(p, entHit.entity, this.world, { item: heldItem });
+        if (res && res.hit && entHit.entity.isPlayer && this.netManager) {
+          this.netManager.sendHit?.(entHit.entity.id, res.damage, entHit.entity.vel, res.crit);
+        }
       }
     }
     if (attackActive) {
@@ -900,7 +905,27 @@ export class GameEngine {
         },
         onExplode: (pos, power) => { this.detonate(pos, power); },
       });
-      this.entities = this.mobs.getEntities();
+      const mobList = this.mobs ? this.mobs.getEntities() : [];
+      const remoteList = [];
+      if (this.netManager?.remotePlayers) {
+        for (const [id, rp] of this.netManager.remotePlayers.entries()) {
+          remoteList.push({
+            id,
+            name: rp.name,
+            nomeJogador: rp.name,
+            pos: { x: rp.x ?? 0, y: rp.y ?? 0, z: rp.z ?? 0 },
+            vel: rp.vel || { x: 0, y: 0, z: 0 },
+            width: 0.6,
+            height: 1.8,
+            isPlayer: true,
+            isDead: !!rp.isDead,
+            hurtTime: rp.hurtTime || 0,
+            hurtResistantTime: rp.hurtResistantTime || 0,
+            lastDamage: rp.lastDamage || 0,
+          });
+        }
+      }
+      this.entities = [...mobList, ...remoteList];
     }
 
     // Armas de fogo (PRD 09)
@@ -964,17 +989,29 @@ export class GameEngine {
 
     // PRD 21 RF-001: timing por stage
     perfMonitor.beginStage('tick');
-    // PRD 23 RF-012: física em passos fixos de 50 ms acumulados — independente do FPS
     const dt = Math.min(now - this.lastTime, 500); this.lastTime = now;
-    this.tickAcc += dt;
-    let ticks = 0;
-    const tickT0 = performance.now();
-    while (this.tickAcc >= TICK_MS && ticks < 3) {
-      if (!this.paused && !this.chatOpen) this.tick();
-      this.tickAcc -= TICK_MS; ticks++;
-      if (performance.now() - tickT0 > 15) break; // evita espiral de atraso em quadros lentos
+    
+    // No online (multiplayer) o mundo não pausa; no singleplayer pausa
+    const isOnline = !!this.netManager;
+    const canTickWorld = isOnline || (!this.paused && !this.chatOpen);
+
+    if (canTickWorld) {
+      this.tickAcc += dt;
+      let ticks = 0;
+      const tickT0 = performance.now();
+      while (this.tickAcc >= TICK_MS && ticks < 3) {
+        this.tick();
+        this.tickAcc -= TICK_MS; ticks++;
+        if (performance.now() - tickT0 > 15) break; // evita espiral de atraso em quadros lentos
+      }
+      if (this.tickAcc > TICK_MS * 2) this.tickAcc = TICK_MS * 2;
+    } else {
+      // Quando pausado em singleplayer, trava o acumulador e fixa a posição para eliminar tremedeira
+      this.tickAcc = 0;
+      if (this.player?.pos) {
+        this._prevPos = { ...this.player.pos };
+      }
     }
-    if (this.tickAcc > TICK_MS * 2) this.tickAcc = TICK_MS * 2;
     perfMonitor.endStage('tick');
 
     const maxFps = settingsStore.get('device.maxFps');
@@ -1120,8 +1157,8 @@ export class GameEngine {
       this.camera.updateProjectionMatrix();
     }
     const eye = this.eyePos();
-    const partialTick = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));
-    if (this._prevPos) {
+    if (this._prevPos && !this.paused) {
+      const partialTick = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));
       eye.x = this._prevPos.x + (this.player.pos.x - this._prevPos.x) * partialTick;
       eye.y = (this._prevPos.y + (this.player.pos.y - this._prevPos.y) * partialTick) + (this.player.sneaking ? PLAYER.eyeSneak : PLAYER.eye);
       eye.z = this._prevPos.z + (this.player.pos.z - this._prevPos.z) * partialTick;
@@ -1460,6 +1497,8 @@ export class GameEngine {
     }
     this.particles?.spawnBlockBreak(hit.x, hit.y, hit.z, hit.id);
     this.world.setBlock(hit.x, hit.y, hit.z, 0);
+    this.onBlockChange?.(hit.x, hit.y, hit.z, 0);
+    this.netManager?.sendBlockChange?.(hit.x, hit.y, hit.z, 0);
   }
 
   dropHeldItem() {

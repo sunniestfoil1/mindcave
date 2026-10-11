@@ -49,7 +49,7 @@ function get3DBlockDataUrl(topImg, sideImg) {
   return dataUrl;
 }
 
-export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, onHover, size = 44, highlight = false }) {
+export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, onHover, size = 44, highlight = false, transparent = false }) {
   const [hover, setHover] = useState(false);
   const [imgUrl, setImgUrl] = useState(null);
 
@@ -122,14 +122,21 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
   const showDur = item && (ITEMS[item.id]?.durability) && durRatio < 1;
   const durColor = durRatio > 0.5 ? "bg-green-500" : durRatio > 0.25 ? "bg-yellow-500" : "bg-red-500";
 
+  const baseBorder = transparent ? "" : "border border-black/40 rounded-sm";
+  const hoverClass = highlight || hover ? "bg-white/25" : "";
+
   return (
     <div
       onClick={handleClick}
       onContextMenu={handleContext}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className={"relative flex items-center justify-center rounded-sm border border-black/40 cursor-pointer transition-colors " + (highlight || hover ? "bg-white/20" : "")}
-      style={{ width: size, height: size, background: item && !imgUrl ? bg : undefined }}
+      className={`relative flex items-center justify-center cursor-pointer transition-colors ${baseBorder} ${hoverClass}`}
+      style={{
+        width: size,
+        height: size,
+        background: (!transparent && item && !imgUrl) ? bg : undefined,
+      }}
     >
       {item && (
         <>

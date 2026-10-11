@@ -5,6 +5,7 @@ import { mindcaveApi } from '@/api/supabaseClient';
 import { roomManager } from './roomManager';
 import { WebRTCConnection } from './webrtc';
 import { parseChatMessage, FloodController, systemMessage, joinMessage, leaveMessage, checkMention } from './chatSystem';
+import { playHurtSound } from '@/game/sounds';
 
 // === HOST ===
 export class NetHost {
@@ -166,6 +167,21 @@ export class NetHost {
         this.broadcast({ t: 'BLOCK_CHANGE', x: msg.x, y: msg.y, z: msg.z, blockState: msg.s ?? msg.blockState, senderId: userId }, userId);
         break;
       }
+      case 'hit': {
+        const isTargetHost = msg.targetId === (this.user?.id || 'host');
+        if (isTargetHost) {
+          this._applyIncomingHit(msg.damage, msg.kbVector, userName);
+        } else {
+          // Repassa para o convidado alvo
+          const targetPeer = this.peers.get(msg.targetId);
+          if (targetPeer) {
+            targetPeer.conn.send(msg);
+          } else {
+            this.broadcast(msg, userId);
+          }
+        }
+        break;
+      }
       case 'move': {
         if (!this.remotePlayers) this.remotePlayers = new Map();
         let p = this.remotePlayers.get(userId);
@@ -251,6 +267,46 @@ export class NetHost {
   sendChat(userName, text) {
     this.onChatMessage({ type: 'chat', user: userName, text, timestamp: Date.now() });
     this.broadcast({ t: 'chat', u: userName, m: text });
+  }
+
+  sendBlock(x, y, z, state) {
+    this.broadcast({ t: 'BLOCK_CHANGE', x, y, z, blockState: state });
+  }
+
+  sendBlockChange(x, y, z, blockState) {
+    this.broadcast({ t: 'BLOCK_CHANGE', x, y, z, blockState });
+  }
+
+  sendHit(targetId, damage, kbVector, crit) {
+    const peer = this.peers.get(targetId);
+    if (peer) {
+      peer.conn.send({ t: 'hit', targetId, damage, kbVector, crit, fromName: this.user?.full_name || 'Host' });
+    } else {
+      this.broadcast({ t: 'hit', targetId, damage, kbVector, crit, fromName: this.user?.full_name || 'Host' });
+    }
+  }
+
+  _applyIncomingHit(damage, kbVector, fromName) {
+    if (!this.engine?.player) return;
+    const p = this.engine.player;
+    if (p.isDead) return;
+    p.hurtTime = 10;
+    p.hurtResistantTime = 10;
+    p.lastDamage = damage;
+    if (p.health !== undefined) {
+      p.health = Math.max(0, p.health - (damage || 1));
+      if (p.health <= 0) {
+        p.isDead = true;
+        p.deathMessage = `${fromName || 'Outro jogador'} derrotou você`;
+      }
+    }
+    if (kbVector && p.vel) {
+      p.vel.x = kbVector.x || 0;
+      p.vel.y = kbVector.y || 0.4;
+      p.vel.z = kbVector.z || 0;
+    }
+    playHurtSound();
+    this.engine.emitHud?.();
   }
 
   async close() {
@@ -358,6 +414,12 @@ export class NetClient {
         this.engine?.world?.setBlock(msg.x, msg.y, msg.z, msg.s ?? msg.blockState);
         break;
       }
+      case 'hit': {
+        if (msg.targetId === (this.user?.id || 'guest')) {
+          this._applyIncomingHit(msg.damage, msg.kbVector, msg.fromName);
+        }
+        break;
+      }
       case 'move': {
         const id = msg.id;
         if (!this.remotePlayers) this.remotePlayers = new Map();
@@ -430,6 +492,33 @@ export class NetClient {
 
   sendMove(x, y, z, yaw, pitch) {
     this.conn?.send({ t: 'move', x, y, z, yaw, pitch }, false);
+  }
+
+  sendHit(targetId, damage, kbVector, crit) {
+    this.conn?.send({ t: 'hit', targetId, damage, kbVector, crit, fromName: this.user?.full_name || 'Player' });
+  }
+
+  _applyIncomingHit(damage, kbVector, fromName) {
+    if (!this.engine?.player) return;
+    const p = this.engine.player;
+    if (p.isDead) return;
+    p.hurtTime = 10;
+    p.hurtResistantTime = 10;
+    p.lastDamage = damage;
+    if (p.health !== undefined) {
+      p.health = Math.max(0, p.health - (damage || 1));
+      if (p.health <= 0) {
+        p.isDead = true;
+        p.deathMessage = `${fromName || 'Outro jogador'} derrotou você`;
+      }
+    }
+    if (kbVector && p.vel) {
+      p.vel.x = kbVector.x || 0;
+      p.vel.y = kbVector.y || 0.4;
+      p.vel.z = kbVector.z || 0;
+    }
+    playHurtSound();
+    this.engine.emitHud?.();
   }
 
   close() {

@@ -55,12 +55,17 @@ export function applyDamage(p, amount, source, opts = {}) {
   if (p.gameMode === 'creative' && source !== 'void' && source !== 'kill') return false;
   if (p.gameMode === 'spectator') return false;
 
-  // Janela de invulnerabilidade (10 ticks)
-  if (p.hurtResistantTime > 0 && amount <= p.lastDamage && !BYPASSES_INVULN.has(source) && !opts.bypass) {
-    return false;
+  // Janela de invulnerabilidade (10 ticks / 500ms) — Dano Concorrente 1.8.9
+  let effectiveAmount = amount;
+  if (p.hurtResistantTime > 0 && !BYPASSES_INVULN.has(source) && !opts.bypass) {
+    if (amount <= (p.lastDamage || 0)) return false;
+    effectiveAmount = amount - (p.lastDamage || 0);
+    p.lastDamage = amount;
+  } else {
+    p.lastDamage = amount;
   }
 
-  let finalDamage = amount;
+  let finalDamage = effectiveAmount;
 
   // Fire resistance cancela fogo/lava
   if ((source === 'fire' || source === 'lava' || source === 'burning') && hasEffect(p, Effect.FIRE_RESISTANCE)) {

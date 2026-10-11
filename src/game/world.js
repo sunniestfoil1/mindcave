@@ -15,10 +15,10 @@ const CLEAN = 0, DIRTY = 1, SENT = 2;
 const TASK_TIMEOUT_MS = 5000;   // tarefa sem resposta é cancelada e reenviada depois, pelo agendador normal
 const GEN_TIMEOUT_MS = 12000;
 const MAX_ATTEMPTS = 3;
-const DISPATCH_BUDGET_MS = 1;
-const DRAIN_BUDGET_MS = 2;      // MC24-RF-003: respostas aplicadas com orçamento
-const UPLOAD_BUDGET_MS = 2;
-const UPLOAD_MAX = 4;
+const DISPATCH_BUDGET_MS = 3;
+const DRAIN_BUDGET_MS = 3;      // MC24-RF-003: respostas aplicadas com orçamento
+const UPLOAD_BUDGET_MS = 4;
+const UPLOAD_MAX = 16;          // CubicChunks: até 16 sub-chunks 16³ processados por frame em grande escala
 const MAX_TIMEOUTS_PER_FRAME = 4;
 const LIGHT_RADIUS = 6;         // só chunks perto do jogador devolvem a luz à main thread
 const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -224,7 +224,8 @@ export class ClientWorld {
 
   _distOf(c, sy) {
     const dx = c.cx - this._pcx, dz = c.cz - this._pcz;
-    return dx * dx + dz * dz + Math.abs(sy - this._psy) * 0.25;
+    const dy = sy - this._psy;
+    return dx * dx + dz * dz + dy * dy * 1.2;
   }
 
   _enqueue(c, sy) {
