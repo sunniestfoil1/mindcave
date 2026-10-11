@@ -17,13 +17,29 @@ export const REAL_C418_TRACKS = [
   { name: 'C418 - Key', file: '/assets/sounds/music/game/nuance1.ogg' },
   { name: 'C418 - Oxygène', file: '/assets/sounds/music/game/nuance2.ogg' },
   // Faixas do Modo Criativo
-  { name: 'C418 - Aria Math', file: '/assets/sounds/music/game/creative/creative1.ogg' },
-  { name: 'C418 - Dreiton', file: '/assets/sounds/music/game/creative/creative2.ogg' },
-  { name: 'C418 - Taswell', file: '/assets/sounds/music/game/creative/creative3.ogg' },
-  { name: 'C418 - Biome Fest', file: '/assets/sounds/music/game/creative/creative4.ogg' },
-  { name: 'C418 - Blind Spots', file: '/assets/sounds/music/game/creative/creative5.ogg' },
-  { name: 'C418 - Haunt Muskie', file: '/assets/sounds/music/game/creative/creative6.ogg' },
+  { name: 'C418 - Biome Fest', file: '/assets/sounds/music/game/creative/creative1.ogg', creative: true },
+  { name: 'C418 - Blind Spots', file: '/assets/sounds/music/game/creative/creative2.ogg', creative: true },
+  { name: 'C418 - Haunt Muskie', file: '/assets/sounds/music/game/creative/creative3.ogg', creative: true },
+  { name: 'C418 - Aria Math', file: '/assets/sounds/music/game/creative/creative4.ogg', creative: true },
+  { name: 'C418 - Dreiton', file: '/assets/sounds/music/game/creative/creative5.ogg', creative: true },
+  { name: 'C418 - Taswell', file: '/assets/sounds/music/game/creative/creative6.ogg', creative: true },
 ];
+// As pastas music/game/* de outras compositoras (Lena Raine etc.) são de versões novas e não entram: só as 18 faixas da 1.8.9.
+
+// Sacola embaralhada: nenhuma faixa repete antes de todas do pool tocarem; o fim da sacola reembaralha (loop infinito)
+let bag = [];
+let lastFile = null;
+function nextFromBag(creativeMode) {
+  if (!bag.length) {
+    const pool = REAL_C418_TRACKS.filter(t => creativeMode || !t.creative);
+    bag = pool.slice();
+    for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
+    if (bag.length > 1 && bag[bag.length - 1].file === lastFile) bag.unshift(bag.pop()); // a próxima (fim do array) não repete a última tocada
+  }
+  const t = bag.pop();
+  lastFile = t.file;
+  return t;
+}
 
 class MusicManager {
   constructor() {
@@ -75,8 +91,7 @@ class MusicManager {
       return;
     }
 
-    const chosen = REAL_C418_TRACKS[Math.floor(Math.random() * REAL_C418_TRACKS.length)];
-    this.playTrack(chosen);
+    this.playTrack(nextFromBag(!!this.creativeMode));
   }
 
   playTrack(track) {

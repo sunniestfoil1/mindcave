@@ -1,7 +1,7 @@
 // Processador de comandos — PRD 05 RF-001/010/013 + comandos de PRDs anteriores
 import { Effect, EFFECT_BY_NAME, addEffect, removeEffect, clearEffects } from './effects';
 import { BLOCK_NAMES, BLOCKS, packState } from './blocks';
-import { FOODS, FOOD_NAMES, addXP, xpForNextLevel } from './survival';
+import { FOODS, FOOD_NAMES, addXP, xpForNextLevel, applyDamage } from './survival';
 import { MOB_TYPES } from './mobRegistry';
 import { executeScoreboardCommand } from './scoreboard';
 
@@ -89,7 +89,7 @@ export function processCommand(engine, text) {
         const match = target.match(/@e\[type=([^\]]+)\]/);
         if (match) { if (engine.mobs) engine.mobs.killAll(match[1].toLowerCase()); }
       } else {
-        p.health = 0; p.isDead = true;
+        applyDamage(p, 1e6, 'kill', { bypass: true });
       }
       break;
     }

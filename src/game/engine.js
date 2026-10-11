@@ -99,6 +99,7 @@ export class GameEngine {
     this.onToggleInventory = opts.onToggleInventory || (() => {});
     this.onChatMessage = opts.onChatMessage || null;
     this.onChatSend = opts.onChatSend || null;
+    this.onDeath = opts.onDeath || null;
     this.onBlockChange = opts.onBlockChange || null;
     this.netManager = null;
     this.miningTarget = null;
@@ -309,9 +310,12 @@ export class GameEngine {
     this._onPLChange = () => {
       this.paused = document.pointerLockElement !== this.canvas;
       if (!this.paused) this.mouseBtn = {};
+      this.keys = {};
     };
+    this._onBlur = () => { this.keys = {}; this.mouseBtn = {}; this.f3Held = false; };
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
+    window.addEventListener('blur', this._onBlur);
     window.addEventListener('mousedown', this._onMouseDown);
     window.addEventListener('mouseup', this._onMouseUp);
     window.addEventListener('mousemove', this._onMouseMove);
@@ -331,6 +335,8 @@ export class GameEngine {
   }
 
   onKey(e, down) {
+    // Soltar uma tecla é sempre registrado, em qualquer tela: senão ela "gruda" (ou falha) depois de chat/inventário/F3
+    if (!down) this.keys[e.code] = false;
     if (this.chatOpen) {
       if (down && e.code === 'Escape') { this.chatOpen = false; this.emitHud(); }
       return;
@@ -362,9 +368,16 @@ export class GameEngine {
         return;
       }
     }
-    if (down && e.code === keys.debug) { e.preventDefault(); this.f3 = !this.f3; return; }
+    // F3: tocar alterna o painel; segurar F3 + letra é atalho (A recarrega chunks etc.) e não alterna
+    if (e.code === keys.debug) {
+      e.preventDefault();
+      if (down && !e.repeat) { this.f3Held = true; this.f3Used = false; }
+      else if (!down) { if (this.f3Held && !this.f3Used) this.f3 = !this.f3; this.f3Held = false; }
+      return;
+    }
     // F3 shortcuts (PRD 12 RF-041)
-    if (down && this.f3) {
+    if (down && this.f3Held) {
+      this.f3Used = true;
       if (e.code === 'KeyA') { e.preventDefault(); this.reloadChunks(); return; }
       if (e.code === 'KeyB') { e.preventDefault(); this.showHitboxes = !this.showHitboxes; return; }
       if (e.code === 'KeyG') { e.preventDefault(); this.showChunkBorders = !this.showChunkBorders; return; }
@@ -842,7 +855,10 @@ export class GameEngine {
     tickAnimation(this.anim, p, this.worldTime);
 
     // Projéteis (PRD 07 RF-020)
-    if (this.projectiles) this.projectiles.tick(this._getAttackableEntities());
+    if (this.projectiles) {
+      if (p.id === undefined) p.id = 'local_player';
+      this.projectiles.tick(this._getAttackableEntities(), p);
+    }
 
     // Track mouse button edges
     this._prevAttack = attackActive;
@@ -975,6 +991,7 @@ export class GameEngine {
         z: p.pos.z,
         yaw: p.yaw,
         pitch: p.pitch,
+        dead: !!p.isDead,
       };
       if (this.netManager.broadcast) {
         this.netManager.broadcast(posMsg);
@@ -986,6 +1003,8 @@ export class GameEngine {
     // Partículas
     if (this.particles) this.particles.tick(this.world);
 
+    musicManager.creativeMode = p.gameMode === 'creative'; // faixas creative1-6 só tocam no criativo
+
     // Som do dano (o balanço de câmera sai de hurtRoll)
     const seq = p.hurtSeq || 0;
     if (this._hurtSeqSeen === undefined) this._hurtSeqSeen = seq;
@@ -995,8 +1014,11 @@ export class GameEngine {
     }
 
     // Detectar morte para mostrar tela
-    if (p.isDead && this._lastHud && !this._lastHud.isDead) {
+    if (p.isDead && p.deathPending) {
       playEvent('entity.player.death', { pos: p.pos });
+      this._announceDeath();
+      this.emitHud();
+    } else if (p.isDead && this._lastHud && !this._lastHud.isDead) {
       this.emitHud();
     }
   }
@@ -1071,7 +1093,7 @@ export class GameEngine {
       this.updateRemotePlayers();
       if (this.itemEntities) {
         const inv = this.inventory || this.player.inventory;
-        this.itemEntities.update(0.05, this.player, inv, this.world, this.worldTime);
+        this.itemEntities.update(Math.min(dt, 100) / 1000, this.player, inv, this.world, this.worldTime);
       }
       if (this.mobs) this.mobs.renderUpdate(this.worldTime / 20, this.player.pos);
       if (this.particles) this.particles.renderUpdate();
@@ -1330,6 +1352,16 @@ export class GameEngine {
         }
 
         placePlayerModel(entry.group, { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0 }, rp.yaw || 0);
+        // Morto: tomba de lado, fica vermelho e treme (o 1.8.9 gira o corpo 90° em ~20 ticks)
+        rp.deathProgress = rp.isDead ? Math.min(1, (rp.deathProgress || 0) + 0.06) : 0;
+        entry.group.rotation.z = rp.deathProgress * Math.PI / 2;
+        entry.group.rotation.x = rp.isDead && rp.deathProgress < 1 ? Math.sin(performance.now() * 0.08) * 0.06 : 0;
+        const tint = rp.isDead ? 0xff5555 : 0xffffff;
+        if (entry.tint !== tint) {
+          entry.tint = tint;
+          entry.group.traverse(c => { if (c.material && c.material.color && !c.isSprite) c.material.color.setHex(tint); });
+        }
+        if (entry.tag) entry.tag.position.y = rp.isDead ? 0.5 : 2.1;
 
         // Atualizar áudio posicional 3D para voz
         voiceChat.updateRemotePosition(id, { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0 });
@@ -1402,7 +1434,7 @@ export class GameEngine {
       fireTicks: p.fireTicks ?? 0,
       hurtTime: p.hurtTime ?? 0,
       isDead: p.isDead ?? false,
-      deathMessage: p.isDead ? this._getDeathMessage() : null,
+      deathMessage: p.isDead ? (p.deathText || `${p.nomeJogador || 'Jogador'} ${this._getDeathMessage()}`) : null,
       eating: p.eating ?? false,
       eatingTicks: p.eatingTicks ?? 0,
       weather: this.weather ? (this.weather.isThundering() ? 'thunder' : (this.weather.isRaining() ? 'rain' : 'clear')) : 'clear',
@@ -1436,7 +1468,8 @@ export class GameEngine {
       loadingRadius: this.loadingRadius,
       targetRadius: this.targetRadius,
       playerListOpen: !!this.playerListOpen,
-      pings: this.netManager?.getAllPings() || [],
+      pings: this.netManager?.getAllPings() || [{ name: p.nomeJogador || 'Jogador', pingMs: 0, isHost: true, id: 'local', rank: 'owner' }],
+      selfName: p.nomeJogador || null,
       scoreboard: this.world?.scoreboard || null,
       worldName: this.world?.name || 'Mundo',
       isHost: this.netManager ? !!this.netManager.room : true,
@@ -1475,10 +1508,12 @@ export class GameEngine {
     }
     const block = getBlock(hit.id);
     if (block.hardness < 0) return;
+    if (this.breakCd > 0) return; // pausa de 5 ticks entre blocos, como na 1.8.9
     const tool = this.getHeldItem();
     const time = getMiningTime(hit.id, tool, p.effects, this.inFluid === 'water', p.onGround);
-    if (time === Infinity || time === 0) return;
-    this.miningProgress += 1 / time;
+    if (time === Infinity) return;
+    // Dureza 0 (grama alta, flores, tochas): quebra no mesmo tick, como na 1.8.9
+    this.miningProgress += time === 0 ? 1 : 1 / time;
     this._digTick = (this._digTick || 0) + 1;
     if (this._digTick % 4 === 0) playDigSound(hit.id, { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 });
     if (this.miningProgress >= 1) {
@@ -1599,14 +1634,52 @@ export class GameEngine {
   _getDeathMessage() {
     const p = this.player;
     const source = p.lastDamageSource;
-    if (source === 'attack' && p._lastAttacker) {
-      const weapon = p._lastWeapon ? ` usando [${p._lastWeapon}]` : '';
-      return `${p._lastAttacker} matou você${weapon}`;
+    // O agressor só conta se bateu há pouco: queda/lava depois de uma briga ("foi derrubado por X"), mas não de um golpe antigo
+    const recent = p._lastAttacker && p._attackedAt && Date.now() - p._attackedAt < 8000;
+    const killer = recent ? p._lastAttacker : null;
+    const weapon = recent && (source === 'attack' || source === 'projectile') ? p._lastWeapon : null;
+    return getDeathMessage(source, killer, weapon);
+  }
+
+  // Sobrevivência sem keepInventory: tudo cai no chão onde o jogador morreu (1.8.9: Entity.dropItem com espalhamento aleatório)
+  dropInventoryOnDeath() {
+    const p = this.player, inv = this.inventory;
+    if (!inv || p.gameMode === 'creative' || p.gameMode === 'spectator' || this.gameRules?.keepInventory) return;
+    const spill = (it) => {
+      if (!it || !it.id || !(it.count > 0)) return;
+      const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 2;
+      this.itemEntities?.spawnItem({ id: it.id, count: it.count, meta: it.meta || 0 },
+        { x: p.pos.x, y: p.pos.y + 0.5, z: p.pos.z }, { x: Math.cos(a) * sp, y: 3 + Math.random() * 2, z: Math.sin(a) * sp }, 40);
+    };
+    for (const arr of [inv.hotbar, inv.main, inv.armor, inv.crafting]) {
+      for (let i = 0; i < arr.length; i++) { spill(arr[i]); arr[i] = null; }
     }
-    if (source === 'projectile' && p._lastAttacker) {
-      return `${p._lastAttacker} acertou você com uma flecha`;
+    spill(inv.cursor); inv.cursor = null;
+    inv.craftResult = null;
+  }
+
+  // Anuncia a morte uma vez: chat local, outros jogadores e estatística
+  _announceDeath() {
+    const p = this.player;
+    p.deathPending = false;
+    const text = `${p.nomeJogador || 'Jogador'} ${this._getDeathMessage()}`;
+    p.deathText = text;
+    this.onChatMessage?.({ type: 'system', text: '§f' + text, timestamp: Date.now() });
+    if (this.netManager) {
+      if (this.netManager.broadcast) this.netManager.broadcast({ t: 'chat', system: true, text: '§f' + text });
+      else this.netManager.conn?.send({ t: 'death', cause: this._getDeathMessage() });
     }
-    return getDeathMessage(source);
+    if (p.stats) p.stats.deaths = (p.stats.deaths || 0) + 1;
+    // Registro da morte com o que foi perdido (antes de esvaziar o inventário), e gravação imediata para a perda valer online
+    const lost = [];
+    if (this.inventory && p.gameMode !== 'creative' && p.gameMode !== 'spectator' && !this.gameRules?.keepInventory) {
+      for (const arr of [this.inventory.hotbar, this.inventory.main, this.inventory.armor]) {
+        for (const it of arr) if (it && it.id) lost.push({ id: it.id, count: it.count || 1, meta: it.meta || 0 });
+      }
+    }
+    this.onDeath?.({ message: text, cause: p.lastDamageSource, killer: p._lastAttacker || null, pos: { ...p.pos }, itemsLost: lost, xpLevel: p.xpLevel || 0 });
+    this.dropInventoryOnDeath();
+    this.onAutosave?.();
   }
 
   // === Conquistas (PRD 12 RF-030) ===
@@ -1913,6 +1986,7 @@ export class GameEngine {
     cancelAnimationFrame(this.raf);
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
+    window.removeEventListener('blur', this._onBlur);
     window.removeEventListener('mousedown', this._onMouseDown);
     window.removeEventListener('mouseup', this._onMouseUp);
     window.removeEventListener('mousemove', this._onMouseMove);

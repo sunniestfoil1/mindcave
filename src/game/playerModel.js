@@ -440,17 +440,20 @@ export async function loadFirstPersonArmGlb(_oldArm, _fpsScene) { return _oldArm
 // Aplica a skin padrão (steve.png) do pacote ao modelo do jogador e à mão em 1ª pessoa (MC24 §5.2)
 export async function applyPackSkin(playerModel, fpsArm) {
   try {
-    const { getPackCanvas, MC } = await import('./pack');
-    const cv = await getPackCanvas(MC + 'textures/entity/steve.png');
+    const { getSkinCanvas, isSlimSkin } = await import('./skinStore');
+    const cv = await getSkinCanvas();
     if (!cv) return;
     const tex = new THREE.CanvasTexture(cv);
     tex.magFilter = THREE.NearestFilter;
     tex.minFilter = THREE.NearestFilter;
     tex.needsUpdate = true;
     const player = playerModel?.userData?.playerObject;
-    if (player) player.setSkinTexture(tex);
+    if (player) {
+      player.setSkinTexture(tex);
+      player.modelType = isSlimSkin() ? 'slim' : 'default';
+    }
     if (fpsArm?.material) { fpsArm.material.map = tex; fpsArm.material.needsUpdate = true; }
   } catch (e) {
-    console.warn('[PlayerModel] Falha ao aplicar skin do pacote:', e.message);
+    console.warn('[PlayerModel] Falha ao aplicar skin:', e.message);
   }
 }

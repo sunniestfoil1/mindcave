@@ -72,7 +72,7 @@ export class ProjectileManager {
     const vel = getArrowVelocity(charge, lookDir, shooter.vel);
     return this.spawn('arrow', {
       pos: eye, vel, shooterId: shooter.id, shooterName: shooter.nomeJogador || shooter.name,
-      charge,
+      charge, shooterIsMob: !!opts.shooterIsMob,
       onHitEntity: opts.onHitEntity, onHitBlock: opts.onHitBlock,
     });
   }
@@ -170,7 +170,7 @@ export class ProjectileManager {
     return { minX: p.x - w / 2 - 0.1, maxX: p.x + w / 2 + 0.1, minY: p.y - 0.1, maxY: p.y + h + 0.1, minZ: p.z - w / 2 - 0.1, maxZ: p.z + w / 2 + 0.1 };
   }
 
-  tick(entities) {
+  tick(entities, playerTarget) {
     const toRemove = [];
     for (const p of this.projectiles) {
       // === Granada (RF-039) ===
@@ -215,8 +215,10 @@ export class ProjectileManager {
         continue;
       }
 
-      if (entities && entities.length > 0) {
-        const entHit = this.raycastEntities(p.pos, next, entities, p.shooterId);
+      // Flecha de mob só acerta o jogador (esqueletos não se ferem entre si); as dos jogadores acertam mobs e outros jogadores
+      const targets = p.shooterIsMob ? (playerTarget && !playerTarget.isDead && playerTarget.gameMode !== 'creative' && playerTarget.gameMode !== 'spectator' ? [playerTarget] : []) : entities;
+      if (targets && targets.length > 0) {
+        const entHit = this.raycastEntities(p.pos, next, targets, p.shooterId);
         if (entHit) {
           this._onHitEntity(p, entHit.entity, entHit);
           if (p.type === 'arrow') {

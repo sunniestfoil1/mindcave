@@ -90,4 +90,5 @@ export function biomeFoliageColor(biome) {
 }
 
 // Biomas válidos para spawn (RF-073)
-export const SPAWN_BIOMES = new Set([3, 4, 10, 11, 13, 16, 17, 29, 30, 31, 32]);
+// 1.8.9 (WorldChunkManager.allowedBiomes): planícies, floresta, colinas da floresta, taiga, selva, colinas da selva
+export const SPAWN_BIOMES = new Set([3, 10, 12, 16, 29, 30]);

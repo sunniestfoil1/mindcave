@@ -83,7 +83,7 @@ export function applyDamage(p, amount, source, opts = {}) {
   const res = getAmplifier(p, Effect.RESISTANCE);
   if (res >= 0) {
     finalDamage *= Math.max(0, 1 - 0.2 * (res + 1));
-    if (res >= 4 && source !== 'void') return false;
+    if (res >= 4 && source !== 'void' && source !== 'kill') return false;
   }
 
   // Absorção
@@ -95,6 +95,7 @@ export function applyDamage(p, amount, source, opts = {}) {
 
   if (finalDamage <= 0) return false;
 
+  if (ATTRIBUTED.has(source)) p._attackedAt = Date.now(); // quem bateu por último (vale para quedas/lava logo depois)
   p.health -= finalDamage;
   p.hurtTime = 10;
   p.hurtResistantTime = 10;
@@ -107,6 +108,7 @@ export function applyDamage(p, amount, source, opts = {}) {
   if (p.health <= 0) {
     p.health = 0;
     p.isDead = true;
+    p.deathPending = true; // o motor anuncia a morte no chat uma única vez
   }
   return true;
 }
@@ -132,23 +134,30 @@ export function getXPProgress(p) {
 }
 
 // === Morte e renascimento ===
-export function getDeathMessage(source, killer) {
+// Mensagens de morte da 1.8.9 (death.attack.*): `killer` é o nome de quem causou o dano, `weapon` o item na mão dele
+const ATTRIBUTED = new Set(['attack', 'projectile', 'explosion', 'gun', 'melee']);
+export function getDeathMessage(source, killer, weapon) {
   const k = killer || '';
+  const w = weapon ? ` usando [${weapon}]` : '';
   switch (source) {
     case 'fall': return k ? `foi derrubado de um lugar alto por ${k}` : 'caiu de um lugar alto';
-    case 'void': return 'caiu no vazio';
-    case 'drown': return 'se afogou';
-    case 'lava': return k ? `tentou nadar na lava fugindo de ${k}` : 'tentou nadar na lava';
-    case 'fire': case 'burning': return 'pegou fogo';
-    case 'cactus': return 'foi espetado até a morte';
+    case 'void': return k ? `foi derrubado no vazio por ${k}` : 'caiu para fora do mundo';
+    case 'kill': return 'caiu para fora do mundo';
+    case 'drown': return k ? `se afogou fugindo de ${k}` : 'se afogou';
+    case 'lava': return k ? `tentou nadar na lava para fugir de ${k}` : 'tentou nadar na lava';
+    case 'fire': return k ? `foi queimado até a morte fugindo de ${k}` : 'pegou fogo';
+    case 'burning': return k ? `foi queimado até virar cinzas lutando contra ${k}` : 'foi queimado até virar cinzas';
+    case 'suffocate': return 'sufocou dentro de uma parede';
+    case 'cactus': return k ? `foi espetado até a morte tentando fugir de ${k}` : 'foi espetado até a morte';
     case 'hunger': return 'morreu de fome';
     case 'lightning': return 'foi atingido por um raio';
-    case 'explosion': return k ? `foi explodido por ${k}` : 'explodiu';
-    case 'attack': return k ? `foi morto por ${k}` : 'foi morto';
+    case 'explosion': return k && k !== 'Explosão' ? `foi explodido por ${k}` : 'explodiu';
+    case 'attack': case 'melee': return k ? `foi morto por ${k}${w}` : 'foi morto';
+    case 'projectile': return k ? `foi alvejado por ${k}${w}` : 'foi alvejado';
+    case 'gun': return k ? `foi baleado por ${k}${w}` : 'foi baleado';
     case 'magic': return 'foi morto por magia';
     case 'poison': return 'foi envenenado';
     case 'wither': return 'definhou';
-    case 'kill': return 'foi morto';
     default: return 'morreu';
   }
 }
@@ -330,6 +339,7 @@ export function tickSurvival(p, world, ctx) {
   // 9. Morte
   if (p.health <= 0 && !p.isDead) {
     p.isDead = true;
+    p.deathPending = true;
     p.health = 0;
   }
 }
@@ -480,6 +490,8 @@ export function serializeSurvival(p) {
     fireTicks: p.fireTicks,
     effects: p.effects.map(e => ({ type: e.type, duration: e.duration, amplifier: e.amplifier, ambient: e.ambient, particles: e.particles })),
     spawnX: p.spawnX, spawnY: p.spawnY, spawnZ: p.spawnZ, hasBedSpawn: p.hasBedSpawn,
+    // Queda em andamento: sair do jogo no ar não cancela o dano (o jogador volta caindo, com a mesma velocidade)
+    fallDistance: p.fallDistance || 0, vel: p.vel ? { x: p.vel.x, y: p.vel.y, z: p.vel.z } : null, onGround: !!p.onGround,
     stats: p.stats,
   });
 }
@@ -504,6 +516,10 @@ export function deserializeSurvival(p, data) {
     p.spawnZ = d.spawnZ ?? 0;
     p.hasBedSpawn = d.hasBedSpawn ?? false;
     if (d.stats) p.stats = { ...p.stats, ...d.stats };
+    if (d.fallDistance > 0 && d.onGround === false) {
+      p.fallDistance = d.fallDistance;
+      if (d.vel && p.vel) { p.vel.x = d.vel.x || 0; p.vel.y = d.vel.y || 0; p.vel.z = d.vel.z || 0; }
+    }
   } catch (e) {}
 }
 

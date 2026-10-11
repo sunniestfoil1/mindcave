@@ -1,50 +1,69 @@
-import React, { useState } from "react";
-import { X, Check } from "lucide-react";
+// Personalizar jogador: nick + skin (Steve, Alex ou PNG 64×64 enviado) com prévia, no estilo dos menus do jogo.
+import React, { useState, useRef, useEffect } from "react";
+import { GuiScreen, GuiButton, GuiText, GuiTextField, useGui } from "@/components/java";
+import PlayerPreview from "@/components/game/PlayerPreview";
 import { getNickname, setNickname } from "@/game/guestIdentity";
+import { getSkinChoice, setSkinChoice, readSkinFile } from "@/game/skinStore";
 
-export default function NicknameModal({ onClose, onSaved }) {
+const PREVIEW = { box: { x: 0, y: 0, w: 52, h: 70 }, feet: { x: 26, y: 67 }, unit: 30, refUp: 50 };
+
+function Content({ onClose, onSaved }) {
+  const { scale, guiWidth, guiHeight } = useGui();
   const [name, setName] = useState(getNickname());
+  const [choice, setChoice] = useState(getSkinChoice());
+  const [error, setError] = useState('');
+  const [rev, setRev] = useState(0); // força a prévia a recarregar a skin
+  const fileRef = useRef(null);
+  const top = Math.max(24, Math.floor(guiHeight / 2) - 100);
 
-  const handleSave = () => {
-    const clean = setNickname(name);
-    onSaved?.(clean);
-    onClose();
+  useEffect(() => { setRev(r => r + 1); }, [choice]);
+
+  const pick = (kind) => { const c = kind === 'custom' ? choice : { kind }; setError(''); setChoice(c); setSkinChoice(c); };
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    try {
+      const png = await readSkinFile(file);
+      const c = { kind: 'custom', png };
+      setChoice(c); setSkinChoice(c); setError('');
+    } catch (err) { setError(err.message); }
   };
+  const save = () => { const clean = setNickname(name); onSaved?.(clean); onClose(); };
+  const label = (k, text) => (choice.kind === k ? `§e> ${text} <` : text);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#0f1620] border border-white/10 rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-white">Trocar Nickname</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <p className="text-xs text-white/40 mb-3">Escolha como você quer ser chamado no jogo. Máximo 16 caracteres.</p>
-        <input
-          autoFocus
-          value={name}
-          onChange={e => setName(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSave()}
-          maxLength={16}
-          className="w-full px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 focus:border-emerald-400/50 focus:bg-white/10 focus:outline-none text-white text-sm transition-colors"
-          placeholder="Seu nickname"
-        />
-        <div className="flex gap-2 mt-4">
-          <button
-            onClick={handleSave}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-colors"
-          >
-            <Check className="w-4 h-4" /> Salvar
-          </button>
-          <button
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 text-sm font-medium transition-colors"
-          >
-            Cancelar
-          </button>
-        </div>
+    <>
+      <div style={{ position: 'absolute', left: '50%', top: top * scale, transform: 'translateX(-50%)' }}>
+        <GuiText text="Personalizar jogador" color="#FFFFFF" shadow />
       </div>
-    </div>
+      <div style={{ position: 'absolute', left: (guiWidth / 2 - 100) * scale, top: (top + 20) * scale }}>
+        <GuiText text="Nome no jogo" color="#A0A0A0" shadow />
+      </div>
+      <GuiTextField x={-100} y={top + 31} width={200} value={name} onChange={setName} maxLength={16} autoFocus />
+
+      {/* Prévia: caixa preta como a do inventário, boneco olhando para o mouse */}
+      <div style={{ position: 'absolute', left: (guiWidth / 2 + 12) * scale, top: (top + 60) * scale, width: 52 * scale, height: 70 * scale, background: '#000', border: `${scale}px solid #373737` }}>
+        <PlayerPreview key={rev} S={scale} preset={PREVIEW} />
+      </div>
+      <GuiButton x={-100} y={top + 60} width={104} label={label('steve', 'Steve')} onClick={() => pick('steve')} />
+      <GuiButton x={-100} y={top + 84} width={104} label={label('alex', 'Alex')} onClick={() => pick('alex')} />
+      <GuiButton x={-100} y={top + 108} width={104} label={label('custom', 'Enviar skin...')} onClick={() => fileRef.current?.click()} />
+      <input ref={fileRef} type="file" accept="image/png" onChange={onFile} style={{ display: 'none' }} />
+
+      <div style={{ position: 'absolute', left: (guiWidth / 2 - 100) * scale, top: (top + 134) * scale, maxWidth: 200 * scale }}>
+        <GuiText text={error ? `§c${error}` : 'PNG 64×64 de skin do Minecraft'} color="#A0A0A0" shadow />
+      </div>
+
+      <GuiButton x={-100} y={top + 158} width={98} label="Salvar" onClick={save} />
+      <GuiButton x={2} y={top + 158} width={98} label="Cancelar" onClick={onClose} />
+    </>
+  );
+}
+
+export default function NicknameModal({ onClose, onSaved }) {
+  return (
+    <GuiScreen>
+      <Content onClose={onClose} onSaved={onSaved} />
+    </GuiScreen>
   );
 }

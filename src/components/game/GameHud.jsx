@@ -179,14 +179,14 @@ export default function GameHud({ hud, onPause }) {
         visible={hud.playerListOpen}
         worldName={hud.worldName}
         players={hud.pings}
-        isHost={hud.isHost}
+        selfName={hud.selfName}
       />
 
       {/* Scoreboard Sidebar */}
       <ScoreboardSidebar scoreboard={hud.scoreboard} />
 
       {/* Pausa — Java 1.8.9 style (PRD 19 RF-025) */}
-      {hud.paused && !hud.chatOpen && !hud.hasGuiOpen && (
+      {hud.paused && !hud.chatOpen && !hud.hasGuiOpen && !hud.isDead && (
         <GuiScreen background="gradient">
           <PauseMenuContent hud={hud} onPause={onPause} />
         </GuiScreen>

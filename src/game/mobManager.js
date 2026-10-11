@@ -46,11 +46,22 @@ export class MobManager {
         p._lastWeapon = null;
       },
       onShootArrow: (mob, target) => {
-        if (ctx.projectiles) {
-          ctx.projectiles.spawnArrow(mob, 1.0, {
-            eye: { x: mob.pos.x, y: mob.pos.y + mob.type.eyeHeight, z: mob.pos.z },
-          });
-        }
+        if (!ctx.projectiles) return;
+        // EntitySkeleton.attackEntityWithRangedAttack: mira o peito do alvo, soma um arco proporcional à distância
+        // (0,2 · distância horizontal) e dispara a 1,6 blocos/tick com imprecisão 14 − 4·dificuldade
+        const eye = { x: mob.pos.x, y: mob.pos.y + mob.type.eyeHeight, z: mob.pos.z };
+        const tx = target.pos.x - eye.x, tz = target.pos.z - eye.z;
+        const horiz = Math.hypot(tx, tz);
+        const ty = (target.pos.y + 1.62 / 3 * 1.0 + 0.6) - eye.y + horiz * 0.2;
+        const len = Math.hypot(tx, ty, tz) || 1;
+        const diff = ({ peaceful: 0, easy: 1, normal: 2, hard: 3 })[ctx.difficulty] ?? 2;
+        const inacc = 0.0075 * (14 - diff * 4) * 2;
+        const jit = () => (Math.random() - 0.5) * inacc;
+        ctx.projectiles.spawnArrow(mob, 1.6 / 3, {
+          eye, shooterIsMob: true,
+          lookDir: { x: tx / len + jit(), y: ty / len + jit(), z: tz / len + jit() },
+        });
+        MobEntity.onSound?.(mob, 'shoot');
       },
       // Usa a explosão do motor (raios, drops, cadeia de TNT, som); a esfera simples fica só como reserva sem motor
       onExplode: (pos, power) => (ctx.onExplode ? ctx.onExplode(pos, power) : this._explode(pos, power, player, ctx)),

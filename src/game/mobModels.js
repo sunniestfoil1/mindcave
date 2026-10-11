@@ -249,6 +249,31 @@ function rigRoot() {
 
 const texSize = (mobType) => (mobType === 'zombie' ? [64, 64] : [64, 32]);
 
+// Arco na mão do esqueleto (textura oficial de item, carregada do pacote quando disponível)
+let _bowMat = null;
+function bowMaterial() {
+  if (_bowMat) return _bowMat;
+  const cv = document.createElement('canvas');
+  cv.width = 16; cv.height = 16;
+  const tex = new THREE.CanvasTexture(cv);
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+  _bowMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
+  getPackCanvas(MC + 'textures/items/bow_standby.png').then((src) => {
+    if (!src) return;
+    cv.getContext('2d').drawImage(src, 0, 0, 16, 16);
+    tex.needsUpdate = true;
+  }).catch(() => {});
+  return _bowMat;
+}
+function attachBow(arm) {
+  const bow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), bowMaterial());
+  bow.name = 'bow';
+  // Mão = ponta do braço (10 px abaixo do ombro); o arco fica de lado, na frente da mão, inclinado como o item na 3ª pessoa
+  bow.position.set(0, -10 / 16, 4 / 16);
+  bow.rotation.set(0, Math.PI / 2, -Math.PI / 4);
+  arm.add(bow);
+}
+
 // 1. ModelBiped / ModelZombie / ModelSkeleton
 function buildBipedModel(mobType, opts = {}) {
   const [tw, th] = texSize(mobType);
@@ -262,6 +287,7 @@ function buildBipedModel(mobType, opts = {}) {
   const legR = mcPart(mat, tw, th, { uv: [0, 16], box: thin ? [-1, 0, -1, 2, 12, 2] : [-2, 0, -2, 4, 12, 4], pivot: [-2, 12, 0] });
   const legL = mcPart(mat, tw, th, { uv: [0, 16], box: thin ? [-1, 0, -1, 2, 12, 2] : [-2, 0, -2, 4, 12, 4], pivot: [2, 12, 0], mirror: true });
   inner.add(head, body, armR, armL, legR, legL);
+  if (opts.isSkeleton) attachBow(armR);
   root.userData = { head, body, armL, armR, legL, legR, type: 'biped', mobType, ...opts };
   return root;
 }
@@ -468,6 +494,10 @@ export function animateMobModel(model, mob, time) {
       // ModelSkeleton mirando o arco
       raw(u.armR, -Math.PI / 2 + headPitch, -0.1 + headYaw, 0);
       raw(u.armL, -Math.PI / 2 + headPitch, 0.1 + headYaw + 0.4, 0);
+    } else if (u.isSkeleton) {
+      // Com o arco na mão direita (heldItemRight = 1): o braço fica um pouco erguido
+      raw(u.armR, c2 * 2.0 * amt * 0.25 - 0.314, 0, 0.05);
+      raw(u.armL, c1 * 2.0 * amt * 0.5, 0, -0.05);
     } else {
       raw(u.armR, c2 * 2.0 * amt * 0.5, 0, Math.cos(age * 0.09) * 0.05 + 0.05);
       raw(u.armL, c1 * 2.0 * amt * 0.5, 0, -(Math.cos(age * 0.09) * 0.05 + 0.05));

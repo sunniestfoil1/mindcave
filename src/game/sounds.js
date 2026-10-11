@@ -450,7 +450,7 @@ const MOB_SOUND_NAME = {
 export function playMobSound(mob, kind) {
   const name = MOB_SOUND_NAME[mob.typeId];
   if (!name) return null;
-  const generic = { primed: 'entity.creeper.primed' };
+  const generic = { primed: 'entity.creeper.primed', shoot: 'entity.arrow.shoot' };
   const event = generic[kind] || `entity.${name}.${kind}`;
   return playEvent(event, { pos: mob.pos, volume: kind === 'step' ? 0.35 : 1 });
 }

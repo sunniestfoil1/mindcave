@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { mindcaveApi } from "@/api/supabaseClient";
+import { mindcaveApi, supabase } from "@/api/supabaseClient";
 import { resolveUser } from "@/game/guestIdentity";
 import { ClientWorld } from "@/game/world";
 import { GameEngine } from "@/game/engine";
@@ -59,10 +59,13 @@ import { SPAWN_BIOMES } from "@/game/biomes";
 
 const SEA_LEVEL = 64;
 
+// Spawn determinístico (sem aleatório): espiral a partir de (spawnX, spawnZ), como o WorldProvider da 1.8.9 só aceita bioma
+// de spawn; aqui ainda exigimos terreno plano e seco (nenhuma das 9 amostras abaixo do mar ou com desnível > 3).
 function findSpawn(seed, generatorOpts, sx = 0, sz = 0) {
   const getBiome = getBiomeProvider(seed, generatorOpts);
   const terrainGen = createTerrainGenerator(seed, { amplified: generatorOpts?.params?.worldType === 'amplified' });
-  const step = 8;
+  const OFFS = [[0, 0], [3, 0], [-3, 0], [0, 3], [0, -3], [3, 3], [-3, -3], [3, -3], [-3, 3]];
+  const step = 4;
   for (let r = 0; r <= 384; r += step) {
     for (let dx = -r; dx <= r; dx += step) {
       for (let dz = -r; dz <= r; dz += step) {
@@ -70,9 +73,10 @@ function findSpawn(seed, generatorOpts, sx = 0, sz = 0) {
         const x = sx + dx, z = sz + dz;
         const biome = getBiome(x, z);
         if (biome && (biome.water || !SPAWN_BIOMES.has(biome.id))) continue;
-        const h = terrainGen.columnHeight(x, z, biome);
-        if (h > SEA_LEVEL && h < SEA_LEVEL + 45) {
-          return { x: x + 0.5, y: h + 1, z: z + 0.5, onGround: true };
+        const hs = OFFS.map(([ox, oz]) => terrainGen.columnHeight(x + ox, z + oz, getBiome(x + ox, z + oz)));
+        const lo = Math.min(...hs), hi = Math.max(...hs);
+        if (lo > SEA_LEVEL && hi < SEA_LEVEL + 45 && hi - lo <= 3) {
+          return { x: x + 0.5, y: hs[0] + 1, z: z + 0.5, onGround: true };
         }
       }
     }
@@ -235,6 +239,14 @@ export default function Game() {
           savedInventory: player.inventoryData,
           weatherState: world.weatherData,
           onHud: setHud,
+          onDeath: async (d) => {
+            try {
+              await supabase.from('player_deaths').insert({
+                world_id: worldId, user_id: String(userId), player_name: nome, message: d.message, cause: d.cause || null,
+                killer: d.killer, x: d.pos.x, y: d.pos.y, z: d.pos.z, items_lost: d.itemsLost, xp_level: d.xpLevel,
+              });
+            } catch { /* tabela criada pela migração 20261011; sem ela a morte só aparece no chat */ }
+          },
           onProgress: (pct, msg) => {
             if (!cancelled) setLoadingProgress({ percent: pct, status: msg });
           },

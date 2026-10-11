@@ -139,10 +139,14 @@ export class ItemEntityManager {
     }
 
     const pPos = player.pos;
+    // idade e atraso de coleta contam em ticks (20/s) mesmo que o render rode a 144 fps ou a 10 fps
+    this._tickAcc = (this._tickAcc || 0) + dt;
+    const ticks = Math.floor(this._tickAcc / 0.05);
+    this._tickAcc -= ticks * 0.05;
 
     for (let i = this.items.length - 1; i >= 0; i--) {
       const e = this.items[i];
-      e.age++;
+      e.age += ticks;
 
       // Despawn após 5 minutos
       if (e.age >= e.despawnAge) {
@@ -150,7 +154,7 @@ export class ItemEntityManager {
         continue;
       }
 
-      if (e.pickupDelay > 0) e.pickupDelay--;
+      if (e.pickupDelay > 0) e.pickupDelay = Math.max(0, e.pickupDelay - ticks);
 
       // Física
       if (!e.onGround) {

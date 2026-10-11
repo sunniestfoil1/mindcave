@@ -109,36 +109,51 @@ export const ORE_XP = {
   73: () => 1 + Math.floor(Math.random() * 5), 129: () => 3 + Math.floor(Math.random() * 5),
 };
 
+// Só estes blocos EXIGEM ferramenta para dropar (1.8.9: Material.isToolNotRequired() == false).
+// Terra, areia, madeira, folhas etc. dropam com a mão; HARVEST abaixo só diz qual ferramenta é mais rápida.
+const NEEDS_TOOL = new Set([
+  ...Object.entries(HARVEST).filter(([, h]) => h.tool === 'pickaxe').map(([id]) => Number(id)),
+  78, 80, 30, // camada de neve e bloco de neve (pá), teia (espada/tesoura)
+]);
+
 // Verifica se a ferramenta pode colher o bloco (dropa)
 export function canHarvest(blockId, tool) {
-  const h = HARVEST[blockId];
-  if (!h) return true; // sem exigência de ferramenta (terra, madeira, etc.)
-  if (!tool) return false; // sem ferramenta = nunca colhe blocos com restrição HARVEST
+  if (!NEEDS_TOOL.has(blockId)) return true;
+  if (!tool) return false;
   const item = ITEMS[tool.id];
-  if (!item || !item.tool) return false;
+  if (!item) return false;
+  if (blockId === 30) return tool.id === 359 || (!!item.weapon && !item.tool); // teia: tesoura ou espada
+  if (!item.tool) return false;
+  const h = HARVEST[blockId];
   if (item.tool.type !== h.tool) return false;
   const mat = TOOL_MATERIALS[item.tool.material];
   return mat ? mat.harvest >= h.level : false;
 }
 
+// Velocidade base da ferramenta contra o bloco (ItemTool/ItemSword/ItemShears.getStrVsBlock)
+const SWORD_PLANTS = new Set([18, 161, 86, 103, 106, 31, 175]);
+function toolSpeed(blockId, tool) {
+  if (!tool) return 1;
+  const item = ITEMS[tool.id];
+  if (!item) return 1;
+  if (tool.id === 359) return blockId === 30 || blockId === 18 || blockId === 161 || blockId === 106 ? 15 : blockId === 35 ? 5 : 1;
+  if (item.weapon && !item.tool) return blockId === 30 ? 15 : SWORD_PLANTS.has(blockId) ? 1.5 : 1;
+  const h = HARVEST[blockId];
+  if (item.tool && h && item.tool.type === h.tool) return TOOL_MATERIALS[item.tool.material].speed;
+  return 1;
+}
+
 // Calcula o tempo de quebra em ticks (1.8.9 exato)
-export function getMiningTime(blockId, tool, effects = {}, inWater = false, onGround = true) {
+export function getMiningTime(blockId, tool, effects = [], inWater = false, onGround = true) {
   const block = getBlock(blockId);
   if (!block || block.hardness < 0) return Infinity; // inquebrável
   if (block.hardness === 0) return 0; // instantâneo (flores, tochas)
 
-  const h = HARVEST[blockId];
   const canDrop = canHarvest(blockId, tool);
 
   // 1. Velocidade da ferramenta
-  let speed = 1;
-  if (tool && h && h.tool) {
-    const item = ITEMS[tool.id];
-    if (item && item.tool && item.tool.type === h.tool) {
-      const mat = TOOL_MATERIALS[item.tool.material];
-      speed = mat.speed;
-    }
-  }
+  const speed0 = toolSpeed(blockId, tool);
+  let speed = speed0;
 
   // 2. Eficiência (encantamento) — simplificado: não implementado ainda
   // speed += efficiency^2 + 1 (se a ferramenta é adequada)

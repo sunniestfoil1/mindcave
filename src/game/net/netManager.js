@@ -1,7 +1,7 @@
 // Gerenciador de rede (host/cliente) — PRD 15 MC15-RF-060..064
 // Host: mantém Room, aceita conexões, difunde estado do jogo.
 // Cliente: conecta ao host, envia ações, recebe estado.
-import { mindcaveApi } from '@/api/supabaseClient';
+import { mindcaveApi, supabase } from '@/api/supabaseClient';
 import { roomManager } from './roomManager';
 import { WebRTCConnection } from './webrtc';
 import { parseChatMessage, FloodController, systemMessage, joinMessage, leaveMessage, checkMention } from './chatSystem';
@@ -27,6 +27,11 @@ export class NetHost {
   async start(settings) {
     this.room = await roomManager.openRoom(this.world, settings, this.user);
     this.onChatMessage(systemMessage('Mundo aberto. Código: §e§l' + this.room.code + '§r — visível para todos'));
+    this.ranks = new Map(); // userId → cargo (profiles.rank)
+    // O host mede o ping de cada convidado e difunde a lista a cada 2 s, para o TAB de todos mostrar o ping de todos
+    this.listTimer = setInterval(() => {
+      if (!this._closed && this.peers.size) this.broadcast({ t: 'plist', list: this.getAllPings().map(({ name, pingMs, isHost, rank }) => ({ name, pingMs, isHost, rank })) });
+    }, 2000);
 
     // Heartbeat a cada 15s
     this.heartbeatTimer = setInterval(() => {
@@ -110,6 +115,7 @@ export class NetHost {
           this.playerNames.push(signal.fromName);
           roomManager.updatePlayerList(this.room.id, this.playerNames);
           this.onChatMessage(joinMessage(signal.fromName));
+          this._loadRank(signal.fromUserId);
           // Envia lista de jogadores e configurações
           conn.send({ t: 'init', motd: this.room.motd, gameMode: this.room.guestGameMode,
             allowCommands: this.room.allowCommands, pvp: this.room.pvp, players: this.playerNames });
@@ -126,6 +132,13 @@ export class NetHost {
     await conn.connect();
     await conn.handleOffer(signal.fromUserId, signal.data);
     this.peers.set(signal.fromUserId, { conn, name: signal.fromName });
+  }
+
+  async _loadRank(userId) {
+    try {
+      const { data } = await supabase.from('profiles').select('rank').eq('id', userId).maybeSingle();
+      if (data?.rank) this.ranks.set(userId, data.rank);
+    } catch { /* coluna ainda não existe: fica JOGADOR */ }
   }
 
   _removePeer(userId) {
@@ -189,6 +202,7 @@ export class NetHost {
           p = { id: userId, name: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, targetX: msg.x, targetY: msg.y, targetZ: msg.z, targetYaw: msg.yaw };
           this.remotePlayers.set(userId, p);
         } else {
+          p.isDead = !!msg.dead;
           p.targetX = msg.x;
           p.targetY = msg.y;
           p.targetZ = msg.z;
@@ -196,11 +210,19 @@ export class NetHost {
           p.pitch = msg.pitch;
         }
         // Repassa posição do jogador para outros convidados
-        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch }, userId);
+        p.isDead = !!msg.dead;
+        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead }, userId);
         break;
       }
       case 'cmd': {
         this._handleServerCommand(userId, userName, msg);
+        break;
+      }
+      case 'death': {
+        // Convidado morreu: o host mostra e repassa aos demais; o nome vem da conexão, não da mensagem
+        const text = `${userName} ${String(msg.cause || 'morreu')}`.slice(0, 160);
+        this.onChatMessage({ type: 'system', text: '§f' + text, timestamp: Date.now() });
+        this.broadcast({ t: 'chat', system: true, text: '§f' + text }, userId);
         break;
       }
     }
@@ -251,7 +273,7 @@ export class NetHost {
 
   getAllPings() {
     const list = [
-      { name: this.user.full_name || this.user.email || 'Host', pingMs: 0, isHost: true, id: this.user.id }
+      { name: this.user.full_name || this.user.email || 'Host', pingMs: 0, isHost: true, id: this.user.id, rank: 'owner' }
     ];
     for (const [uid, p] of this.peers) {
       list.push({
@@ -259,6 +281,7 @@ export class NetHost {
         pingMs: p.conn?.pingMs ?? null,
         isHost: false,
         id: uid,
+        rank: this.ranks?.get(uid) || 'player',
       });
     }
     return list.sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0) || a.name.localeCompare(b.name));
@@ -292,6 +315,7 @@ export class NetHost {
   async close() {
     this._closed = true;
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    if (this.listTimer) clearInterval(this.listTimer);
     if (this.signalUnsub) this.signalUnsub();
     for (const [_, peer] of this.peers) {
       peer.conn.send({ t: 'disconnect', reason: 'Host fechou o mundo' });
@@ -321,6 +345,10 @@ export class NetClient {
   }
 
   getAllPings() {
+    if (this.listCache) { // lista medida pelo host (ping de todos); o ping do próprio jogador é o da sua conexão
+      const me = this.user.full_name || this.user.email || 'Player';
+      return this.listCache.map(e => ({ ...e, id: e.name, pingMs: e.name === me ? (this.conn?.pingMs ?? e.pingMs) : e.pingMs }));
+    }
     const playersList = this.room?.playerNames || [this.user.full_name || 'Player'];
     const list = playersList.map(name => {
       const isMe = name === (this.user.full_name || this.user.email || 'Player');
@@ -414,12 +442,17 @@ export class NetClient {
           p.targetYaw = msg.yaw;
           p.pitch = msg.pitch;
         }
+        p.isDead = !!msg.dead;
         // Smooth lerp towards target position
         p.x += (p.targetX - p.x) * 0.3;
         p.y += (p.targetY - p.y) * 0.3;
         p.z += (p.targetZ - p.z) * 0.3;
         p.yaw += (p.targetYaw - p.yaw) * 0.3;
         this.onPlayerUpdate({ id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, time: msg.t || Date.now() });
+        break;
+      }
+      case 'plist': {
+        if (Array.isArray(msg.list)) this.listCache = msg.list;
         break;
       }
       case 'players': {
