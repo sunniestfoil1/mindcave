@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import ItemSlot from "./ItemSlot";
-import { ITEMS, itemColor, TOOL_MATERIALS, ARMOR_MATERIALS } from "@/game/items";
+import { ITEMS } from "@/game/items";
 import { BLOCKS } from "@/game/blocks";
-import { GUNS, ACCESSORIES, AMMO_TYPES } from "@/game/guns/registry";
 import { FOODS } from "@/game/survival";
-import { leftClick, rightClick, shiftClick, addItem } from "@/game/inventory";
-import { getPackUrl, MC } from "@/game/pack";
+import { leftClick, rightClick, addItem } from "@/game/inventory";
 import { playClickSound } from "@/game/sounds";
+import ItemTooltip from "./ItemTooltip";
+import PlayerPreview, { PREVIEW_CREATIVE } from "./PlayerPreview";
+import { Sprite, McText, usePackTexture, useGuiScaleValue } from "./GuiSprite";
 
 // Categorização rica e abrangente para todos os blocos e itens do jogo
 const REDSTONE_IDS = new Set([
@@ -85,87 +86,23 @@ function getItemCategories(id, isBlock, def) {
   return Array.from(cats);
 }
 
-// Tooltip oficial Java 1.8.9 com cores e raridades
-function MinecraftTooltip({ item, mousePos }) {
-  if (!item || !item.id) return null;
+const WIN = { w: 195, h: 136 };
+const SCROLL = { x: 175, y: 18, w: 12, h: 112 };
+const TAB_FILES = {
+  items: 'textures/gui/container/creative_inventory/tab_items.png',
+  search: 'textures/gui/container/creative_inventory/tab_item_search.png',
+  inventory: 'textures/gui/container/creative_inventory/tab_inventory.png',
+  tabs: 'textures/gui/container/creative_inventory/tabs.png',
+};
 
-  const isBlock = item.id < 256;
-  const blockDef = isBlock ? BLOCKS[item.id] : null;
-  const itemDef = !isBlock ? ITEMS[item.id] : null;
-
-  const namePt = item.name || blockDef?.namePt || itemDef?.namePt || `Item #${item.id}`;
-  const nameEn = item.nameEn || blockDef?.name || itemDef?.name || '';
-  const rarity = itemDef?.rarity || (item.id === 399 || item.id === 466 ? 'epic' : item.id === 322 || item.id === 384 ? 'rare' : 'common');
-
-  let nameColor = '#FFFFFF';
-  if (rarity === 'epic') nameColor = '#FF55FF';
-  else if (rarity === 'rare') nameColor = '#55FFFF';
-  else if (itemDef?.weapon || itemDef?.gun) nameColor = '#FFAA00';
-  else if (itemDef?.tool?.material === 'diamond' || itemDef?.armor?.material === 'diamond') nameColor = '#55FFFF';
-  else if (itemDef?.tool?.material === 'gold' || itemDef?.armor?.material === 'gold') nameColor = '#FFFF55';
-
-  const foodData = FOODS[item.id];
-  const gunKey = itemDef?.gun;
-  const gunDef = gunKey && GUNS[gunKey] ? GUNS[gunKey] : null;
-
-  let posX = mousePos.x + 14;
-  let posY = mousePos.y - 12;
-
-  if (typeof window !== 'undefined') {
-    if (posX + 260 > window.innerWidth) posX = mousePos.x - 270;
-    if (posY + 200 > window.innerHeight) posY = window.innerHeight - 210;
-  }
-
-  return (
-    <div
-      className="fixed z-[100] pointer-events-none px-3 py-2 text-xs font-minecraft select-none shadow-2xl"
-      style={{
-        left: posX,
-        top: posY,
-        backgroundColor: '#100010',
-        border: '2px solid #280048',
-        borderRadius: '3px',
-        maxWidth: '300px',
-        color: '#FFFFFF',
-        textShadow: '1px 1px 0 #3f3f3f',
-      }}
-    >
-      <div className="font-bold text-sm tracking-wide" style={{ color: nameColor }}>
-        {namePt}
-      </div>
-      {nameEn && nameEn !== namePt && (
-        <div className="text-stone-400 text-[11px] italic mb-1">{nameEn}</div>
-      )}
-
-      {itemDef?.weaponDamage && (
-        <div className="text-[#55FF55] font-semibold mt-1">
-          +{itemDef.weaponDamage} Dano de Ataque
-        </div>
-      )}
-
-      {gunDef && (
-        <div className="mt-1 pt-1 border-t border-purple-900/50 text-[11px]">
-          <div className="text-[#FFAA00]">Arma: {gunDef.name} ({gunDef.type.toUpperCase()})</div>
-          <div className="text-stone-300">Dano por Tiro: {gunDef.damage}</div>
-          <div className="text-stone-300">Capacidade: {gunDef.magCapacity} disparos</div>
-        </div>
-      )}
-
-      {foodData && (
-        <div className="mt-1 pt-1 border-t border-purple-900/50 text-[11px]">
-          <div className="text-[#FFAA00] font-semibold">+{foodData.hunger} Pontos de Fome</div>
-          <div className="text-stone-300">Saturação: +{foodData.saturation.toFixed(1)}</div>
-        </div>
-      )}
-
-      <div className="mt-1 pt-1 border-t border-purple-900/40 text-[10px] text-stone-500">
-        #{item.id} ({isBlock ? 'Bloco' : 'Item'})
-      </div>
-    </div>
-  );
+// Posição de cada aba como no GuiContainerCreative da 1.8.9: a última coluna (5) fica encostada à direita
+function tabRect(col, top) {
+  const x = col === 5 ? WIN.w - 28 * (6 - col) + 2 : 28 * col + (col > 0 ? col : 0);
+  return { x, y: top ? -28 : WIN.h - 4 };
 }
 
 export default function CreativeUI({ inv, onUpdate, onClose }) {
+  const S = useGuiScaleValue();
   const [tab, setTab] = useState('building');
   const [search, setSearch] = useState('');
   const [scroll, setScroll] = useState(0);
@@ -173,23 +110,13 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
   const refresh = () => { forceUpdate(n => n + 1); onUpdate?.(); };
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [hoveredItem, setHoveredItem] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const rootRef = useRef(null);
 
-  const [bgTabItemsUrl, setBgTabItemsUrl] = useState(null);
-  const [bgTabSearchUrl, setBgTabSearchUrl] = useState(null);
-  const [bgTabsUrl, setBgTabsUrl] = useState(null);
-
-  // Carregar texturas oficiais de GUI do Creative Inventory
-  useEffect(() => {
-    getPackUrl(MC + 'textures/gui/container/creative_inventory/tab_items.png').then(url => {
-      if (url) setBgTabItemsUrl(url);
-    });
-    getPackUrl(MC + 'textures/gui/container/creative_inventory/tab_item_search.png').then(url => {
-      if (url) setBgTabSearchUrl(url);
-    });
-    getPackUrl(MC + 'textures/gui/container/creative_inventory/tabs.png').then(url => {
-      if (url) setBgTabsUrl(url);
-    });
-  }, []);
+  const texItems = usePackTexture(TAB_FILES.items);
+  const texSearch = usePackTexture(TAB_FILES.search);
+  const texInventory = usePackTexture(TAB_FILES.inventory);
+  const texTabs = usePackTexture(TAB_FILES.tabs);
 
   // Captura estrita da tecla E e Escape
   useEffect(() => {
@@ -225,30 +152,18 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
       const numId = parseInt(id, 10);
       const b = BLOCKS[id];
       if (numId === 0 || !b) continue;
-      const categories = getItemCategories(numId, true, b);
       list.push({
-        id: numId,
-        name: b.namePt || b.name,
-        nameEn: b.name,
-        isBlock: true,
-        categories,
-        maxStack: 64,
-        block: b,
+        id: numId, name: b.namePt || b.name, nameEn: b.name, isBlock: true,
+        categories: getItemCategories(numId, true, b), maxStack: 64, block: b,
       });
     }
     for (const id in ITEMS) {
       const numId = parseInt(id, 10);
       const it = ITEMS[id];
       if (!it) continue;
-      const categories = getItemCategories(numId, false, it);
       list.push({
-        id: numId,
-        name: it.namePt || it.name,
-        nameEn: it.name,
-        isBlock: false,
-        categories,
-        maxStack: it.maxStack || 64,
-        item: it,
+        id: numId, name: it.namePt || it.name, nameEn: it.name, isBlock: false,
+        categories: getItemCategories(numId, false, it), maxStack: it.maxStack || 64, item: it,
       });
     }
     return list;
@@ -259,25 +174,19 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
       if (!search.trim()) return allItems;
       const q = search.toLowerCase().trim();
       return allItems.filter(i =>
-        i.name.toLowerCase().includes(q) ||
-        i.nameEn.toLowerCase().includes(q) ||
-        i.id.toString().includes(q)
-      );
+        i.name.toLowerCase().includes(q) || i.nameEn.toLowerCase().includes(q) || i.id.toString().includes(q));
     }
-    if (tab === 'survival') {
-      return (inv?.main || []).filter(Boolean);
-    }
+    if (tab === 'survival') return [];
     return allItems.filter(i => i.categories.includes(tab));
-  }, [allItems, tab, search, inv]);
+  }, [allItems, tab, search]);
 
-  // Grade oficial: 9 colunas × 5 linhas = 45 slots visíveis
-  const pageSize = 45;
+  // Grade oficial: 9 colunas × 5 linhas
   const totalRows = Math.ceil(filteredItems.length / 9);
   const maxScroll = Math.max(0, totalRows - 5);
-  const pageItems = filteredItems.slice(scroll * 9, scroll * 9 + pageSize);
+  const pageItems = filteredItems.slice(scroll * 9, scroll * 9 + 45);
 
   const handleWheel = (e) => {
-    if (maxScroll <= 0) return;
+    if (maxScroll <= 0 || tab === 'survival') return;
     if (e.deltaY > 0) setScroll(s => Math.min(maxScroll, s + 1));
     else if (e.deltaY < 0) setScroll(s => Math.max(0, s - 1));
   };
@@ -286,311 +195,153 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
     const max = itemData.maxStack || 64;
     playClickSound();
     if (isShift) {
-      const newItem = { id: itemData.id, count: max, meta: 0 };
-      addItem(inv, newItem);
+      addItem(inv, { id: itemData.id, count: max, meta: 0 });
       refresh();
       return;
     }
-    if (isRight) {
-      inv.cursor = { id: itemData.id, count: 1, meta: 0 };
-    } else {
-      inv.cursor = { id: itemData.id, count: max, meta: 0 };
-    }
+    inv.cursor = { id: itemData.id, count: isRight ? 1 : max, meta: 0 };
     refresh();
   };
 
-  const handleHotbarClick = (index, isLeft) => {
+  const slotAction = (arr, index, isLeft) => {
     playClickSound();
-    const getSlot = () => inv.hotbar[index];
-    const setSlot = (val) => { inv.hotbar[index] = val; };
+    const getSlot = () => arr[index];
+    const setSlot = (val) => { arr[index] = val; };
     if (isLeft) leftClick(inv, getSlot, setSlot);
     else rightClick(inv, getSlot, setSlot);
     refresh();
   };
 
-  const clearHotbar = () => {
-    playClickSound();
-    for (let i = 0; i < 9; i++) inv.hotbar[i] = null;
-    refresh();
+  const selectTab = (id) => { playClickSound(); setTab(id); setScroll(0); };
+
+  // Arrasto da barra de rolagem: a posição do mouse na trilha vira a linha inicial
+  const scrollFromPointer = (clientY) => {
+    if (maxScroll <= 0 || !rootRef.current) return;
+    const rect = rootRef.current.getBoundingClientRect();
+    const rel = (clientY - rect.top) / S - SCROLL.y - 7.5;
+    setScroll(Math.max(0, Math.min(maxScroll, Math.round((rel / (SCROLL.h - 17)) * maxScroll))));
   };
+  useEffect(() => {
+    if (!dragging) return undefined;
+    const move = (e) => scrollFromPointer(e.clientY);
+    const up = () => setDragging(false);
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  });
 
-  // Escala oficial Java 1.8.9 (janela grande e nítida)
-  const scale = 2.75;
-  const bgWidth = 195 * scale;
-  const bgHeight = 136 * scale;
-  const tabW = 28 * scale;
-  const tabH = 32 * scale;
-  const slotStep = 18 * scale;
-  const slotItemSize = 16 * scale;
-
+  const winTex = tab === 'search' ? texSearch : tab === 'survival' ? texInventory : texItems;
   const currentTabName = [...TOP_TABS, ...BOTTOM_TABS].find(t => t.id === tab)?.name || 'Itens';
+  const left = Math.floor((window.innerWidth - WIN.w * S) / 2);
+  const top = Math.floor((window.innerHeight - WIN.h * S) / 2);
+
+  // Slot de 16×16 px de GUI no ponto (x, y) da janela
+  const slot = (key, x, y, item, props) => (
+    <div key={key} style={{ position: 'absolute', left: x * S, top: y * S, width: 16 * S, height: 16 * S }}>
+      <ItemSlot item={item} size={16 * S} transparent fill guiScale={S} onHover={(it) => setHoveredItem(it)} {...props} />
+    </div>
+  );
+
+  const renderTab = (t, col, isTop) => {
+    const sel = tab === t.id;
+    const { x, y } = tabRect(col, isTop);
+    const v = isTop ? (sel ? 32 : 0) : (sel ? 96 : 64);
+    return (
+      <Sprite
+        key={t.id} url={texTabs} u={28 * col} v={v} w={28} h={32} S={S} x={x} y={y} z={sel ? 3 : 1}
+        title={t.name} onClick={() => selectTab(t.id)} style={{ cursor: 'pointer' }}
+      >
+        <div style={{ position: 'absolute', left: 6 * S, top: (8 + (isTop ? 1 : -1)) * S, width: 16 * S, height: 16 * S, pointerEvents: 'none' }}>
+          <ItemSlot item={t.item} size={16 * S} transparent fill guiScale={S} />
+        </div>
+      </Sprite>
+    );
+  };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 select-none pointer-events-auto"
+      className="fixed inset-0 z-50 select-none pointer-events-auto"
+      style={{ background: 'rgba(0,0,0,0.65)', imageRendering: 'pixelated' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       onWheel={handleWheel}
-      style={{ imageRendering: 'pixelated' }}
     >
-      <div className="relative" style={{ width: bgWidth, height: bgHeight + 50 * scale }}>
-        
-        {/* ABAS SUPERIORES (TOP TABS) */}
-        <div className="absolute flex" style={{ top: 0, left: 0 }}>
-          {TOP_TABS.map((t, idx) => {
-            const active = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => { playClickSound(); setTab(t.id); setScroll(0); }}
-                title={t.name}
-                className="relative flex items-center justify-center transition-transform hover:brightness-110"
-                style={{
-                  width: tabW,
-                  height: tabH,
-                  marginLeft: idx === 0 ? 0 : -scale,
-                  background: active ? '#C6C6C6' : '#9B9B9B',
-                  borderTop: `${scale * 2}px solid ${active ? '#FFFFFF' : '#D0D0D0'}`,
-                  borderLeft: `${scale * 2}px solid ${active ? '#FFFFFF' : '#D0D0D0'}`,
-                  borderRight: `${scale * 2}px solid #373737`,
-                  borderBottom: active ? 'none' : `${scale * 2}px solid #373737`,
-                  borderTopLeftRadius: `${scale * 3}px`,
-                  borderTopRightRadius: `${scale * 3}px`,
-                  zIndex: active ? 20 : 10,
-                  transform: active ? `translateY(${scale * 2}px)` : 'translateY(0)',
-                }}
-              >
-                <div style={{ pointerEvents: 'none' }}>
-                  <ItemSlot item={t.item} size={slotItemSize} transparent={true} />
-                </div>
-              </button>
-            );
-          })}
-        </div>
+      <div ref={rootRef} style={{ position: 'absolute', left, top, width: WIN.w * S, height: WIN.h * S }}>
+        {/* Abas inativas atrás da janela, ativa por cima */}
+        {TOP_TABS.map((t, i) => renderTab(t, i, true))}
+        {BOTTOM_TABS.map((t, i) => renderTab(t, i, false))}
 
-        {/* CONTAINER PRINCIPAL (JANELA DO CRIATIVO) */}
-        <div
-          className="absolute shadow-2xl"
-          style={{
-            top: tabH - scale * 2,
-            left: 0,
-            width: bgWidth,
-            height: bgHeight,
-            backgroundColor: '#C6C6C6',
-            backgroundImage: bgTabItemsUrl ? `url(${bgTabItemsUrl})` : undefined,
-            backgroundSize: `${256 * scale}px ${256 * scale}px`,
-            backgroundPosition: '0 0',
-            backgroundRepeat: 'no-repeat',
-            borderTop: `${scale * 2}px solid #FFFFFF`,
-            borderLeft: `${scale * 2}px solid #FFFFFF`,
-            borderRight: `${scale * 2}px solid #373737`,
-            borderBottom: `${scale * 2}px solid #373737`,
-            zIndex: 15,
-          }}
-        >
-          {/* Título da Aba no Canto Superior Esquerdo */}
-          <div
-            className="absolute font-minecraft font-bold"
-            style={{
-              top: 6 * scale,
-              left: 8 * scale,
-              fontSize: `${8 * scale}px`,
-              color: '#404040',
-            }}
-          >
-            {currentTabName}
-          </div>
-
-          {/* Campo de Busca (se estiver na aba Pesquisar) */}
-          {tab === 'search' && (
+        <Sprite url={winTex} u={0} v={0} w={WIN.w} h={WIN.h} S={S} z={2} />
+        <div style={{ position: 'absolute', inset: 0, zIndex: 4 }}>
+          {tab === 'search' ? (
             <input
-              type="text"
-              autoFocus
-              placeholder="Buscar..."
-              value={search}
+              type="text" autoFocus placeholder="Buscar..." value={search}
               onChange={(e) => { setSearch(e.target.value); setScroll(0); }}
-              className="absolute font-minecraft bg-[#8B8B8B] text-white px-2 outline-none border border-[#373737]"
               style={{
-                top: 4 * scale,
-                right: 32 * scale,
-                width: 90 * scale,
-                height: 12 * scale,
-                fontSize: `${7 * scale}px`,
+                position: 'absolute', left: 82 * S, top: 6 * S, width: 89 * S, height: 12 * S, padding: `0 ${2 * S}px`,
+                background: 'transparent', border: 'none', outline: 'none', color: '#FFFFFF',
+                fontFamily: "'Minecraft', monospace", fontSize: 8 * S, lineHeight: `${12 * S}px`,
               }}
             />
+          ) : null}
+          <McText text={tab === 'search' ? 'Buscar' : currentTabName} x={8} y={6} S={S} />
+
+          {tab === 'survival' ? (
+            <>
+              <PlayerPreview S={S} preset={PREVIEW_CREATIVE} />
+              {inv.armor.map((item, i) => slot('a' + i, 9 + Math.floor(i / 2) * 54, 6 + (i % 2) * 27, item, {
+                onClick: () => slotAction(inv.armor, i, true),
+                onRightClick: () => slotAction(inv.armor, i, false),
+              }))}
+              {inv.main.map((item, i) => slot('m' + i, 9 + (i % 9) * 18, 54 + Math.floor(i / 9) * 18, item, {
+                onClick: () => slotAction(inv.main, i, true),
+                onRightClick: () => slotAction(inv.main, i, false),
+              }))}
+              {/* Lixeira: solta o item do cursor */}
+              <div
+                title="Destruir item"
+                onClick={() => { if (inv.cursor) { playClickSound(); inv.cursor = null; refresh(); } }}
+                style={{ position: 'absolute', left: 173 * S, top: 112 * S, width: 18 * S, height: 18 * S, cursor: 'pointer' }}
+              />
+            </>
+          ) : (
+            Array.from({ length: 45 }).map((_, idx) => {
+              const itemData = pageItems[idx];
+              return slot('g' + idx, 9 + (idx % 9) * 18, 18 + Math.floor(idx / 9) * 18, itemData, {
+                onClick: () => itemData && pickItem(itemData, false, false),
+                onRightClick: () => itemData && pickItem(itemData, false, true),
+                onShiftClick: () => itemData && pickItem(itemData, true, false),
+              });
+            })
           )}
 
-          {/* MALHA INVISÍVEL DOS 45 SLOTS DO CRIATIVO (5 LINHAS × 9 COLUNAS) */}
-          <div
-            className="absolute"
-            style={{
-              top: 18 * scale,
-              left: 9 * scale,
-              width: 9 * slotStep,
-              height: 5 * slotStep,
-            }}
-          >
-            {Array.from({ length: 45 }).map((_, idx) => {
-              const itemData = pageItems[idx];
-              const col = idx % 9;
-              const row = Math.floor(idx / 9);
+          {inv.hotbar.map((item, i) => slot('h' + i, 9 + i * 18, 112, item, {
+            onClick: () => slotAction(inv.hotbar, i, true),
+            onRightClick: () => slotAction(inv.hotbar, i, false),
+            onShiftClick: () => slotAction(inv.hotbar, i, true),
+          }))}
 
-              return (
-                <div
-                  key={idx}
-                  className="absolute"
-                  style={{
-                    left: col * slotStep,
-                    top: row * slotStep,
-                    width: slotStep,
-                    height: slotStep,
-                  }}
-                >
-                  <ItemSlot
-                    item={itemData}
-                    size={slotStep}
-                    transparent={true}
-                    onHover={(it) => setHoveredItem(it)}
-                    onClick={() => itemData && pickItem(itemData, false, false)}
-                    onRightClick={() => itemData && pickItem(itemData, false, true)}
-                    onShiftClick={() => itemData && pickItem(itemData, true, false)}
-                  />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* TRACK DA BARRA DE ROLAGEM VERTICAL (SCROLLBAR) */}
-          <div
-            className="absolute cursor-pointer"
-            style={{
-              top: 18 * scale,
-              left: 175 * scale,
-              width: 12 * scale,
-              height: 94 * scale,
-              backgroundColor: bgTabItemsUrl ? 'transparent' : '#8B8B8B',
-            }}
-          >
-            {/* Polegar de Rolagem (Thumb) */}
+          {/* Barra de rolagem: trilha da textura + alça de tabs.png (232,0 ativa / 244,0 inativa) */}
+          {tab !== 'survival' && (
             <div
-              className="absolute transition-transform bg-[#C6C6C6] border border-t-white border-l-white border-r-[#373737] border-b-[#373737]"
-              style={{
-                top: maxScroll > 0 ? (scroll / maxScroll) * (94 - 15) * scale : 0,
-                left: 0,
-                width: 12 * scale,
-                height: 15 * scale,
-                opacity: maxScroll > 0 ? 1 : 0.45,
-              }}
-            />
-          </div>
-
-          {/* MALHA INVISÍVEL DA HOTBAR (9 SLOTS INFERIORES) */}
-          <div
-            className="absolute"
-            style={{
-              top: 112 * scale,
-              left: 9 * scale,
-              width: 9 * slotStep,
-              height: slotStep,
-            }}
-          >
-            {Array.from({ length: 9 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="absolute"
-                style={{
-                  left: idx * slotStep,
-                  top: 0,
-                  width: slotStep,
-                  height: slotStep,
-                }}
-              >
-                <ItemSlot
-                  item={inv.hotbar[idx]}
-                  size={slotStep}
-                  transparent={true}
-                  onHover={(it) => setHoveredItem(it)}
-                  onClick={() => handleHotbarClick(idx, true)}
-                  onRightClick={() => handleHotbarClick(idx, false)}
-                  onShiftClick={() => handleHotbarClick(idx, true)}
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* Botão de Limpar Hotbar no Canto da Janela */}
-          <button
-            onClick={clearHotbar}
-            title="Limpar Barra de Acesso Rápido"
-            className="absolute flex items-center justify-center font-minecraft font-bold hover:brightness-125"
-            style={{
-              top: 113 * scale,
-              left: 174 * scale,
-              width: 14 * scale,
-              height: 14 * scale,
-              backgroundColor: '#B53333',
-              border: `${scale}px solid #2B0000`,
-              color: '#FFFFFF',
-              fontSize: `${7 * scale}px`,
-            }}
-          >
-            ✕
-          </button>
+              onMouseDown={(e) => { if (maxScroll > 0) { setDragging(true); scrollFromPointer(e.clientY); } }}
+              style={{ position: 'absolute', left: SCROLL.x * S, top: SCROLL.y * S, width: SCROLL.w * S, height: SCROLL.h * S, cursor: maxScroll > 0 ? 'pointer' : 'default' }}
+            >
+              <Sprite
+                url={texTabs} u={maxScroll > 0 ? 232 : 244} v={0} w={12} h={15} S={S}
+                y={maxScroll > 0 ? Math.round((SCROLL.h - 17) * (scroll / maxScroll)) : 0}
+              />
+            </div>
+          )}
         </div>
-
-        {/* ABAS INFERIORES (BOTTOM TABS) */}
-        <div
-          className="absolute flex"
-          style={{
-            top: tabH + bgHeight - scale * 4,
-            left: 0,
-          }}
-        >
-          {BOTTOM_TABS.map((t, idx) => {
-            const active = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => { playClickSound(); setTab(t.id); setScroll(0); }}
-                title={t.name}
-                className="relative flex items-center justify-center transition-transform hover:brightness-110"
-                style={{
-                  width: tabW,
-                  height: tabH,
-                  marginLeft: idx === 0 ? 0 : -scale,
-                  background: active ? '#C6C6C6' : '#9B9B9B',
-                  borderTop: active ? 'none' : `${scale * 2}px solid #373737`,
-                  borderLeft: `${scale * 2}px solid ${active ? '#FFFFFF' : '#D0D0D0'}`,
-                  borderRight: `${scale * 2}px solid #373737`,
-                  borderBottom: `${scale * 2}px solid #373737`,
-                  borderBottomLeftRadius: `${scale * 3}px`,
-                  borderBottomRightRadius: `${scale * 3}px`,
-                  zIndex: active ? 20 : 10,
-                  transform: active ? `translateY(-${scale * 2}px)` : 'translateY(0)',
-                }}
-              >
-                <div style={{ pointerEvents: 'none' }}>
-                  <ItemSlot item={t.item} size={slotItemSize} transparent={true} />
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
       </div>
 
-      {/* TOOLTIP AUTÊNTICO JAVA 1.8.9 */}
-      {hoveredItem && <MinecraftTooltip item={hoveredItem} mousePos={mouse} />}
+      {/* Tooltip autêntico Java 1.8.9 */}
+      {hoveredItem && !inv?.cursor && <ItemTooltip item={hoveredItem} mousePos={mouse} />}
 
-      {/* ITEM SEGURADO NO CURSOR */}
+      {/* Item segurado no cursor */}
       {inv?.cursor && (
-        <div
-          className="fixed pointer-events-none z-[120]"
-          style={{
-            left: mouse.x - slotItemSize / 2,
-            top: mouse.y - slotItemSize / 2,
-          }}
-        >
-          <ItemSlot item={inv.cursor} size={slotItemSize} transparent={true} />
+        <div className="fixed pointer-events-none z-[120]" style={{ left: mouse.x - 8 * S, top: mouse.y - 8 * S, width: 16 * S, height: 16 * S }}>
+          <ItemSlot item={inv.cursor} size={16 * S} transparent fill guiScale={S} />
         </div>
       )}
     </div>

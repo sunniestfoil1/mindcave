@@ -175,7 +175,8 @@ export function deserializeInventory(inv, data) {
   try {
     const d = typeof data === 'string' ? JSON.parse(data) : data;
     if (d.main) inv.main = d.main.map(item => item ? { ...item, data: null } : null);
-    if (d.hotbar) inv.hotbar = d.hotbar.map(item => item ? { ...item, data: null } : null);
+    // A hotbar é o MESMO array de player.hotbar (motor, mão e HUD leem dele): preencher no lugar, nunca trocar a referência
+    if (d.hotbar) inv.hotbar.splice(0, inv.hotbar.length, ...Array.from({ length: 9 }, (_, i) => (d.hotbar[i] ? { ...d.hotbar[i], data: null } : null)));
     if (d.armor) inv.armor = d.armor.map(item => item ? { ...item, data: null } : null);
   } catch (e) {}
 }

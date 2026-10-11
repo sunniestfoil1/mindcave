@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { itemColor, getItem, ITEMS } from "@/game/items";
+import { itemColor, ITEMS } from "@/game/items";
 import { BLOCKS } from "@/game/blocks";
 import { getDurabilityRatio } from "@/game/mining";
 import { getPackUrl, MC } from "@/game/pack";
+import { getAtlasTileCanvas, getAtlasVersion } from "@/game/textures";
+import { itemIconFile, itemBlockTile, ICON_TINT } from "@/game/gui/iconNames";
 
 const blockCanvasCache = new Map();
 
-function get3DBlockDataUrl(topImg, sideImg) {
-  const cacheKey = (topImg?.src || '') + '|' + (sideImg?.src || '');
+function get3DBlockDataUrl(topImg, sideImg, cacheKey) {
   if (blockCanvasCache.has(cacheKey)) return blockCanvasCache.get(cacheKey);
 
   const canvas = document.createElement('canvas');
@@ -49,58 +50,62 @@ function get3DBlockDataUrl(topImg, sideImg) {
   return dataUrl;
 }
 
-export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, onHover, size = 44, highlight = false, transparent = false }) {
+// fill: o ícone ocupa o slot inteiro (slots de container de 16×16 px de GUI); guiScale: fator inteiro para o tamanho do número
+export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, onHover, size = 44, highlight = false, transparent = false, fill = false, guiScale = 0 }) {
   const [hover, setHover] = useState(false);
   const [imgUrl, setImgUrl] = useState(null);
+  const atlasVer = getAtlasVersion(); // o ícone é refeito quando as texturas reais terminam de carregar
 
   useEffect(() => {
     if (!item || !item.id) {
       setImgUrl(null);
       return;
     }
-    const isBlock = item.id < 256;
-    if (isBlock) {
-      const b = BLOCKS[item.id];
-      if (b && (b.model === 'cube' || !b.model)) {
-        const topTex = typeof b.faces === 'string' ? b.faces : (b.faces?.top || b.faces?.all || b.name);
-        const sideTex = typeof b.faces === 'string' ? b.faces : (b.faces?.side || b.faces?.front || b.faces?.all || b.name);
-        Promise.all([
-          getPackUrl(MC + 'textures/blocks/' + topTex + '.png'),
-          getPackUrl(MC + 'textures/blocks/' + sideTex + '.png')
-        ]).then(([topUrl, sideUrl]) => {
-          if (!topUrl) { setImgUrl(null); return; }
-          const topImg = new Image();
-          const sideImg = new Image();
-          topImg.crossOrigin = 'Anonymous';
-          sideImg.crossOrigin = 'Anonymous';
-          topImg.src = topUrl;
-          sideImg.src = sideUrl || topUrl;
-          let loaded = 0;
-          const onDone = () => {
-            loaded++;
-            if (loaded >= 2) {
-              const iso3D = get3DBlockDataUrl(topImg, sideImg);
-              setImgUrl(iso3D);
-            }
-          };
-          topImg.onload = onDone;
-          sideImg.onload = onDone;
-          topImg.onerror = () => setImgUrl(topUrl);
-          sideImg.onerror = () => setImgUrl(topUrl);
-        });
-      } else if (b) {
-        const texName = typeof b.faces === 'string' ? b.faces : (b.faces?.all || b.faces?.side || b.faces?.front || b.faces?.top || b.name);
-        getPackUrl(MC + 'textures/blocks/' + texName + '.png').then(url => setImgUrl(url || null));
-      }
-    } else {
-      const it = ITEMS[item.id];
-      if (it) {
-        getPackUrl(MC + 'textures/items/' + it.name + '.png').then(url => setImgUrl(url || null));
+    // Ícone de um ladrilho do atlas (já com as texturas do pacote), com tinta de bioma quando o bloco é tingido
+    const tile = (name, tint) => {
+      const cv = name ? getAtlasTileCanvas(name) : null;
+      if (!cv || !tint) return cv;
+      const c = document.createElement('canvas');
+      c.width = cv.width; c.height = cv.height;
+      const x = c.getContext('2d');
+      x.drawImage(cv, 0, 0);
+      x.globalCompositeOperation = 'multiply';
+      x.fillStyle = ICON_TINT[tint];
+      x.fillRect(0, 0, c.width, c.height);
+      x.globalCompositeOperation = 'destination-in';
+      x.drawImage(cv, 0, 0);
+      return c;
+    };
+    const showBlock = (b) => {
+      const f = b.faces;
+      const top = typeof f === 'string' ? f : (f?.top || f?.all || f?.side || b.name);
+      const side = typeof f === 'string' ? f : (f?.side || f?.front || f?.all || top);
+      const tint = b.tint === 'grass' || b.tint === 'foliage' ? b.tint : null;
+      if (b.model === 'cube' || !b.model) {
+        const t = tile(top, tint);
+        const sd = tile(side, tint && side === top ? tint : null);
+        if (t && sd) { setImgUrl(get3DBlockDataUrl(t, sd, `${top}|${side}|${tint}`)); return true; }
       } else {
-        setImgUrl(null);
+        const flat = tile(side || top, tint);
+        if (flat) { setImgUrl(flat.toDataURL()); return true; }
       }
+      return false;
+    };
+    const isBlock = item.id < 256;
+    const b = isBlock ? BLOCKS[item.id] : null;
+    if (b) {
+      if (!showBlock(b)) setImgUrl(null);
+      return;
     }
-  }, [item?.id]);
+    const it = ITEMS[item.id];
+    if (!it) { setImgUrl(null); return; }
+    getPackUrl(MC + 'textures/items/' + itemIconFile(it.name) + '.png').then((url) => {
+      if (url) { setImgUrl(url); return; }
+      const blockTile = itemBlockTile(it.name);
+      const flat = blockTile ? tile(blockTile) : null;
+      setImgUrl(flat ? flat.toDataURL() : null);
+    });
+  }, [item?.id, atlasVer]);
 
   const handleClick = (e) => {
     e.preventDefault();
@@ -145,16 +150,21 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
             <img
               src={imgUrl}
               alt=""
-              className="w-3/4 h-3/4 object-contain"
+              className={fill ? "w-full h-full object-contain" : "w-3/4 h-3/4 object-contain"}
               style={{ imageRendering: 'pixelated' }}
             />
           ) : (
-            <div className="w-3/4 h-3/4 rounded-sm" style={{ background: bg }} />
+            <div className={fill ? "w-full h-full rounded-sm" : "w-3/4 h-3/4 rounded-sm"} style={{ background: bg }} />
           )}
 
           {/* Contagem */}
           {item.count > 1 && (
-            <span className="absolute bottom-0 right-0.5 text-xs text-white font-bold" style={{ textShadow: "1px 1px 1px black, -1px -1px 1px black" }}>
+            <span
+              className="absolute text-white"
+              style={guiScale
+                ? { right: -guiScale, bottom: -guiScale, fontSize: 8 * guiScale, lineHeight: 1, fontFamily: "'Minecraft', monospace", textShadow: `${guiScale}px ${guiScale}px 0 #3f3f3f`, pointerEvents: 'none', zIndex: 2 }
+                : { right: 2, bottom: 0, fontSize: 12, fontWeight: 700, textShadow: "1px 1px 1px black, -1px -1px 1px black" }}
+            >
               {item.count}
             </span>
           )}

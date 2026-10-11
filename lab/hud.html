@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Laboratório — HUD e inventários</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; background: #5b8fd6; font: 13px system-ui, sans-serif; }
+    #bar { position: fixed; top: 0; left: 0; right: 0; z-index: 200; background: #14161acc; color: #e6e6e6; padding: 6px 10px; display: flex; gap: 8px; align-items: center; }
+    #bar button { background: #2a4d8f; color: #fff; border: 0; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
+    #bar button.on { background: #3f7a3f; }
+    #root { position: fixed; inset: 0; }
+    #out { position: fixed; left: 0; right: 0; bottom: 0; z-index: 200; background: #101216ee; color: #e6e6e6; font: 12px ui-monospace, Consolas, monospace; padding: 6px 10px; white-space: pre-wrap; max-height: 25vh; overflow: auto; }
+  </style>
+</head>
+<body>
+  <div id="bar"><b>HUD</b></div>
+  <div id="root"></div>
+  <pre id="out"></pre>
+  <script type="module" src="/lab/hud.jsx"></script>
+</body>
+</html>

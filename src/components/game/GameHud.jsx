@@ -1,14 +1,11 @@
 import React from "react";
-import { blockColor } from "@/game/hotbar";
-import { BLOCKS } from "@/game/blocks";
 import SurvivalHud from "./SurvivalHud";
-import ItemSlot from "./ItemSlot";
+import HudBars from "./HudBars";
 import PlayerListOverlay from "./PlayerListOverlay";
 import ScoreboardSidebar from "./ScoreboardSidebar";
 import { GuiScreen, GuiButton, GuiText, useGui } from "@/components/java";
 import { voiceChat } from "@/game/net/voiceChat";
 import { perfMonitor } from "@/game/perfMonitor";
-import { getWidgetsTexture } from "@/game/gui/textures";
 
 const SHADER_NAMES = ['Clássico', 'Shaders'];
 
@@ -34,7 +31,6 @@ function PauseMenuContent({ hud, onPause }) {
 
 export default function GameHud({ hud, onPause }) {
   if (!hud || hud.hideHud) return null;
-  const slots = hud.hotbar || [];
   return (
     <div className="pointer-events-none fixed inset-0 select-none font-mono text-white">
       <SurvivalHud hud={hud} />
@@ -69,46 +65,8 @@ export default function GameHud({ hud, onPause }) {
         </div>
       )}
 
-      {/* Hotbar — Official Minecraft 1.8.9 widgets.png styling (2.5x enlarged scale) */}
-      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[455px] h-[55px] pointer-events-none select-none z-30">
-        {/* Hotbar background sprite */}
-        <div
-          style={{
-            position: 'absolute', inset: 0,
-            backgroundImage: `url(${getWidgetsTexture()})`,
-            backgroundPosition: '0 0',
-            backgroundSize: '640px 640px',
-            imageRendering: 'pixelated',
-          }}
-        />
-
-        {/* Selected slot box sprite */}
-        <div
-          style={{
-            position: 'absolute',
-            top: -2.5,
-            left: (hud.selectedSlot * 50) - 2.5,
-            width: 60,
-            height: 60,
-            backgroundImage: `url(${getWidgetsTexture()})`,
-            backgroundPosition: '0 -55px',
-            backgroundSize: '640px 640px',
-            imageRendering: 'pixelated',
-            zIndex: 10,
-          }}
-        />
-
-        {/* 9 Hotbar slots */}
-        <div className="absolute inset-0 flex items-center px-[2.5px]">
-          {slots.map((s, i) => (
-            <div key={i} className="w-[50px] h-[50px] flex items-center justify-center relative z-20">
-              <ItemSlot item={s} size={42} />
-            </div>
-          ))}
-        </div>
-      </div>
-
-
+      {/* Hotbar, vida, fome, armadura e XP com a textura oficial */}
+      <HudBars hud={hud} />
 
       {/* Status da Trilha Sonora C418 & Voice Chat */}
       <div className="absolute top-2 left-2 flex items-center gap-2 pointer-events-auto z-30">
