@@ -1,6 +1,5 @@
 // Gerenciador de Trilha Sonora Ambiente C418 (Minecraft 1.8.9) — PRD 26
 // Toca as faixas originais autênticas de C418 (Sweden, Subwoofer Lullaby, Wet Hands, Mice on Venus, etc.)
-import { getAudioContext, getMusicGain } from './sounds';
 import { settingsStore } from './settingsStore';
 
 export const REAL_C418_TRACKS = [
@@ -31,8 +30,6 @@ class MusicManager {
     this.currentTrack = null;
     this.isPlaying = false;
     this.nextTrackTimer = null;
-    this.fadeGain = null;
-    this.activeOscillators = [];
     this.soundTrackAudio = null;
     this.enabled = true;
     this._started = false;
@@ -126,13 +123,20 @@ class MusicManager {
           }
         }, stepTime);
       }).catch(err => {
-        console.warn('[MusicManager] Reprodução via Audio falhou, usando fallback procedural:', err);
-        const ctx = getAudioContext();
-        if (ctx) {
-          this._playProceduralC418Track(ctx, { name: track.name, key: 'C', bpm: 58, scale: [0, 2, 4, 7, 9, 11, 12] });
+        // Sem som sintético: se o navegador bloqueou o autoplay, a mesma faixa toca no primeiro clique/tecla
+        this.soundTrackAudio = null;
+        this.isPlaying = false;
+        if (err && err.name === 'NotAllowedError') {
+          const retry = () => {
+            window.removeEventListener('pointerdown', retry);
+            window.removeEventListener('keydown', retry);
+            if (!this._started || this.isPlaying) return;
+            this.playTrack(track);
+          };
+          window.addEventListener('pointerdown', retry, { once: true });
+          window.addEventListener('keydown', retry, { once: true });
         } else {
-          this.isPlaying = false;
-          this._scheduleNextSong(10000);
+          this._scheduleNextSong(15000);
         }
       });
 
@@ -154,68 +158,6 @@ class MusicManager {
     }
   }
 
-  _playProceduralC418Track(ctx, songDef) {
-    const musicGainNode = getMusicGain();
-    if (!musicGainNode) return;
-
-    this.fadeGain = ctx.createGain();
-    this.fadeGain.gain.setValueAtTime(0.001, ctx.currentTime);
-    this.fadeGain.gain.exponentialRampToValueAtTime(1.0, ctx.currentTime + 3.0);
-    this.fadeGain.connect(musicGainNode);
-
-    const delayNode = ctx.createDelay();
-    delayNode.delayTime.value = 0.38;
-    const delayFeedback = ctx.createGain();
-    delayFeedback.gain.value = 0.45;
-    delayNode.connect(delayFeedback);
-    delayFeedback.connect(delayNode);
-    delayNode.connect(this.fadeGain);
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 1400;
-    filter.connect(this.fadeGain);
-    filter.connect(delayNode);
-
-    const rootFreq = 261.63;
-    const duration = 60;
-    const noteInterval = 1.6;
-    const totalNotes = Math.floor(duration / noteInterval);
-
-    this.activeOscillators = [];
-    let time = ctx.currentTime + 0.5;
-
-    for (let i = 0; i < totalNotes; i++) {
-      const scaleOffset = songDef.scale[Math.floor(Math.random() * songDef.scale.length)];
-      const freq = rootFreq * Math.pow(2, scaleOffset / 12);
-      this._spawnPianoNote(ctx, filter, freq, time, 2.5);
-      time += noteInterval;
-    }
-
-    setTimeout(() => {
-      this._clearCurrentSong();
-      this.isPlaying = false;
-      this._scheduleNextSong();
-    }, duration * 1000);
-  }
-
-  _spawnPianoNote(ctx, destination, freq, startTime, duration) {
-    try {
-      const osc = ctx.createOscillator();
-      const noteGain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, startTime);
-      noteGain.gain.setValueAtTime(0.0001, startTime);
-      noteGain.gain.exponentialRampToValueAtTime(0.12, startTime + 0.04);
-      noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
-      osc.connect(noteGain);
-      noteGain.connect(destination);
-      osc.start(startTime);
-      osc.stop(startTime + duration + 0.1);
-      this.activeOscillators.push(osc);
-    } catch {}
-  }
-
   _clearCurrentSong() {
     if (this.soundTrackAudio) {
       try {
@@ -223,14 +165,6 @@ class MusicManager {
         this.soundTrackAudio.currentTime = 0;
       } catch {}
       this.soundTrackAudio = null;
-    }
-    for (const osc of this.activeOscillators) {
-      try { osc.stop(); osc.disconnect(); } catch {}
-    }
-    this.activeOscillators = [];
-    if (this.fadeGain) {
-      try { this.fadeGain.disconnect(); } catch {}
-      this.fadeGain = null;
     }
   }
 
