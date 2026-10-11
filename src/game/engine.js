@@ -1139,7 +1139,7 @@ export class GameEngine {
         const cy = Math.floor(eye.y + dir.y * dist * mult);
         const cz = Math.floor(eye.z + dir.z * dist * mult);
         if (cy >= 0 && cy < 256) {
-          const blockId = this.world.getBlockId(cx, cy, cz);
+          const blockId = typeof this.world.getBlockId === 'function' ? this.world.getBlockId(cx, cy, cz) : stateId(this.world.getBlock(cx, cy, cz));
           const b = getBlock(blockId);
           if (b && b.solid) {
             d = Math.max(0.4, dist - 0.2);

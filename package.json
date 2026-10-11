@@ -8,9 +8,10 @@
     "build": "vite build",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
-    "typecheck": "tsc -p ./jsconfig.json",
+    "verify": "node scripts/verify-codebase.js",
+    "typecheck": "node scripts/verify-codebase.js",
     "preview": "vite preview",
-    "test:battery": "node scripts/test-battery.js"
+    "test:battery": "npx vite-node scripts/test-battery.js"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^17.0.0",

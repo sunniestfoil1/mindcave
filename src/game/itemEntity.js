@@ -4,6 +4,7 @@ import { getBlock } from './blocks';
 import { getItem } from './items';
 import { addItem } from './inventory';
 import { playPopSound } from './sounds';
+import { stateId } from './chunk';
 
 const GRAVITY = 18.0;
 
@@ -152,7 +153,7 @@ export class ItemEntityManager {
       const bz = Math.floor(nextZ);
 
       if (world && by >= 0 && by < 256) {
-        const blockId = world.getBlockId(bx, by, bz);
+        const blockId = typeof world.getBlockId === 'function' ? world.getBlockId(bx, by, bz) : (typeof world.getBlock === 'function' ? stateId(world.getBlock(bx, by, bz)) : 0);
         const b = getBlock(blockId);
         if (b && b.solid) {
           e.pos.y = by + 1.0;

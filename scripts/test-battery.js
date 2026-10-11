@@ -37,6 +37,20 @@ function logStep(step, message) {
   console.log(`[${step}] ${message}`);
 }
 
+async function runStaticVerification() {
+  logStep('STATIC', 'Executando verificação estática profunda de métodos, variáveis e imports...');
+  return new Promise((resolve, reject) => {
+    const proc = spawn('node', ['scripts/verify-codebase.js'], { shell: true, stdio: 'inherit' });
+    proc.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Verificação estática falhou com código ${code}`));
+      }
+    });
+  });
+}
+
 async function runBuild() {
   logStep('BUILD', 'Executando npx vite build...');
   return new Promise((resolve, reject) => {
@@ -71,7 +85,16 @@ async function runBatteryTests() {
   logHeader('INICIANDO BATERIA DE TESTES REAIS E INTEGRAÇÃO DA PRODUÇÃO (ZERO MOCKS)');
   const results = { passed: 0, failed: 0, tests: [] };
 
-  function recordResult(num, category, name, success, details = '') {
+  let testCounter = 0;
+  function recordResult(arg1, arg2, arg3, arg4, arg5 = '') {
+    let category, name, success, details;
+    if (typeof arg1 === 'number') {
+      category = arg2; name = arg3; success = arg4; details = arg5 || '';
+    } else {
+      category = arg1; name = arg2; success = arg3; details = arg4 || '';
+    }
+    testCounter++;
+    const num = testCounter;
     const numStr = String(num).padStart(2, '0');
     if (success) {
       results.passed++;
@@ -84,12 +107,21 @@ async function runBatteryTests() {
     }
   }
 
+  // --- PARTE 0: VERIFICAÇÃO ESTÁTICA PROFUNDA DE MÉTODOS E TIPOS ---
+  try {
+    await runStaticVerification();
+    recordResult(1, 'STATIC', 'Verificação Estática Profunda de Tipos, Métodos e Variáveis (Zero Inexistentes)', true);
+  } catch (err) {
+    recordResult(1, 'STATIC', 'Verificação Estática Profunda de Tipos, Métodos e Variáveis (Zero Inexistentes)', false, err.message);
+    process.exit(1);
+  }
+
   // --- PARTE 1: COMPILAÇÃO E ARTEFATOS REAIS DE BUILD ---
   try {
     await runBuild();
-    recordResult(1, 'BUILD', 'Compilação de Produção Vite (Exit Code 0)', true);
+    recordResult(2, 'BUILD', 'Compilação de Produção Vite (Exit Code 0)', true);
   } catch (err) {
-    recordResult(1, 'BUILD', 'Compilação de Produção Vite (Exit Code 0)', false, err.message);
+    recordResult(2, 'BUILD', 'Compilação de Produção Vite (Exit Code 0)', false, err.message);
     process.exit(1);
   }
 

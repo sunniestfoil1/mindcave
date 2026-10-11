@@ -2,7 +2,7 @@
 // Cada seção 16³ tem um estado: LIMPA → SUJA (na fila) → ENVIADA (em um worker) → resultado na fila de upload → LIMPA.
 // Orçamentos por quadro: respostas dos workers 2 ms · despacho 1 ms · upload à GPU 2 ms · mensagens ≤ 1 lote/worker.
 import { CHUNK_SIZE, WORLD_HEIGHT, SECTION_SIZE, SECTIONS_PER_CHUNK } from './constants';
-import { chunkCoord, localCoord, chunkIndex, chunkKey } from './chunk';
+import { chunkCoord, localCoord, chunkIndex, chunkKey, stateId, stateMeta } from './chunk';
 import { generateChunk, getBiomeProvider } from './worldgen';
 import { makeAtlas } from './textures';
 import { getLight } from './lighting';
@@ -92,6 +92,14 @@ export class ClientWorld {
     const c = this.chunks.get(chunkKey(chunkCoord(x), chunkCoord(z)));
     if (!c) return 0;
     return c.data[chunkIndex(localCoord(x), y, localCoord(z))];
+  }
+
+  getBlockId(x, y, z) {
+    return stateId(this.getBlock(x, y, z));
+  }
+
+  getBlockMeta(x, y, z) {
+    return stateMeta(this.getBlock(x, y, z));
   }
 
   hasChunkAt(x, z) { return this.chunks.has(chunkKey(chunkCoord(x), chunkCoord(z))); }
