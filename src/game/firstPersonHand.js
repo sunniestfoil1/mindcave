@@ -1,5 +1,5 @@
-// Mão em 1ª pessoa — pose do braço vazio como no ItemRenderer.renderPlayerArm da 1.8.9.
-// Com item na mão a 1.8.9 desenha só o item (sem braço), então o braço some e o item usa a transformação de item.
+// Mão em 1ª pessoa — pose do braço como no ItemRenderer da 1.8.9, com o item na frente.
+// Decisão de jogo: o braço fica visível atrás do item segurado (pedido do jogador).
 import * as THREE from 'three';
 import { buildFirstPersonArm } from './playerModel';
 import { getFirstPersonTransform } from './animation';
@@ -37,7 +37,8 @@ export function buildHandRig() {
 
   const itemRoot = new THREE.Group();
   const itemGroup = new THREE.Group();
-  itemGroup.position.set(0, -0.65, -0.1);
+  // Sem deslocamento extra: o transform da 1.8.9 (transformFirstPersonItem) já é em espaço
+  // da câmera; qualquer offset aqui empurrava o item para fora da tela (y ≈ -1.17).
   itemRoot.add(itemGroup);
   return { arm, itemRoot, itemGroup };
 }
@@ -78,7 +79,9 @@ export function armMatrix(anim) {
 
 export function poseHand(rig, anim, player, heldDef, hasItem, time) {
   if (hasItem) {
-    rig.arm.visible = false;
+    // Braço visível atrás do item ("mão segurando o bloco", pedido do jogador)
+    rig.arm.visible = true;
+    rig.arm.matrix.copy(armMatrix(anim));
     const tf = getFirstPersonTransform(anim, player, heldDef, time);
     rig.itemRoot.position.set(tf.x, tf.y, tf.z);
     rig.itemRoot.rotation.set(tf.rotX, tf.rotY, tf.rotZ);

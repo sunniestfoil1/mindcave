@@ -96,14 +96,30 @@ export class MobSpawnSystem {
     for (let i = 0; i < groupSize; i++) {
       const ox = ax + Math.floor((Math.random() - 0.5) * 6);
       const oz = az + Math.floor((Math.random() - 0.5) * 6);
-      // Verificar espaço livre
+      // Verificar espaço livre (pés, cabeça) e chão embaixo — sem isso o mob nasce flutuando ou enterrado
       const feetBlock = stateId(world.getBlock(ox, spawnY, oz));
       const headBlock = stateId(world.getBlock(ox, spawnY + 1, oz));
-      if (isSolid(feetBlock) || isSolid(headBlock)) continue;
+      const groundBlock = stateId(world.getBlock(ox, spawnY - 1, oz));
+      if (isSolid(feetBlock) || isSolid(headBlock) || !isSolid(groundBlock)) continue;
 
       const mob = new MobEntity(typeId, { x: ox + 0.5, y: spawnY, z: oz + 0.5 });
       mobs.push(mob);
     }
+  }
+
+  // Luz efetiva do ponto: bloco ou céu do dia (fator do ciclo dia/noite, como na 1.8)
+  _maxLight(world, x, y, z) {
+    const light = world.getLight(x, y, z);
+    const worldTime = world.worldTime || 0;
+    const tod = (worldTime % 24000) / 24000;
+    let skyFactor = 1;
+    if (tod > 0.23 && tod < 0.77) {
+      if (tod < 0.27) skyFactor = 1 - (tod - 0.23) / 0.04;
+      else if (tod > 0.73) skyFactor = (tod - 0.73) / 0.04;
+      else skyFactor = 0;
+    }
+    const effectiveSky = Math.floor(light.sky * skyFactor);
+    return Math.max(light.block, effectiveSky);
   }
 
   checkSpawnConditions(world, x, y, z, category, ctx) {
@@ -115,20 +131,8 @@ export class MobSpawnSystem {
     if (isSolid(feetBlock) || isSolid(headBlock)) return false;
 
     if (category === 'hostile') {
-      // Luz ≤ 7 (RF-011) - levar em conta o horário do dia para a luz do céu
-      const light = world.getLight(x, y, z);
-      const worldTime = world.worldTime || 0;
-      // Fator do ciclo dia/noite (0.0 à noite, 1.0 de dia)
-      const tod = (worldTime % 24000) / 24000;
-      let skyFactor = 1;
-      if (tod > 0.23 && tod < 0.77) {
-        if (tod < 0.27) skyFactor = 1 - (tod - 0.23) / 0.04;
-        else if (tod > 0.73) skyFactor = (tod - 0.73) / 0.04;
-        else skyFactor = 0;
-      }
-      const effectiveSky = Math.floor(light.sky * skyFactor);
-      const maxLight = Math.max(light.block, effectiveSky);
-      if (maxLight > 7) return false;
+      // Luz ≤ 7 (RF-011) — luz do céu só vale de dia
+      if (this._maxLight(world, x, y, z) > 7) return false;
       // Chão sólido (não vidro/folhas/lajes)
       if (!isSolid(groundBlock)) return false;
       return true;
@@ -143,9 +147,8 @@ export class MobSpawnSystem {
     }
 
     if (category === 'ambient') {
-      // Morcego: luz ≤ 3, abaixo de Y=63
-      const light = world.getLight(x, y, z);
-      if (light.block > 3) return false;
+      // Morcego: luz efetiva ≤ 3 (bloco OU céu de dia — sem isso nasce na superfície à noite), abaixo de Y=63
+      if (this._maxLight(world, x, y, z) > 3) return false;
       if (y > 63) return false;
       return true;
     }
@@ -210,18 +213,19 @@ export function spawnChunkAnimals(world, cx, cz, mobs, ctx) {
     const ax = cx * CHUNK_SIZE + lx;
     const az = cz * CHUNK_SIZE + lz;
 
-    // Encontrar grama
-    for (let y = 255; y >= 1; y--) {
-      const b = stateId(world.getBlock(ax, y, az));
-      if (b === 2) { // grass
-        const feetBlock = stateId(world.getBlock(ax, y + 1, az));
-        if (!isSolid(feetBlock)) {
-          const mob = new MobEntity(typeId, { x: ax + 0.5, y: y + 1, z: az + 0.5 });
-          mobs.push(mob);
+      // Encontrar grama
+      for (let y = 255; y >= 1; y--) {
+        const b = stateId(world.getBlock(ax, y, az));
+        if (b === 2) { // grass
+          const feetBlock = stateId(world.getBlock(ax, y + 1, az));
+          const headBlock = stateId(world.getBlock(ax, y + 2, az)); // sem checar a cabeça o animal nasce com a cabeça dentro de teto/folha e morre
+          if (!isSolid(feetBlock) && !isSolid(headBlock)) {
+            const mob = new MobEntity(typeId, { x: ax + 0.5, y: y + 1, z: az + 0.5 });
+            mobs.push(mob);
+          }
+          break;
         }
-        break;
+        if (isSolid(b)) break;
       }
-      if (isSolid(b)) break;
-    }
   }
 }

@@ -43,7 +43,7 @@ import { initBiomeTint } from './biomeTint';
 import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener } from './sounds';
 import { createNametag } from './nametag';
 import { ParticleManager } from './particles';
-import { ItemEntityManager } from './itemEntity';
+import { ItemEntityManager, createItemMesh } from './itemEntity';
 import { perfMonitor } from './perfMonitor';
 import { musicManager } from './musicManager';
 import { voiceChat } from './net/voiceChat';
@@ -104,6 +104,9 @@ export class GameEngine {
     this.onChatSend = opts.onChatSend || null;
     this.onDeath = opts.onDeath || null;
     this.onBlockChange = opts.onBlockChange || null;
+    this.onOpenCraftingTable = opts.onOpenCraftingTable || null;
+    this.onOpenFurnace = opts.onOpenFurnace || null;
+    this.onOpenChest = opts.onOpenChest || null;
     this.netManager = null;
     this.miningTarget = null;
     this.miningProgress = 0;
@@ -189,7 +192,7 @@ export class GameEngine {
 
     // Partículas (blocos quebrados, respingos) — estilo 1.8.9
     this.particles = new ParticleManager(this.scene);
-    this.itemEntities = new ItemEntityManager(this.scene);
+    this.itemEntities = new ItemEntityManager(this.scene, this.world);
     this._wasInWater = false;
 
     // Redstone (PRD 11)
@@ -438,7 +441,7 @@ export class GameEngine {
   }
 
   onMouseMove(e) {
-    if (this.paused || this.chatOpen) return;
+    if (this.paused || this.chatOpen || this.player?.isDead) return;
     const sensPct = settingsStore.get('user.mouseSensitivity') || 100;
     // Vanilla 1.8.9: s = pct/200 (slider 0–200%); graus/px = 1,2 × (0,6·s + 0,2)³ → 100% = 0,15°/px
     const s = sensPct / 200;
@@ -462,7 +465,7 @@ export class GameEngine {
   }
 
   onWheel(e) {
-    if (this.paused || this.chatOpen) return;
+    if (this.paused || this.chatOpen || this.player?.isDead) return;
     let s = this.player.selectedSlot + Math.sign(e.deltaY);
     if (s < 0) s = 8; if (s > 8) s = 0;
     this.player.selectedSlot = s;
@@ -854,9 +857,9 @@ export class GameEngine {
     if (this.breakCd > 0) this.breakCd--;
     if (this.placeCd > 0) this.placeCd--;
 
-    // Combate e ações (PRD 07 RF-001..034)
-    const attackActive = this.isAction('attack') && !this.paused && !this.chatOpen;
-    const useActive = this.isAction('use') && !this.paused && !this.chatOpen;
+    // Combate e ações (PRD 07 RF-001..034) — morto não ataca/interage
+    const attackActive = this.isAction('attack') && !this.paused && !this.chatOpen && !p.isDead;
+    const useActive = this.isAction('use') && !this.paused && !this.chatOpen && !p.isDead;
     const attackPressed = attackActive && !this._prevAttack;
     const usePressed = useActive && !this._prevUse;
     const heldItem = this.getHeldItem();
@@ -1085,9 +1088,12 @@ export class GameEngine {
     // Detectar morte para mostrar tela
     if (p.isDead && p.deathPending) {
       playEvent('entity.player.death', { pos: p.pos });
+      // Solta o mouse para os botões da tela de morte (Renascer/Menu) ficarem clicáveis
+      document.exitPointerLock?.();
       this._announceDeath();
       this.emitHud();
     } else if (p.isDead && this._lastHud && !this._lastHud.isDead) {
+      document.exitPointerLock?.();
       this.emitHud();
     }
   }
@@ -1692,6 +1698,7 @@ export class GameEngine {
 
   dropHeldItem() {
     const p = this.player;
+    if (p.isDead) return;
     const slot = p.hotbar[p.selectedSlot];
     if (!slot || !slot.id) return;
 
@@ -1934,28 +1941,14 @@ export class GameEngine {
     const p = this.player;
     const heldItem = this.getHeldItem();
 
-    // Atualizar mesh do item
+    // Atualizar mesh do item — texturizado (atlas/ícone), mesmo builder do item dropado
     if (heldItem && heldItem.id) {
-      const def = getItem(heldItem.id);
       if (!this.fpsItem || this.fpsItem._itemId !== heldItem.id) {
-        if (this.fpsItem) { this.fpsItemGroup.remove(this.fpsItem); }
-        const color = def?.color || 0x888888;
-        const isTool = def?.tool || def?.weapon;
-        if (!this._fpsToolGeo) this._fpsToolGeo = new THREE.BoxGeometry(0.06, 0.4, 0.06);
-        if (!this._fpsBlockGeo) this._fpsBlockGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-        if (!this._fpsMatCache) this._fpsMatCache = new Map();
-
-        let mat = this._fpsMatCache.get(color);
-        if (!mat) {
-          mat = new THREE.MeshBasicMaterial({ color });
-          this._fpsMatCache.set(color, mat);
-        }
-        const geo = isTool ? this._fpsToolGeo : this._fpsBlockGeo;
-        this.fpsItem = new THREE.Mesh(geo, mat);
+        // Materiais são cacheados/partilhados — só remove do grupo, sem dispose
+        if (this.fpsItem) this.fpsItemGroup.remove(this.fpsItem);
+        this.fpsItem = createItemMesh({ id: heldItem.id, meta: heldItem.meta || 0 }, 1, this.world?.atlas);
         this.fpsItem._itemId = heldItem.id;
-        if (isTool) {
-          this.fpsItem.rotation.set(0.4, 0, 0.2);
-        }
+        this.fpsItem.scale.setScalar(1.4);
         this.fpsItemGroup.add(this.fpsItem);
       }
     } else {
