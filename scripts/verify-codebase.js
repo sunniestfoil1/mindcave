@@ -28,6 +28,7 @@ const GLOBAL_WHITELIST = new Set([
   'WebGLRenderingContext', 'WebGL2RenderingContext', 'HTMLCanvasElement', 'CanvasRenderingContext2D',
   'process', 'undefined', 'NaN', 'Infinity', 'isNaN', 'isFinite',
   'parseInt', 'parseFloat', 'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI',
+  'createImageBitmap',
   'THREE', 'Worker', 'SharedWorker', 'postMessage', 'addEventListener', 'removeEventListener', 'dispatchEvent',
   'React', 'document', 'KeyboardEvent', 'MouseEvent', 'WheelEvent', 'TouchEvent'
 ]);
@@ -243,6 +244,19 @@ function runVerification() {
     // Escopos de declarações
     const declared = new Set(GLOBAL_WHITELIST);
 
+    function extractNames(binding, set) {
+      if (!binding) return;
+      if (ts.isIdentifier(binding)) {
+        set.add(binding.text);
+      } else if (ts.isObjectBindingPattern(binding) || ts.isArrayBindingPattern(binding)) {
+        for (const el of binding.elements) {
+          if (el && !ts.isOmittedExpression(el)) {
+            extractNames(el.name, set);
+          }
+        }
+      }
+    }
+
     // Coleta todas as declarações de nível de arquivo
     function collectTopLevel(node) {
       if (ts.isImportDeclaration(node) && node.importClause) {
@@ -260,7 +274,7 @@ function runVerification() {
         declared.add(node.name.text);
       } else if (ts.isVariableStatement(node)) {
         for (const decl of node.declarationList.declarations) {
-          if (ts.isIdentifier(decl.name)) declared.add(decl.name.text);
+          extractNames(decl.name, declared);
         }
       }
       ts.forEachChild(node, collectTopLevel);
@@ -271,27 +285,35 @@ function runVerification() {
     function checkScope(node, scope = new Set()) {
       let currentScope = scope;
 
-      if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node)) {
+      if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node) || ts.isConstructorDeclaration(node)) {
         currentScope = new Set(scope);
         for (const param of node.parameters) {
-          if (ts.isIdentifier(param.name)) currentScope.add(param.name.text);
-          else if (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) {
-            for (const el of param.name.elements) {
-              if (el.name && ts.isIdentifier(el.name)) currentScope.add(el.name.text);
-            }
-          }
+          extractNames(param.name, currentScope);
         }
         if (node.name && ts.isIdentifier(node.name)) currentScope.add(node.name.text);
-      } else if (ts.isBlock(node) || ts.isForStatement(node) || ts.isForOfStatement(node) || ts.isForInStatement(node) || ts.isCatchClause(node)) {
+      } else if (ts.isBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node)) {
         currentScope = new Set(scope);
-        if (ts.isCatchClause(node) && node.variableDeclaration && ts.isIdentifier(node.variableDeclaration.name)) {
-          currentScope.add(node.variableDeclaration.name.text);
+        const statements = node.statements || [];
+        for (const st of statements) {
+          if (ts.isVariableStatement(st)) {
+            for (const decl of st.declarationList.declarations) extractNames(decl.name, currentScope);
+          } else if (ts.isFunctionDeclaration(st) && st.name) {
+            currentScope.add(st.name.text);
+          } else if (ts.isClassDeclaration(st) && st.name) {
+            currentScope.add(st.name.text);
+          }
         }
-      }
-
-      // Adiciona variáveis declaradas neste nível
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
-        currentScope.add(node.name.text);
+      } else if (ts.isForStatement(node) || ts.isForOfStatement(node) || ts.isForInStatement(node)) {
+        currentScope = new Set(scope);
+        const init = node.initializer;
+        if (init && ts.isVariableDeclarationList(init)) {
+          for (const d of init.declarations) extractNames(d.name, currentScope);
+        }
+      } else if (ts.isCatchClause(node)) {
+        currentScope = new Set(scope);
+        if (node.variableDeclaration) {
+          extractNames(node.variableDeclaration.name, currentScope);
+        }
       }
 
       // Se for identificador em posição de expressão pura (não membro de propriedade nem declaração)
@@ -299,7 +321,7 @@ function runVerification() {
         const parent = node.parent;
         const isPropAccess = ts.isPropertyAccessExpression(parent) && parent.name === node;
         const isObjKey = ts.isPropertyAssignment(parent) && parent.name === node;
-        const isDeclName = (ts.isVariableDeclaration(parent) || ts.isFunctionDeclaration(parent) || ts.isParameter(parent) || ts.isImportSpecifier(parent)) && parent.name === node;
+        const isDeclName = (ts.isVariableDeclaration(parent) || ts.isFunctionDeclaration(parent) || ts.isParameter(parent) || ts.isImportSpecifier(parent) || ts.isBindingElement(parent)) && parent.name === node;
         const isMethodName = ts.isMethodDeclaration(parent) && parent.name === node;
         const isTypeReference = ts.isTypeReferenceNode(parent);
 
@@ -309,8 +331,10 @@ function runVerification() {
             // Ignora JSX tags normais em lowercase (ex: div, span)
             if (!(ts.isJsxOpeningElement(parent) || ts.isJsxClosingElement(parent) || ts.isJsxSelfClosingElement(parent))) {
               const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
-              // Detecta variáveis problemáticas conhecidas
-              if (['ambientGain', 'perfMonitor'].includes(idName)) {
+              if (ts.isCallExpression(parent) && parent.expression === node) {
+                errorList.push(`[UNDEFINED FUNCTION] ${relFile}:${line + 1} - Função '${idName}()' chamada sem estar declarada ou importada.`);
+                errorsFound++;
+              } else if (['ambientGain', 'perfMonitor'].includes(idName)) {
                 errorList.push(`[UNDEFINED VARIABLE] ${relFile}:${line + 1} - Variável indefinida '${idName}' acessada diretamente.`);
                 errorsFound++;
               }

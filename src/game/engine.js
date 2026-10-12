@@ -40,7 +40,7 @@ import { onSkinChange, onCapeChange, getCapeChoice } from './skinStore';
 import { fetchCraftheadCape } from './crafthead';
 import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
 import { initBiomeTint } from './biomeTint';
-import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener } from './sounds';
+import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener, playPopSound } from './sounds';
 import { createNametag } from './nametag';
 import { ParticleManager } from './particles';
 import { ItemEntityManager, createItemMesh } from './itemEntity';
