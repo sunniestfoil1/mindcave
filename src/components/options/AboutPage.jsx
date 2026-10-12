@@ -57,6 +57,7 @@ export default function AboutPage({ onBack }) {
           <h2 className="text-lg font-bold mb-2">Mind Cave</h2>
           <div className="text-sm space-y-1 text-muted-foreground">
             <div>Versão do build: <span className="text-foreground font-mono">{BUILD_VERSION}</span></div>
+            <div>Desenvolvido por: <span className="text-foreground">Junior · Deyvid</span></div>
             <div>Navegador: <span className="text-foreground">{navigator.userAgent.split(') ')[0].split('(').pop()}</span></div>
             <div>GPU: <span className="text-foreground">{gpu}</span></div>
             <div>Resolução: <span className="text-foreground">{window.screen.width}×{window.screen.height}</span></div>

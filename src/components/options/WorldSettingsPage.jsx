@@ -1,54 +1,65 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import SettingsLayout from "./SettingsLayout";
-import { mindcaveApi } from "@/api/supabaseClient";
+import { getWorld, updateWorld } from "@/game/save";
+import { DEFAULT_GAME_RULES } from "@/game/constants";
 import { OptionButton, OptionSlider, OptionToggle } from "./OptionControls";
 
-const DEFAULT_RULES = {
-  doDaylightCycle: true, doMobSpawning: true, doMobLoot: true, doTileDrops: true,
-  doEntityDrops: true, doFireTick: true, keepInventory: false, mobGriefing: true,
-  naturalRegeneration: true, randomTickSpeed: 3, showDeathMessages: true,
-  sendCommandFeedback: true, commandBlockOutput: true, logAdminCommands: true,
-  reducedDebugInfo: false,
+// Defaults da página = regras do motor (constants) + chaves que só existem aqui
+const PAGE_RULE_DEFAULTS = {
+  ...DEFAULT_GAME_RULES,
+  randomTickSpeed: 3, showDeathMessages: true, sendCommandFeedback: true,
+  commandBlockOutput: true, logAdminCommands: true, reducedDebugInfo: false, devTools: true,
 };
-const DEFAULT_MC_RULES = { gunsEnabled: true, techZombies: true, techZombieChance: 15, friendlyFire: true, explosionsBreakBlocks: true, devTools: true };
 
 function parseJSON(s, fallback) { try { return { ...fallback, ...JSON.parse(s || '{}') }; } catch { return { ...fallback }; } }
 
 export default function WorldSettingsPage({ onBack, worldId }) {
   const [world, setWorld] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [saveTimer, setSaveTimer] = useState(null);
+  const [loadError, setLoadError] = useState('');
+  const saveTimer = useRef(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const w = await mindcaveApi.entities.World.get(worldId);
-        setWorld(w);
-      } catch (e) { console.error(e); }
-      setLoading(false);
+        const w = await getWorld(worldId);
+        if (!cancelled) {
+          if (w) setWorld(w);
+          else setLoadError('Mundo não encontrado.');
+        }
+      } catch (e) { if (!cancelled) setLoadError(`Falha ao ler o mundo: ${e.message}`); }
+      if (!cancelled) setLoading(false);
     })();
+    // Desmonta com salvamento pendente: fecha a tela logo após um toque, não perde o ajuste
+    return () => {
+      cancelled = true;
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current.fn?.();
+      }
+    };
   }, [worldId]);
 
   const update = (field, value) => {
     const nw = { ...world, [field]: value };
     setWorld(nw);
-    clearTimeout(saveTimer);
-    setSaveTimer(setTimeout(async () => {
-      try { await mindcaveApi.entities.World.update(worldId, { [field]: value }); } catch (e) {}
-    }, 1000));
+    if (saveTimer.current) clearTimeout(saveTimer.current.id);
+    const job = async () => { try { await updateWorld(worldId, { [field]: value }); } catch (e) { console.warn('[WorldSettings]', e); } };
+    saveTimer.current = { id: setTimeout(job, 1000), fn: job };
   };
 
-  const updateRules = (key, value, field = 'gameRules', defaults = DEFAULT_RULES) => {
-    const rules = parseJSON(world[field], defaults);
+  const updateRules = (key, value) => {
+    const rules = parseJSON(world.gameRules, PAGE_RULE_DEFAULTS);
     rules[key] = value;
-    update(field, JSON.stringify(rules));
+    update('gameRules', JSON.stringify(rules));
   };
 
   if (loading) return <SettingsLayout title="Configurações do mundo"><div className="text-center text-muted-foreground py-8">Carregando...</div></SettingsLayout>;
+  if (loadError) return <SettingsLayout title="Configurações do mundo" onBack={onBack}><div className="text-center text-red-400 py-8">{loadError}</div></SettingsLayout>;
   if (!world) return <SettingsLayout title="Configurações do mundo"><div className="text-center text-muted-foreground py-8">Mundo não encontrado.</div></SettingsLayout>;
 
-  const rules = parseJSON(world.gameRules, DEFAULT_RULES);
-  const mcRules = parseJSON(world.mcGameRules, DEFAULT_MC_RULES);
+  const rules = parseJSON(world.gameRules, PAGE_RULE_DEFAULTS);
   const isHost = true; // simplificado: quem joga é host
 
   return (
@@ -87,13 +98,13 @@ export default function WorldSettingsPage({ onBack, worldId }) {
         <div>
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Regras Mind Cave</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <OptionToggle label="Armas de fogo (gunsEnabled)" value={!!mcRules.gunsEnabled} onChange={v => updateRules('gunsEnabled', v, 'mcGameRules', DEFAULT_MC_RULES)} perfImpact="none" />
-            <OptionToggle label="Zumbis tecnológicos" value={!!mcRules.techZombies} onChange={v => updateRules('techZombies', v, 'mcGameRules', DEFAULT_MC_RULES)} perfImpact="none" />
-            <OptionSlider label="Chance de zumbi tech" value={mcRules.techZombieChance ?? 15} min={0} max={100} step={5}
-              format={v => `${v}%`} onChange={v => updateRules('techZombieChance', v, 'mcGameRules', DEFAULT_MC_RULES)} perfImpact="none" />
-            <OptionToggle label="Fogo amigo" value={!!mcRules.friendlyFire} onChange={v => updateRules('friendlyFire', v, 'mcGameRules', DEFAULT_MC_RULES)} perfImpact="none" />
-            <OptionToggle label="Explosões quebram blocos" value={!!mcRules.explosionsBreakBlocks} onChange={v => updateRules('explosionsBreakBlocks', v, 'mcGameRules', DEFAULT_MC_RULES)} perfImpact="none" />
-            <OptionToggle label="Ferramentas de dev (devTools)" value={!!mcRules.devTools} onChange={v => updateRules('devTools', v, 'mcGameRules', DEFAULT_MC_RULES)} perfImpact="none" />
+            <OptionToggle label="Armas de fogo (gunsEnabled)" value={rules.gunsEnabled !== false} onChange={v => updateRules('gunsEnabled', v)} perfImpact="none" />
+            <OptionToggle label="Zumbis tecnológicos" value={rules.techZombies !== false} onChange={v => updateRules('techZombies', v)} perfImpact="none" />
+            <OptionSlider label="Chance de zumbi tech" value={Math.round((rules.techZombieChance ?? 0.15) * 100)} min={0} max={100} step={5}
+              format={v => `${v}%`} onChange={v => updateRules('techZombieChance', v / 100)} perfImpact="none" />
+            <OptionToggle label="Fogo amigo" value={rules.friendlyFire !== false} onChange={v => updateRules('friendlyFire', v)} perfImpact="none" />
+            <OptionToggle label="Explosões quebram blocos" value={rules.explosionsBreakBlocks !== false} onChange={v => updateRules('explosionsBreakBlocks', v)} perfImpact="none" />
+            <OptionToggle label="Ferramentas de dev (devTools)" value={rules.devTools !== false} onChange={v => updateRules('devTools', v)} perfImpact="none" />
           </div>
         </div>
 

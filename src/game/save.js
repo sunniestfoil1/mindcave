@@ -105,6 +105,32 @@ export async function getWorld(id) {
   return data || null;
 }
 
+// Atualiza campos do mundo: IndexedDB local é a fonte; Supabase no máximo espelho
+// (mundo só-local pode não ter linha na nuvem — falha é só ruído, não é erro).
+export async function updateWorld(id, patch) {
+  let merged = null;
+  try {
+    const db = await openDB();
+    merged = await new Promise((resolve) => {
+      const tx = db.transaction(STORE_WORLDS, 'readonly');
+      const req = tx.objectStore(STORE_WORLDS).get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+    if (merged) {
+      merged = { ...merged, ...patch };
+      const tx = db.transaction(STORE_WORLDS, 'readwrite');
+      tx.objectStore(STORE_WORLDS).put(merged);
+    }
+  } catch (e) {
+    console.warn('[Save] Falha ao gravar ajustes do mundo no IndexedDB:', e);
+  }
+  try {
+    await supabase.from('worlds').update(patch).eq('id', id);
+  } catch {}
+  return merged;
+}
+
 export async function deleteWorld(id) {
   try {
     const db = await openDB();

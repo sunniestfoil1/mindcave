@@ -39,15 +39,20 @@ function ScreenBackground({ background, children }) {
     );
   }
 
-  // dirt
+  // dirt — textura oficial (dirt.png) escurecida como no menu do 1.8.9
   const dirtUrl = getDirtTexture();
   return (
     <div style={{
       position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'auto',
-      backgroundImage: `url(${dirtUrl})`,
-      backgroundSize: `${32 * scale}px ${32 * scale}px`,
-      imageRendering: 'pixelated',
     }}>
+      <div style={{
+        position: 'absolute', inset: 0,
+        backgroundImage: `url(${dirtUrl})`,
+        backgroundSize: `${32 * scale}px ${32 * scale}px`,
+        imageRendering: 'pixelated',
+        filter: 'brightness(0.42)',
+        pointerEvents: 'none',
+      }} />
       {/* Sombra de viñeta clássica do Java 1.8.9 */}
       <div style={{
         position: 'absolute', inset: 0,

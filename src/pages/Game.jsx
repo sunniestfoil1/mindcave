@@ -125,6 +125,7 @@ export default function Game() {
   const showStatsRef = useRef(false);
   const showOptionsRef = useRef(false);
   const showOpenToLANRef = useRef(false);
+  const worldRecRef = useRef(null); // registro do mundo (pvp/maxPlayers/ajustes da tela de opções)
 
   useEffect(() => { showInventoryRef.current = showInventory; }, [showInventory]);
   useEffect(() => { showCreativeRef.current = showCreative; }, [showCreative]);
@@ -155,6 +156,20 @@ export default function Game() {
   const closeAllGuisRef = useRef(closeAllGuis);
   useEffect(() => { closeAllGuisRef.current = closeAllGuis; }, [closeAllGuis]);
 
+  // Ao fechar as opções, reaplica regras/dificuldade salvas no mundo ao motor que está rodando
+  useEffect(() => {
+    if (showOptions || !engineRef.current || !worldId) return undefined;
+    let cancelled = false;
+    getWorld(worldId).then((w) => {
+      if (cancelled || !w || !engineRef.current) return;
+      worldRecRef.current = w;
+      let rules = {};
+      try { rules = JSON.parse(w.gameRules || '{}'); } catch {}
+      engineRef.current.applyWorldRules(rules, w.difficulty || 'normal');
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [showOptions, worldId]);
+
   useEffect(() => {
     let cancelled = false;
     let engine;
@@ -171,6 +186,7 @@ export default function Game() {
           setLoading(false);
           return;
         }
+        worldRecRef.current = world;
         const seed = seedFromString(world.seed);
         const deltas = await loadDeltas(worldId);
         let genParams = {};
@@ -299,7 +315,14 @@ export default function Game() {
               await savePlayer(player);
               world.worldTime = engine.worldTime;
               world.gameRules = JSON.stringify(engine.gameRules || gameRules);
-              await touchWorld(world);
+              // Mescla com o registro mais novo: ajustes da tela de opções não podem ser revertidos aqui
+              const latest = worldRecRef.current || world;
+              if (latest !== world) {
+                latest.worldTime = world.worldTime;
+                latest.gameRules = world.gameRules;
+                if (world.weatherData) latest.weatherData = world.weatherData;
+              }
+              await touchWorld(latest);
               try {
                 const statsData = serializeStats(pState.stats);
                 const achData = serializeAchievements(pState.achievements);
@@ -470,7 +493,12 @@ export default function Game() {
       {showOpenToLAN && !hud?.isDead && (
         <OpenToLANDialog
           engine={engineRef.current}
-          world={hud ? { id: worldId, name: hud.worldName || 'Mundo', gameMode: hud.gamemode, pvp: true, maxPlayers: 8 } : { id: worldId }}
+          world={(() => {
+            const rec = worldRecRef.current;
+            return hud
+              ? { id: worldId, name: hud.worldName || 'Mundo', gameMode: hud.gamemode, pvp: rec?.pvp ?? true, maxPlayers: rec?.maxPlayers ?? 8 }
+              : { id: worldId, pvp: rec?.pvp ?? true, maxPlayers: rec?.maxPlayers ?? 8 };
+          })()}
           user={{ id: user?.id || 'guest', full_name: user?.full_name || 'Player' }}
           netHost={netManager}
           onNetHostChange={(host) => { setNetManager(host); engineRef.current.netManager = host; }}

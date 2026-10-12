@@ -94,6 +94,7 @@ export const DEFAULT_USER = {
   // Geral
   fov: 70,
   viewBobbing: true,
+  lang: 'pt_BR',
   // Controles — mouse
   mouseSensitivity: 100,
   invertMouse: false,

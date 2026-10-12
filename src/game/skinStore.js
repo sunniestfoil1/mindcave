@@ -18,19 +18,86 @@ export function setSkinChoice(choice) {
 
 export function onSkinChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
-// Lê um arquivo PNG e valida: precisa ser 64×64 (formato atual de skin) e ter até 200 KB
+// === Capa (Crafthead): { user, png } salva no navegador; null = sem capa ===
+const CAPE_KEY = 'mc_cape';
+let _capeCache; // undefined = não lido ainda
+export function getCapeChoice() {
+  if (_capeCache !== undefined) return _capeCache;
+  try {
+    const v = JSON.parse(localStorage.getItem(CAPE_KEY) || 'null');
+    _capeCache = (v && typeof v.png === 'string') ? v : null;
+  } catch { _capeCache = null; }
+  return _capeCache;
+}
+export function setCapeChoice(c) {
+  _capeCache = c || null;
+  try {
+    if (c) localStorage.setItem(CAPE_KEY, JSON.stringify(c));
+    else localStorage.removeItem(CAPE_KEY);
+  } catch { /* cota cheia ou bloqueado */ }
+  capeListeners.forEach(fn => fn(_capeCache));
+}
+const capeListeners = new Set();
+export function onCapeChange(fn) { capeListeners.add(fn); return () => capeListeners.delete(fn); }
+
+// Normaliza qualquer skin para canvas 64×64: quadrada reduz com vizinho mais próximo;
+// 64×32 (legada 1.7) expande copiando os membros direitos espelhados para os locais esquerdos.
+export function normalizeSkinImage(img) {
+  const cv = document.createElement('canvas');
+  cv.width = 64; cv.height = 64;
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  if (img.width === img.height) {
+    ctx.drawImage(img, 0, 0, 64, 64);
+    return cv;
+  }
+  if (img.width === 64 && img.height === 32) {
+    ctx.drawImage(img, 0, 0); // metade de cima idêntica (cabeça, chapéu, corpo, membros direitos)
+    // Membro esquerdo = espelho do direito, face a face: faces interna/externa trocam de slot
+    // e cada face é flipada na horizontal (como o render da 1.7 fazia com a textura direita).
+    const mirrorBox = (u, v, du) => {
+      const w = 4, h = 12, d = 4;
+      const faces = [
+        [u + d, v, w, d, du + d, v],                 // topo
+        [u + w + d, v, w, d, du + w + d, v],         // base
+        [u, v + d, d, h, du + w + d, v + d],         // externa (−x) → slot externa do outro lado
+        [u + d, v + d, w, h, du + d, v + d],         // frente
+        [u + w + d, v + d, d, h, du, v + d],         // interna (+x) → slot interna
+        [u + w + 2 * d, v + d, w, h, du + w + 2 * d, v + d], // costas
+      ];
+      for (const [sx, sy, sw, sh, dx, dy] of faces) {
+        ctx.save();
+        ctx.translate(dx + sw / 2, dy + sh / 2);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
+        ctx.restore();
+      }
+    };
+    mirrorBox(40, 16, 32); // braço direito → esquerdo
+    mirrorBox(0, 16, 16);  // perna direita → esquerda
+    return cv;
+  }
+  return null; // formato não suportado
+}
+
+// Lê um arquivo PNG e normaliza para 64×64: skins salvas em outros tamanhos (128×128, 256×256…)
+// são reduzidas com vizinho mais próximo (sem borrar os pixels) e reencodadas (menor arquivo).
+// Entrada aceita até 5 MB; o resultado final precisa caber em 200 KB (limite do localStorage).
 export function readSkinFile(file) {
   return new Promise((resolve, reject) => {
     if (!file) return reject(new Error('Nenhum arquivo escolhido.'));
     if (file.type !== 'image/png') return reject(new Error('A skin precisa ser um arquivo PNG.'));
-    if (file.size > 200 * 1024) return reject(new Error('Arquivo grande demais (máximo 200 KB).'));
+    if (file.size > 5 * 1024 * 1024) return reject(new Error('Arquivo grande demais (máximo 5 MB).'));
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        if (img.width !== 64 || img.height !== 64) return reject(new Error(`A skin precisa ter 64×64 px (esta tem ${img.width}×${img.height}).`));
-        resolve(reader.result);
+        const cv = normalizeSkinImage(img);
+        if (!cv) return reject(new Error(`Skin inválida: aceita quadrada (ex.: 64×64) ou legada 64×32; esta tem ${img.width}×${img.height}.`));
+        const dataUrl = cv.toDataURL('image/png');
+        if (dataUrl.length > 200 * 1024) return reject(new Error('Mesmo convertida, a skin ficou grande demais (máximo 200 KB).'));
+        resolve(dataUrl);
       };
       img.onerror = () => reject(new Error('Imagem inválida.'));
       img.src = reader.result;

@@ -37,12 +37,12 @@ export function createInventory() {
   };
 }
 
-// Adiciona item ao inventário (main + hotbar); retorna sobra
+// Adiciona item ao inventário (hotbar primeiro, como a coleta na 1.8.9, depois main); retorna sobra
 export function addItem(inv, item) {
   if (!item) return null;
   const max = getMaxStack(item.id);
-  // Tenta empilhar em slots existentes (main primeiro, depois hotbar)
-  for (const arr of [inv.main, inv.hotbar]) {
+  // Tenta empilhar em slots existentes (hotbar primeiro, depois main)
+  for (const arr of [inv.hotbar, inv.main]) {
     for (let i = 0; i < arr.length; i++) {
       if (arr[i] && canStack(arr[i], item) && arr[i].count < max) {
         item = mergeStacks(arr[i], item);
@@ -50,8 +50,8 @@ export function addItem(inv, item) {
       }
     }
   }
-  // Tenta slots vazios
-  for (const arr of [inv.main, inv.hotbar]) {
+  // Tenta slots vazios (hotbar primeiro)
+  for (const arr of [inv.hotbar, inv.main]) {
     for (let i = 0; i < arr.length; i++) {
       if (!arr[i]) {
         arr[i] = item;

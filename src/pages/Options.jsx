@@ -14,30 +14,34 @@ import SkinPage from "@/components/options/SkinPage";
 import { VIDEO_SECTIONS, SHADERS_SECTIONS, SHADOW_SECTIONS, AUDIO_SECTIONS, CHAT_SECTIONS, ACCESSIBILITY_SECTIONS, PERFORMANCE_SECTIONS, NETWORK_SECTIONS } from "@/components/options/optionDefinitions";
 import CreditsScreen from "@/components/game/CreditsScreen";
 import DevManual from "@/components/game/DevManual";
+import LanguagePage from "@/components/options/LanguagePage";
+import { useT } from "@/game/i18n";
 
 // Layout 1.8.9 §2.1 — coluna esquerda | coluna direita, intercalados
+// label vem da chave i18n (chaves oficiais options.* quando existem)
 const MENU_ITEMS = [
-  { id: 'skin', label: 'Personalização de skin...' },
-  { id: 'audio', label: 'Músicas e sons...' },
-  { id: 'video', label: 'Configurações de vídeo...' },
-  { id: 'controls', label: 'Controles...' },
-  { id: 'language', label: 'Idioma...', disabled: true },
-  { id: 'chat', label: 'Configurações do chat...' },
-  { id: 'resourcepacks', label: 'Pacotes de recursos...', disabled: true },
-  { id: 'network', label: 'Multijogador e rede...' },
-  { id: 'shaders', label: 'Shaders...' },
-  { id: 'performance', label: 'Desempenho...' },
-  { id: 'accessibility', label: 'Acessibilidade...' },
-  { id: 'quality', label: 'Perfis de qualidade...' },
-  { id: 'world', label: 'Configurações do mundo...' },
-  { id: 'importexport', label: 'Importar/Exportar...' },
-  { id: 'about', label: 'Sobre o build' },
-  { id: 'credits', label: 'Créditos' },
-  { id: 'devmanual', label: 'Manual do Desenvolvedor' },
+  { id: 'skin', key: 'options.skinCustomisation' },
+  { id: 'audio', key: 'options.sounds' },
+  { id: 'video', key: 'options.video' },
+  { id: 'controls', key: 'options.controls' },
+  { id: 'language', key: 'options.language' },
+  { id: 'chat', key: 'options.chat.title' },
+  { id: 'resourcepacks', key: 'options.resourcepack', disabled: true },
+  { id: 'network', key: 'options.multiplayer.title' },
+  { id: 'shaders', key: 'opt.shaders' },
+  { id: 'performance', key: 'opt.performance' },
+  { id: 'accessibility', key: 'opt.accessibility' },
+  { id: 'quality', key: 'opt.quality' },
+  { id: 'world', key: 'opt.world' },
+  { id: 'importexport', key: 'opt.importexport' },
+  { id: 'about', key: 'opt.about' },
+  { id: 'credits', key: 'opt.credits' },
+  { id: 'devmanual', key: 'opt.devmanual' },
 ];
 
 function MainOptions({ onNavigate, onClose, worldId }) {
   const store = useSettings();
+  const t = useT();
   const { guiHeight, scale } = useGui();
 
   // World-only items disabled when not in a world (§2.1)
@@ -46,11 +50,17 @@ function MainOptions({ onNavigate, onClose, worldId }) {
     disabled: i.disabled || (i.id === 'world' && !worldId),
   }));
 
+  const fovLabel = (v) => v === 70
+    ? `${t('options.fov')}: ${t('options.fov.min')}`
+    : v === 110
+      ? `${t('options.fov')}: ${t('options.fov.max')}`
+      : `${t('options.fov')}: ${v}`;
+
   return (
     <>
       {/* Title */}
       <div style={{ position: 'absolute', left: '50%', top: 6 * scale, transform: 'translateX(-50%)' }}>
-        <GuiText text="Opções" color="#FFFFFF" shadow scale={scale} />
+        <GuiText text={t('options.title')} color="#FFFFFF" shadow scale={scale} />
       </div>
 
       {/* Row 1: FOV slider + Difficulty (§2.1) */}
@@ -59,10 +69,10 @@ function MainOptions({ onNavigate, onClose, worldId }) {
         value={store.get('user.fov') || 70}
         min={30} max={110} step={1}
         onChange={v => store.set('user.fov', v)}
-        format={v => v === 70 ? 'Campo de visão: Normal' : v === 110 ? 'Campo de visão: Quake Pro' : `Campo de visão: ${v}`}
+        format={fovLabel}
       />
       <GuiButton x={2} y={20} width={150}
-        label="Dificuldade..."
+        label={`${t('options.difficulty')}...`}
         disabled={!worldId}
         onClick={() => onNavigate('world')}
       />
@@ -86,7 +96,7 @@ function MainOptions({ onNavigate, onClose, worldId }) {
           {items.map(item => (
             <JavaButton
               key={item.id}
-              label={item.label}
+              label={t(item.key)}
               disabled={item.disabled}
               onClick={() => onNavigate(item.id)}
               width={150}
@@ -96,7 +106,7 @@ function MainOptions({ onNavigate, onClose, worldId }) {
       </div>
 
       {/* Done button */}
-      <GuiButton x={-100} y={guiHeight - 28} width={200} label="Pronto" onClick={onClose} />
+      <GuiButton x={-100} y={guiHeight - 28} width={200} label={t('gui.done')} onClick={onClose} />
     </>
   );
 }
@@ -105,6 +115,7 @@ export default function Options({ onClose, worldId }) {
   const [page, setPage] = useState('main');
   const navigate = useNavigate();
   useSettings(); // re-render on settings change for dynamic disabled states
+  const t = useT();
 
   useEffect(() => {
     base44AuthInit();
@@ -126,16 +137,17 @@ export default function Options({ onClose, worldId }) {
   }, [page, onClose, navigate]);
 
   if (page === 'main') return <GuiScreen><MainOptions onNavigate={setPage} onClose={close} worldId={worldId} /></GuiScreen>;
-  if (page === 'video') return <GuiOptionPage title="Configurações de Vídeo" sections={VIDEO_SECTIONS(settingsStore)} onBack={back} resetScope="device" />;
-  if (page === 'shaders') return <GuiOptionPage title="Configurações de Shaders" sections={[...SHADERS_SECTIONS(settingsStore), ...SHADOW_SECTIONS(settingsStore)]} onBack={back} resetScope="device" />;
+  if (page === 'language') return <GuiScreen><LanguagePage onBack={back} /></GuiScreen>;
+  if (page === 'video') return <GuiOptionPage title={t('options.videoTitle')} sections={VIDEO_SECTIONS(settingsStore)} onBack={back} resetScope="device" />;
+  if (page === 'shaders') return <GuiOptionPage title={t('opt.shadersTitle')} sections={[...SHADERS_SECTIONS(settingsStore), ...SHADOW_SECTIONS(settingsStore)]} onBack={back} resetScope="device" />;
   if (page === 'quality') return <QualityProfilesPage onBack={back} />;
-  if (page === 'performance') return <GuiOptionPage title="Desempenho Avançado" sections={PERFORMANCE_SECTIONS} onBack={back} resetScope="device" />;
+  if (page === 'performance') return <GuiOptionPage title={t('opt.performanceTitle')} sections={PERFORMANCE_SECTIONS} onBack={back} resetScope="device" />;
   if (page === 'controls') return <KeybindsPage onBack={back} />;
-  if (page === 'audio') return <GuiOptionPage title="Música e Sons" sections={AUDIO_SECTIONS} onBack={back} resetScope="user" />;
+  if (page === 'audio') return <GuiOptionPage title={t('options.sounds.title')} sections={AUDIO_SECTIONS} onBack={back} resetScope="user" />;
   if (page === 'skin') return <SkinPage onBack={back} />;
-  if (page === 'chat') return <GuiOptionPage title="Configurações de Chat" sections={CHAT_SECTIONS} onBack={back} resetScope="user" />;
-  if (page === 'accessibility') return <GuiOptionPage title="Acessibilidade" sections={ACCESSIBILITY_SECTIONS} onBack={back} resetScope="user" />;
-  if (page === 'network') return <GuiOptionPage title="Multijogador e Rede" sections={NETWORK_SECTIONS} onBack={back} resetScope="device" />;
+  if (page === 'chat') return <GuiOptionPage title={t('options.chatTitle')} sections={CHAT_SECTIONS} onBack={back} resetScope="user" />;
+  if (page === 'accessibility') return <GuiOptionPage title={t('opt.accessibilityTitle')} sections={ACCESSIBILITY_SECTIONS} onBack={back} resetScope="user" />;
+  if (page === 'network') return <GuiOptionPage title={t('options.multiplayerTitle')} sections={NETWORK_SECTIONS} onBack={back} resetScope="device" />;
   if (page === 'world') return <WorldSettingsPage onBack={back} worldId={worldId} />;
   if (page === 'importexport') return <ImportExportPage onBack={back} />;
   if (page === 'about') return <AboutPage onBack={back} />;

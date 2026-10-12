@@ -2,12 +2,14 @@ import React from 'react';
 import { GuiScreen, GuiButton, GuiText, useGui } from './index';
 import { JavaOption } from './GuiOptionControls';
 import { useSettings } from '@/game/settingsStore';
+import { useT } from '@/game/i18n';
 
 // Java 1.8.9 settings page — renders option sections (same format as optionDefinitions.js)
 // in a scrollable 2-column grid of 150px buttons/sliders.
 function GuiOptionPageContent({ title, sections, onBack, resetScope }) {
   const { guiHeight, scale } = useGui();
   const store = useSettings();
+  const t = useT();
 
   return (
     <>
@@ -48,9 +50,9 @@ function GuiOptionPageContent({ title, sections, onBack, resetScope }) {
       </div>
 
       {/* Done button */}
-      <GuiButton x={-100} y={guiHeight - 28} width={200} label="Pronto" onClick={onBack} />
+      <GuiButton x={-100} y={guiHeight - 28} width={200} label={t('gui.done')} onClick={onBack} />
       {resetScope && (
-        <GuiButton x={-204} y={guiHeight - 28} width={98} label="Restaurar" onClick={() => store.resetScope(resetScope)} />
+        <GuiButton x={-204} y={guiHeight - 28} width={98} label={t('gui.reset')} onClick={() => store.resetScope(resetScope)} />
       )}
     </>
   );

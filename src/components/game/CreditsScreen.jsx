@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 
-const DEVS = ['Desenvolvedor 1', 'Desenvolvedor 2'];
+const DEVS = ['Junior', 'Deyvid'];
 const LIBS = [
   { name: 'Three.js', license: 'MIT', url: 'https://threejs.org' },
   { name: 'React', license: 'MIT', url: 'https://react.dev' },
@@ -51,7 +51,7 @@ export default function CreditsScreen({ onClose }) {
 
         <div className="h-8" />
         <h2 className="text-xl text-white/80 font-semibold mb-4">Atribuições de Assets</h2>
-        <p className="text-white/50 text-sm">Texturas, modelos e sons gerados proceduralmente ou criados pelos desenvolvedores.</p>
+        <p className="text-white/50 text-sm">Interface, texturas e modelos oficiais do Minecraft 1.8.9 (pacote de assets); demais texturas e sons próprios, gerados proceduralmente.</p>
         <p className="text-white/40 text-xs mt-2">Atribuições específicas são geradas automaticamente a partir das licenças cadastradas no Studio.</p>
 
         <div className="h-8" />

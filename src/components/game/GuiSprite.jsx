@@ -8,10 +8,19 @@ import { drawMcText, measureMcText } from '@/game/gui/font';
 
 const urlCache = new Map();
 
+// Cópias locais das texturas críticas da HUD (mesmo arquivo oficial do pacote):
+// a barra de vida/hotbar não pode esperar o download do pacote inteiro.
+const LOCAL_TEXTURES = {
+  'textures/gui/widgets.png': '/assets/ui/widgets.png',
+  'textures/gui/icons.png': '/assets/ui/icons.png',
+};
+
 // URL (blob) de uma textura do pacote. Reaproveita o cache e tenta de novo quando o pacote termina de carregar.
 export function usePackTexture(path) {
-  const [url, setUrl] = useState(urlCache.get(path) || null);
+  const local = LOCAL_TEXTURES[path];
+  const [url, setUrl] = useState(urlCache.get(path) || local || null);
   useEffect(() => {
+    if (local) return undefined;
     if (urlCache.has(path)) { setUrl(urlCache.get(path)); return undefined; }
     let off = false;
     const load = () => getPackUrl(MC + path).then((u) => {

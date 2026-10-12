@@ -211,7 +211,8 @@ export class NetHost {
         }
         // Repassa posição do jogador para outros convidados
         p.isDead = !!msg.dead;
-        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead }, userId);
+        p.held = msg.h || 0;
+        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, h: msg.h || 0 }, userId);
         break;
       }
       case 'cmd': {
@@ -443,6 +444,7 @@ export class NetClient {
           p.pitch = msg.pitch;
         }
         p.isDead = !!msg.dead;
+        p.held = msg.h || 0;
         // Smooth lerp towards target position
         p.x += (p.targetX - p.x) * 0.3;
         p.y += (p.targetY - p.y) * 0.3;

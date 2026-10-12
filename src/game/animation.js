@@ -191,6 +191,16 @@ export function applyThirdPersonPose(model, anim, player, time) {
     u.armR.rotation.z = 0;
   }
 
+  // === Capa: repouso a 10,8° e levanta com a velocidade horizontal e com a queda ===
+  if (u.cape && u.cape.visible) {
+    const vel = player.vel || { x: 0, y: 0, z: 0 };
+    const spd = Math.hypot(vel.x, vel.z);
+    const base = (10.8 * Math.PI) / 180;
+    const flare = Math.min(1, spd / 7) * 0.55 + Math.min(1, Math.max(0, -vel.y) / 8) * 1.1;
+    const target = base + flare;
+    u.cape.rotation.x += (target - u.cape.rotation.x) * 0.15;
+  }
+
   // === Cabeça: segue pitch + head bobbing ao andar (skinview3d) ===
   if (u.head) {
     u.head.rotation.y = walking ? Math.sin(t / 4) * 0.2 : 0;

@@ -3,6 +3,7 @@
 // Referência: 07-animacoes-jogador-e-armaduras/skinview3d/src/model.ts
 import * as THREE from 'three';
 import { modelRotationYFromYaw } from './viewMath';
+import { getItem } from './items';
 
 // === UV mapping — porte exato de setUVs() do skinview3d ===
 function setUVs(box, u, v, width, height, depth, textureWidth, textureHeight) {
@@ -42,76 +43,15 @@ function setSkinUVs(box, u, v, width, height, depth) {
   setUVs(box, u, v, width, height, depth, 64, 64);
 }
 
-// === Gera skin padrão (Steve) proceduralmente em canvas 64×64 ===
-const STEVE_COLORS = {
-  skin: '#e0a878',
-  skinShade: '#c69060',
-  shirt: '#129a48',
-  shirtShade: '#0d7a38',
-  pants: '#3a3a8a',
-  pantsShade: '#2a2a6a',
-  hair: '#3a2414',
-  hairShade: '#2a1808',
-  shoe: '#3a2410',
-};
-
-function fillRegion(ctx, x, y, w, h, color) {
-  ctx.fillStyle = color;
-  ctx.fillRect(x, y, w, h);
-}
-
-function createDefaultSkin() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-
-  // Limpar (transparente)
-  ctx.clearRect(0, 0, 64, 64);
-
-  // Cabeça (inner) — UV (0,0,8,8,8): cabeça ocupa área (0,0)-(32,16)
-  fillRegion(ctx, 0, 0, 32, 16, STEVE_COLORS.skin);
-  // Face com sombra (região frontal ~8,8 a 16,16)
-  fillRegion(ctx, 8, 8, 8, 4, STEVE_COLORS.skinShade);
-  // Cabelo no topo e costas
-  fillRegion(ctx, 8, 0, 8, 8, STEVE_COLORS.hair);
-
-  // Corpo (inner) — UV (16,16,8,12,4): área (16,16)-(40,32)
-  fillRegion(ctx, 16, 16, 24, 16, STEVE_COLORS.shirt);
-  fillRegion(ctx, 20, 20, 8, 8, STEVE_COLORS.shirtShade);
-
-  // Braço direito (inner) — UV (40,16,4,12,4): área (40,16)-(56,32)
-  fillRegion(ctx, 40, 16, 16, 16, STEVE_COLORS.skin);
-  fillRegion(ctx, 44, 20, 4, 8, STEVE_COLORS.skinShade);
-
-  // Perna direita (inner) — UV (0,16,4,12,4): área (0,16)-(16,32)
-  fillRegion(ctx, 0, 16, 16, 16, STEVE_COLORS.pants);
-  fillRegion(ctx, 4, 20, 4, 8, STEVE_COLORS.pantsShade);
-  // Sapato (parte inferior)
-  fillRegion(ctx, 4, 28, 4, 4, STEVE_COLORS.shoe);
-
-  // Braço esquerdo (inner) — UV (32,48,4,12,4): área (32,48)-(48,64)
-  fillRegion(ctx, 32, 48, 16, 16, STEVE_COLORS.skin);
-  fillRegion(ctx, 36, 52, 4, 8, STEVE_COLORS.skinShade);
-
-  // Perna esquerda (inner) — UV (16,48,4,12,4): área (16,48)-(32,64)
-  fillRegion(ctx, 16, 48, 16, 16, STEVE_COLORS.pants);
-  fillRegion(ctx, 20, 52, 4, 8, STEVE_COLORS.pantsShade);
-  fillRegion(ctx, 20, 60, 4, 4, STEVE_COLORS.shoe);
-
-  // Outer layers (hat, jacket, sleeves, pant legs) — deixar transparente
-  // (já estão transparentes pois não preenchemos essas regiões)
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestFilter;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
+// === Skin padrão — steve.png oficial empacotado (carrega local, sem esperar o pacote) ===
 let _defaultSkinTexture = null;
 function getDefaultSkin() {
-  if (!_defaultSkinTexture) _defaultSkinTexture = createDefaultSkin();
+  if (!_defaultSkinTexture) {
+    _defaultSkinTexture = new THREE.TextureLoader().load('/assets/skins/steve.png');
+    _defaultSkinTexture.magFilter = THREE.NearestFilter;
+    _defaultSkinTexture.minFilter = THREE.NearestFilter;
+    _defaultSkinTexture.colorSpace = THREE.SRGBColorSpace;
+  }
   return _defaultSkinTexture;
 }
 
@@ -179,6 +119,20 @@ class SkinObject extends THREE.Group {
     this.body.add(bodyMesh, body2Mesh);
     this.body.position.y = -6;
     this.add(this.body);
+
+    // Capa (1.8.9): quadro 10×16 px nas costas, pivô na borda de cima para balançar.
+    // Textura = render do Crafthead (113×180, proporção 10:16) com transparência nas bordas.
+    const capeGeo = new THREE.PlaneGeometry(10, 16);
+    capeGeo.translate(0, -8, 0);
+    this.capeMaterial = new THREE.MeshLambertMaterial({
+      side: THREE.DoubleSide, transparent: true, alphaTest: 0.3,
+    });
+    this.capePivot = new THREE.Group();
+    this.capePivot.position.set(0, 6, -2.3); // topo das costas do corpo (parte local do corpo)
+    this.capePivot.rotation.x = (10.8 * Math.PI) / 180; // ângulo de repouso
+    this.capePivot.visible = false; // some até a textura chegar
+    this.capePivot.add(new THREE.Mesh(capeGeo, this.capeMaterial));
+    this.body.add(this.capePivot);
 
     // Braço direito
     const rightArmBox = new THREE.BoxGeometry();
@@ -384,8 +338,79 @@ export function buildPlayerModel() {
     isGlb: false,
     playerObject: player,
   };
+  // Item na mão (terceira pessoa/F5): filho do braço direito para acompanhar todo o balanço
+  const heldHolder = new THREE.Group();
+  heldHolder.position.set(-1, -10, 0); // mão, em pixels do modelo
+  wrapper.userData.armR.add(heldHolder);
+  wrapper.userData.heldHolder = heldHolder;
+  wrapper.userData.cape = player.skin.capePivot;
+  wrapper.userData.capeMaterial = player.skin.capeMaterial;
   wrapper.visible = false;
   return wrapper;
+}
+
+// === Capa do modelo: aplica a textura (dataURL) e a visibilidade ===
+export function setModelCape(model, src, visible) {
+  const pivot = model?.userData?.cape;
+  const mat = model?.userData?.capeMaterial;
+  if (!pivot || !mat) return;
+  const key = src || null;
+  if (pivot._src !== key) {
+    pivot._src = key;
+    pivot._loaded = false;
+    if (mat.map) { mat.map.dispose(); mat.map = null; mat.needsUpdate = true; }
+    if (key) {
+      const token = key;
+      new THREE.TextureLoader().load(key, (tex) => {
+        if (pivot._src !== token) { tex.dispose(); return; } // trocou antes de carregar
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        mat.map = tex;
+        mat.needsUpdate = true;
+        pivot._loaded = true;
+        pivot.visible = pivot._wantVisible !== false;
+      });
+    }
+  }
+  pivot._wantVisible = visible !== false;
+  pivot.visible = pivot._wantVisible && pivot._loaded && !!pivot._src;
+}
+
+// Aplica a capa salva (Crafthead) ao modelo; sem capa salva, oculta
+export async function applyCapeToModel(model, visible = true) {
+  try {
+    const { getCapeChoice } = await import('./skinStore');
+    const cape = getCapeChoice();
+    setModelCape(model, cape ? cape.png : null, visible);
+  } catch (e) {
+    console.warn('[PlayerModel] Falha ao aplicar capa:', e.message);
+  }
+}
+
+// === Item segurado no modelo (F5 e jogadores remotos) — em pixels, como o resto do modelo ===
+const _heldGeo = {};
+export function setModelHeldItem(model, itemId) {
+  const holder = model?.userData?.heldHolder;
+  if (!holder) return;
+  const id = itemId || 0;
+  if (holder._heldId === id) return;
+  holder.clear();
+  holder._heldId = id;
+  if (!id) return;
+  const def = getItem(id);
+  if (!def) return;
+  const isTool = !!(def.tool || def.weapon || def.weaponDamage);
+  const isBlock = id < 256;
+  if (!_heldGeo.tool) {
+    _heldGeo.tool = new THREE.BoxGeometry(1, 8, 1);
+    _heldGeo.block = new THREE.BoxGeometry(4.5, 4.5, 4.5);
+    _heldGeo.item = new THREE.BoxGeometry(4, 4, 0.8);
+  }
+  const mat = new THREE.MeshBasicMaterial({ color: def.color || 0x888888 });
+  const mesh = new THREE.Mesh(isTool ? _heldGeo.tool : isBlock ? _heldGeo.block : _heldGeo.item, mat);
+  if (isTool) mesh.rotation.set(0.4, 0, 0.2);
+  holder.add(mesh);
 }
 
 // Posiciona o modelo no mundo a partir do estado do jogador (usado pelo motor e pelo laboratório)

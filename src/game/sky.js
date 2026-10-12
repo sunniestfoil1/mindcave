@@ -284,7 +284,7 @@ export class Sky {
           else if (uMode > 0.5) gl_FragColor = vec4(t.rgb, t.a * uFade);               // somar (alfa da textura × fade)
           else gl_FragColor = vec4(t.rgb, uFade);                                       // substituir
         }`,
-      transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
+      transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
       blending: mode === 2 ? THREE.MultiplyBlending : mode === 1 ? THREE.AdditiveBlending : THREE.NormalBlending,
     });
     const geo = createSkyBoxGeometry(450 - index * 2);

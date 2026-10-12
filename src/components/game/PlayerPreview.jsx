@@ -2,7 +2,7 @@
 // de frente, o corpo gira um pouco e a cabeça segue o mouse.
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { buildPlayerModel, applyPackSkin } from '@/game/playerModel';
+import { buildPlayerModel, applyPackSkin, applyCapeToModel } from '@/game/playerModel';
 import { createAnimationState, applyThirdPersonPose } from '@/game/animation';
 
 const DEG = Math.PI / 180;
@@ -12,7 +12,7 @@ const DEG = Math.PI / 180;
 export const PREVIEW_SURVIVAL = { box: { x: 26, y: 8, w: 52, h: 70 }, feet: { x: 51, y: 75 }, unit: 30, refUp: 50 };
 export const PREVIEW_CREATIVE = { box: { x: 28, y: 6, w: 32, h: 43 }, feet: { x: 43, y: 45 }, unit: 20, refUp: 30 };
 
-export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL }) {
+export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisible = true }) {
   const { box, feet, unit, refUp } = preset;
   const FEET_Y = feet.y - box.y;       // pés, a partir do topo da caixa
   const CENTER_X = feet.x - box.x;     // centro do corpo, a partir da esquerda da caixa
@@ -53,6 +53,7 @@ export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL }) {
     const anim = createAnimationState();
     let raf = 0, disposed = false;
     applyPackSkin(model, null).catch(() => {});
+    applyCapeToModel(model, capeVisible);
 
     const draw = () => {
       if (disposed) return;
@@ -79,7 +80,7 @@ export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL }) {
       cancelAnimationFrame(raf);
       renderer.dispose();
     };
-  }, [S, preset]);
+  }, [S, preset, capeVisible]);
 
   return (
     <canvas

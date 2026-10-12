@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Zap } from 'lucide-react';
 import { resolveUser, getNickname } from '@/game/guestIdentity';
 import { BUILD_VERSION } from '@/game/constants';
 import { GuiScreen, GuiButton, GuiText, useGui } from '@/components/java';
 import { settingsStore } from '@/game/settingsStore';
+import { getSkinFaceUrl } from '@/game/skinStore';
+import { onPackReady } from '@/game/pack';
+import { useT } from '@/game/i18n';
 import NicknameModal from '@/components/NicknameModal';
 
 const SPLASHES = [
@@ -13,15 +17,41 @@ const SPLASHES = [
   'Areia, cascalho e mais!', 'Não olhe para baixo!', 'Mente Cavernosa!',
 ];
 
-function MainMenuContent({ user, onNickname }) {
+function MainMenuContent({ user, onNickname, editingSkin }) {
   const navigate = useNavigate();
   const { guiHeight, scale } = useGui();
+  const t = useT();
   const [splash, setSplash] = useState('');
   const [optimized, setOptimized] = useState(false);
+  const [heads, setHeads] = useState(null);
 
   useEffect(() => {
     setSplash(SPLASHES[Math.floor(Math.random() * SPLASHES.length)]);
   }, []);
+
+  // Cabeças Steve e Alex do pacote oficial — recarrega quando o pack ficar pronto
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      const [steve, alex] = await Promise.all([
+        getSkinFaceUrl(2, { kind: 'steve' }),
+        getSkinFaceUrl(2, { kind: 'alex' }),
+      ]);
+      if (alive && steve && alex) setHeads({ steve, alex });
+    };
+    load();
+    const off = onPackReady(load);
+    return () => { alive = false; if (off) off(); };
+  }, []);
+
+  const headsIcon = heads ? (
+    <span style={{ display: 'flex', gap: 2 * scale, flexShrink: 0 }}>
+      <img src={heads.steve} alt="" width={8 * scale} height={8 * scale}
+        style={{ imageRendering: 'pixelated' }} draggable={false} />
+      <img src={heads.alex} alt="" width={8 * scale} height={8 * scale}
+        style={{ imageRendering: 'pixelated' }} draggable={false} />
+    </span>
+  ) : null;
 
   const j = Math.floor(guiHeight / 4) + 16;
 
@@ -33,9 +63,9 @@ function MainMenuContent({ user, onNickname }) {
 
   return (
     <>
-      {/* Logo */}
+      {/* Logo — na tela de editar skin encolhe 20% e sobe para dar espaço ao modal */}
       <div style={{
-        position: 'absolute', left: '50%', top: 20 * scale,
+        position: 'absolute', left: '50%', top: (editingSkin ? 8 : 20) * scale,
         transform: 'translateX(-50%)',
         zIndex: 20,
         display: 'flex',
@@ -46,7 +76,7 @@ function MainMenuContent({ user, onNickname }) {
           src="/minecraft-text.png"
           alt="MIND CAVE"
           style={{
-            height: Math.round(70 * scale) + 'px',
+            height: Math.round((editingSkin ? 56 : 70) * scale) + 'px',
             width: 'auto',
             maxHeight: '150px',
             maxWidth: '92vw',
@@ -72,16 +102,17 @@ function MainMenuContent({ user, onNickname }) {
       </div>
 
       {/* Buttons — Padrão Oficial Minecraft 1.8.9 */}
-      <GuiButton x={-100} y={j} width={200} label="Um jogador" onClick={() => navigate('/singleplayer')} />
-      <GuiButton x={-100} y={j + 24} width={200} label="Multijogador" onClick={() => navigate('/multiplayer')} />
-      <GuiButton x={-100} y={j + 48} width={98} label="Opções..." onClick={() => navigate('/options')} />
-      <GuiButton x={2} y={j + 48} width={98} label="Sair do jogo" onClick={() => { try { window.close(); } catch {} }} />
+      <GuiButton x={-100} y={j} width={200} label={t('menu.singleplayer')} onClick={() => navigate('/singleplayer')} />
+      <GuiButton x={-100} y={j + 24} width={200} label={t('menu.multiplayer')} onClick={() => navigate('/multiplayer')} />
+      <GuiButton x={-100} y={j + 48} width={200} label={t('menu.options')} onClick={() => navigate('/options')} />
+      {/* "Sair do jogo" removido: em site não fecha aba e não faz sentido no menu */}
 
       {/* Personalizar Skin / Nick & Modo Otimizado */}
-      <GuiButton x={-100} y={j + 76} width={200} label="👤 Personalizar Skin / Nick" onClick={onNickname} />
+      <GuiButton x={-100} y={j + 76} width={200} icon={headsIcon} label={t('main.personalize')} onClick={onNickname} />
       <GuiButton
         x={-100} y={j + 100} width={200}
-        label={optimized ? '✓ Otimizado aplicado!' : '⚡ Modo Otimizado'}
+        icon={<Zap size={10 * scale} color="#FFD84D" fill="#FFD84D" strokeWidth={1.5} style={{ flexShrink: 0 }} />}
+        label={optimized ? t('main.optimizedApplied') : t('main.optimized')}
         onClick={handleOptimized}
       />
 
@@ -92,7 +123,7 @@ function MainMenuContent({ user, onNickname }) {
 
       {/* Bottom right */}
       <div style={{ position: 'absolute', right: 2 * scale, bottom: 0 }}>
-        <GuiText text="Mind Cave — feito por dois devs" color="#FFFFFF" shadow />
+        <GuiText text={t('main.byDevs')} color="#FFFFFF" shadow />
       </div>
 
       {/* Nickname */}
@@ -118,7 +149,7 @@ export default function MainMenu() {
 
   return (
     <GuiScreen>
-      <MainMenuContent user={user} onNickname={() => setShowNickname(true)} />
+      <MainMenuContent user={user} onNickname={() => setShowNickname(true)} editingSkin={showNickname} />
       {showNickname && (
         <NicknameModal
           onClose={() => setShowNickname(false)}

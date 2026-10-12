@@ -35,7 +35,9 @@ import { createStats, serializeStats, deserializeStats, addStat, addStatByType }
 import { createAchievementState, serializeAchievements, deserializeAchievements, tryUnlock, checkStatAchievements } from './achievements';
 import { loadRealTextures, isRealTexturesLoaded, tickTextureAnimations } from './textures';
 import { lookDirFromAngles } from './viewMath';
-import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel } from './playerModel';
+import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel, setModelHeldItem, setModelCape } from './playerModel';
+import { onSkinChange, onCapeChange, getCapeChoice } from './skinStore';
+import { fetchCraftheadCape } from './crafthead';
 import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
 import { initBiomeTint } from './biomeTint';
 import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener } from './sounds';
@@ -229,6 +231,13 @@ export class GameEngine {
 
     this.playerModel = buildPlayerModel();
     this.scene.add(this.playerModel);
+
+    // Capa do jogador local: textura salva (Crafthead) + reage a troca de skin/capa em tempo real
+    this._capeSrc = getCapeChoice()?.png || null;
+    this._unsubCape = [
+      onSkinChange(() => { this._capeSrc = getCapeChoice()?.png || null; }),
+      onCapeChange(() => { this._capeSrc = getCapeChoice()?.png || null; }),
+    ];
 
     // Nickname acima da cabeça (invisível para o jogador local — só outros jogadores)
     this.nametag = createNametag(this.player.nomeJogador || 'Player');
@@ -431,15 +440,25 @@ export class GameEngine {
   onMouseMove(e) {
     if (this.paused || this.chatOpen) return;
     const sensPct = settingsStore.get('user.mouseSensitivity') || 100;
-    const s = sensPct / 100;
+    // Vanilla 1.8.9: s = pct/200 (slider 0–200%); graus/px = 1,2 × (0,6·s + 0,2)³ → 100% = 0,15°/px
+    const s = sensPct / 200;
     const f = s * 0.6 + 0.2;
     const mult = f * f * f * 8;
-    const radPerPx = mult * 0.15 * Math.PI / 180;
+    let radPerPx = mult * 0.15 * Math.PI / 180;
+    // Zoom (OptiFine): sensibilidade de zoom reduz a gira enquanto a tecla de zoom está segurada
+    if (this.isZooming()) {
+      radPerPx *= (settingsStore.get('user.zoomSensitivity') || 50) / 100;
+    }
     const invert = settingsStore.get('user.invertMouse') ? -1 : 1;
     this.player.yaw += e.movementX * radPerPx;
     this.player.pitch += e.movementY * radPerPx * invert;
     const lim = Math.PI / 2 - 0.001;
     this.player.pitch = Math.max(-lim, Math.min(lim, this.player.pitch));
+  }
+
+  isZooming() {
+    const zoomKey = (settingsStore.get('user.keys') || {}).zoom;
+    return !!(zoomKey && !zoomKey.startsWith('Mouse') && this.keys[zoomKey]);
   }
 
   onWheel(e) {
@@ -718,9 +737,10 @@ export class GameEngine {
     if (this.wTapCount >= 2) isSprinting = true;
 
     let sprint = isSprinting && forward > 0 && !p.sneaking && (p.hunger === undefined || p.hunger > 6 || p.gameMode === 'creative');
+    // O toggle do Ctrl é estado do jogador: só desliga ao apertar de novo.
+    // Soltar o W ou estar com fome corta a corrida do tick, mas não apaga o toggle.
     if (forward <= 0 || (p.gameMode !== 'creative' && p.hunger !== undefined && p.hunger <= 6)) {
       sprint = false;
-      this.sprintToggled = false;
     }
     p.sprinting = sprint;
     p.sprintToggled = !!this.sprintToggled;
@@ -860,9 +880,11 @@ export class GameEngine {
       // Mineração contínua — só se não há entidade no caminho
       if (!this.raycastEntity()) {
         if (p.gameMode === 'creative' || p.gameMode === 'spectator') {
-          if (this.breakCd <= 0) { this.breakBlock(); this.breakCd = 5; }
+          if (this.breakCd <= 0) { this.breakBlock(); this.breakCd = 5; startSwing(this.anim); }
         } else {
           this.tickMining(p);
+          // 1.8.9: o balanço repete enquanto segura o botão sobre um bloco
+          if (this.miningTarget && !this.anim.isSwinging) startSwing(this.anim);
         }
       }
     } else {
@@ -1038,6 +1060,7 @@ export class GameEngine {
         yaw: p.yaw,
         pitch: p.pitch,
         dead: !!p.isDead,
+        h: this.getHeldItem()?.id || 0,
       };
       if (this.netManager.broadcast) {
         this.netManager.broadcast(posMsg);
@@ -1228,8 +1251,7 @@ export class GameEngine {
 
   updateCamera() {
     const fov = settingsStore.get('user.fov') || 70;
-    const zoomKey = (settingsStore.get('user.keys') || {}).zoom;
-    const zooming = zoomKey && !zoomKey.startsWith('Mouse') && !!this.keys[zoomKey];
+    const zooming = this.isZooming();
     let targetFov = zooming ? Math.min(fov, 30) : fov;
     // FOV dinamico ao correr (+15% Minecraft 1.8.9 Sprint FOV)
     if (this.player.sprinting && !zooming) {
@@ -1362,11 +1384,21 @@ export class GameEngine {
     }
   }
 
+  // Reaplica regras/dificuldade salvos na tela de opções enquanto o jogo roda
+  applyWorldRules(gameRules, difficulty) {
+    this.gameRules = { ...DEFAULT_GAME_RULES, ...(gameRules || {}) };
+    if (difficulty) this.difficulty = difficulty;
+  }
+
   updatePlayerModel() {
     const p = this.player;
     const m = this.playerModel;
     placePlayerModel(m, p.pos, p.yaw);
     applyThirdPersonPose(m, this.anim, p, this.worldTime);
+    // Item na mão visível no F5 (o mesh de 1ª pessoa só renderiza em perspective === 0)
+    setModelHeldItem(m, this.getHeldItem()?.id);
+    // Capa: segue a opção "modelPart_cape" da customização de skin
+    setModelCape(m, this._capeSrc, settingsStore.get('user.skinParts.cape') !== false);
 
     // Efeito de flash vermelho ao tomar dano (Hurt Red Tint)
     const isHurt = p.hurtTime > 0;
@@ -1377,6 +1409,24 @@ export class GameEngine {
     }
     // Nametag acompanha a altura (abaixa se morto)
     if (this.nametag) this.nametag.position.y = p.isDead ? 0.5 : 2.1;
+  }
+
+  // Capa remota: uma busca por nickname (guardada em cache; valor undefined = busca em voo)
+  _ensureRemoteCape(entry, name) {
+    if (!name) return;
+    if (!this._remoteCapeCache) this._remoteCapeCache = new Map();
+    if (this._remoteCapeCache.has(name)) {
+      const v = this._remoteCapeCache.get(name);
+      if (v !== undefined) setModelCape(entry.group, v || null, true);
+      return;
+    }
+    this._remoteCapeCache.set(name, undefined);
+    fetchCraftheadCape(name)
+      .then((c) => {
+        this._remoteCapeCache.set(name, c ? c.png : null);
+        setModelCape(entry.group, c ? c.png : null, true);
+      })
+      .catch(() => { this._remoteCapeCache.set(name, null); });
   }
 
   updateRemotePlayers() {
@@ -1392,6 +1442,7 @@ export class GameEngine {
         let entry = this._remoteMeshes.get(id);
         if (!entry) {
           const group = buildPlayerModel();
+          group.visible = true; // buildPlayerModel esconde o modelo local em 1ª pessoa; o remoto precisa aparecer
           const tag = createNametag(rp.name || 'Player');
           tag.position.y = 2.1;
           group.add(tag);
@@ -1408,6 +1459,23 @@ export class GameEngine {
         }
 
         placePlayerModel(entry.group, { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0 }, rp.yaw || 0);
+        // Item que o jogador remoto está segurando (chegou junto com o move)
+        setModelHeldItem(entry.group, rp.held);
+        // Capa do remoto: busca pelo nickname (cacheada) e balança com a velocidade
+        this._ensureRemoteCape(entry, rp.name);
+        const now = performance.now();
+        if (entry._prev) {
+          const dt = Math.max(0.001, (now - entry._prev.t) / 1000);
+          const spd = Math.hypot((rp.x || 0) - entry._prev.x, (rp.z || 0) - entry._prev.z) / dt;
+          const vy = ((rp.y || 0) - entry._prev.y) / dt;
+          const cp = entry.group.userData.cape;
+          if (cp && cp.visible) {
+            const base = (10.8 * Math.PI) / 180;
+            const flare = Math.min(1, spd / 7) * 0.55 + Math.min(1, Math.max(0, -vy) / 8) * 1.1;
+            cp.rotation.x += (base + flare - cp.rotation.x) * 0.15;
+          }
+        }
+        entry._prev = { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0, t: now };
         // Morto: tomba de lado, fica vermelho e treme (o 1.8.9 gira o corpo 90° em ~20 ticks)
         rp.deathProgress = rp.isDead ? Math.min(1, (rp.deathProgress || 0) + 0.06) : 0;
         entry.group.rotation.z = rp.deathProgress * Math.PI / 2;
@@ -2052,6 +2120,7 @@ export class GameEngine {
     this.canvas.removeEventListener('click', this._onClick);
     document.removeEventListener('pointerlockchange', this._onPLChange);
     window.removeEventListener('beforeunload', this._onBeforeUnload);
+    if (this._unsubCape) { this._unsubCape.forEach((fn) => fn()); this._unsubCape = null; }
     document.exitPointerLock?.();
     MobEntity.onSound = null;
     if (this.projectiles) this.projectiles.dispose();

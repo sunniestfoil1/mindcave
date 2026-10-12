@@ -4,6 +4,7 @@ import { GuiScreen, GuiButton, GuiText, GuiTextField, useGui } from "@/component
 import PlayerPreview from "@/components/game/PlayerPreview";
 import { getNickname, setNickname } from "@/game/guestIdentity";
 import { getSkinChoice, setSkinChoice, readSkinFile } from "@/game/skinStore";
+import { useSkinDrop } from "@/components/useSkinDrop";
 
 const PREVIEW = { box: { x: 0, y: 0, w: 52, h: 70 }, feet: { x: 26, y: 67 }, unit: 30, refUp: 50 };
 
@@ -19,14 +20,18 @@ function Content({ onClose, onSaved }) {
   useEffect(() => { setRev(r => r + 1); }, [choice]);
 
   const pick = (kind) => { const c = kind === 'custom' ? choice : { kind }; setError(''); setChoice(c); setSkinChoice(c); };
-  const onFile = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
+  const applyFile = async (file) => {
     try {
       const png = await readSkinFile(file);
       const c = { kind: 'custom', png };
       setChoice(c); setSkinChoice(c); setError('');
     } catch (err) { setError(err.message); }
+  };
+  useSkinDrop(applyFile);
+  const onFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) applyFile(file);
   };
   const save = () => { const clean = setNickname(name); onSaved?.(clean); onClose(); };
   const label = (k, text) => (choice.kind === k ? `§e> ${text} <` : text);
@@ -51,7 +56,7 @@ function Content({ onClose, onSaved }) {
       <input ref={fileRef} type="file" accept="image/png" onChange={onFile} style={{ display: 'none' }} />
 
       <div style={{ position: 'absolute', left: (guiWidth / 2 - 100) * scale, top: (top + 134) * scale, maxWidth: 200 * scale }}>
-        <GuiText text={error ? `§c${error}` : 'PNG 64×64 de skin do Minecraft'} color="#A0A0A0" shadow />
+        <GuiText text={error ? `§c${error}` : 'PNG de skin — arraste aqui ou clique (convertemos p/ 64×64)'} color="#A0A0A0" shadow />
       </div>
 
       <GuiButton x={-100} y={top + 158} width={98} label="Salvar" onClick={save} />

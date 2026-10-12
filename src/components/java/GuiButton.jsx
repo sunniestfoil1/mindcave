@@ -7,7 +7,7 @@ import { playClickSound } from '@/game/sounds';
 
 // Java 1.8.9 button — PRD 19 RF-004
 // x is relative to screen center; y is from top; all in GUI pixels
-export default function GuiButton({ x, y, width = 200, label, onClick, disabled, title }) {
+export default function GuiButton({ x, y, width = 200, label, onClick, disabled, title, icon }) {
   const gui = useGui();
   const scale = gui?.scale || 1;
   const guiWidth = gui?.guiWidth || 0;
@@ -58,12 +58,14 @@ export default function GuiButton({ x, y, width = 200, label, onClick, disabled,
         backgroundSize: `${bgSize}px ${bgSize}px`,
         imageRendering: 'pixelated',
       }} />
-      {label && (
+      {(label || icon) && (
         <div style={{
           position: 'absolute', inset: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: 4 * scale,
         }}>
-          <GuiText text={label} color={textColor} shadow scale={scale} />
+          {icon}
+          {label && <GuiText text={label} color={textColor} shadow scale={scale} />}
         </div>
       )}
     </div>

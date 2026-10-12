@@ -1,54 +1,77 @@
 import React from "react";
-import SettingsLayout from "./SettingsLayout";
+import { GuiScreen, GuiButton, GuiText, JavaButton, useGui } from "@/components/java";
 import { useSettings } from "@/game/settingsStore";
 import { QUALITY_PROFILES } from "@/game/settingsDefaults";
-import { Check } from "lucide-react";
+import { useT } from "@/game/i18n";
 
+const PROFILE_LABELS = {
+  potato: 'Batata', minimum: 'Mínimo', low: 'Baixo',
+  medium: 'Médio', high: 'Alto', ultra: 'Ultra',
+};
 const PROFILE_DESC = {
-  minimum: { desc: 'Notebook fraco · 60+ FPS', color: 'border-gray-600' },
-  low: { desc: 'PC básico · 60 FPS', color: 'border-green-700' },
-  medium: { desc: 'PC médio · 60 FPS', color: 'border-blue-700' },
-  high: { desc: 'PC forte · Shaders', color: 'border-purple-700' },
-  ultra: { desc: 'PC potente · Tudo no máximo', color: 'border-yellow-600' },
+  potato: 'PC muito fraco · 30+ FPS',
+  minimum: 'Notebook fraco · 60+ FPS',
+  low: 'PC básico · 60 FPS',
+  medium: 'PC médio · 60 FPS',
+  high: 'PC forte · Shaders',
+  ultra: 'PC potente · Tudo no máximo',
 };
 
-export default function QualityProfilesPage({ onBack }) {
+function QualityProfilesContent({ onBack }) {
+  const { guiHeight, scale } = useGui();
   const store = useSettings();
+  const t = useT();
   const current = store.detectProfile();
 
+  // "Personalizado" entra no ciclo só como estado — não tem valores para aplicar
+  const options = [
+    ...Object.keys(QUALITY_PROFILES).map((k) => ({ value: k, label: PROFILE_LABELS[k] || k })),
+    { value: 'custom', label: 'Personalizado' },
+  ];
+
   return (
-    <SettingsLayout title="Perfis de qualidade" onBack={onBack}>
-      <div className="max-w-3xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {Object.entries(QUALITY_PROFILES).map(([name, p]) => {
-            const isCurrent = current === name;
-            const desc = PROFILE_DESC[name];
-            return (
-              <div
-                key={name}
-                onClick={() => store.applyProfile(name)}
-                className={`cursor-pointer border-2 ${desc.color} ${isCurrent ? 'ring-2 ring-primary' : ''} bg-card rounded-lg p-4 hover:scale-[1.02] transition-transform`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-lg font-bold capitalize">{name === 'custom' ? 'Personalizado' : name}</h3>
-                  {isCurrent && <Check className="w-5 h-5 text-primary" />}
-                </div>
-                <p className="text-xs text-muted-foreground mb-3">{desc.desc}</p>
-                <div className="text-xs space-y-0.5 text-foreground/70">
-                  <div>Distância: {p.renderDistance} chunks</div>
-                  <div>Gráficos: {p.graphics === 'fast' ? 'Rápidos' : 'Detalhados'}</div>
-                  <div>Luz suave: {p.smoothLighting === 'off' ? 'Desligada' : p.smoothLighting === 'min' ? 'Mínima' : 'Máxima'}</div>
-                  <div>Partículas: {p.particles === 'all' ? 'Todas' : p.particles === 'decreased' ? 'Reduzidas' : 'Mínimas'}</div>
-                  <div>Mipmap: {p.mipmaps}</div>
-                  <div>Escala res.: {p.resolutionScale}%</div>
-                  <div>Shaders: {p.shaderMode === 'shaders' ? 'Ligados' : 'Clássico'}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <p className="text-xs text-muted-foreground mt-4">Perfil atual: <span className="font-semibold capitalize">{current === 'custom' ? 'Personalizado' : current}</span>. Mudar uma opção avulsa marca como Personalizado.</p>
+    <>
+      <div style={{ position: 'absolute', left: '50%', top: 6 * scale, transform: 'translateX(-50%)' }}>
+        <GuiText text="Perfis de qualidade" color="#FFFFFF" shadow scale={scale} />
       </div>
-    </SettingsLayout>
+
+      <div style={{
+        position: 'absolute', left: '50%', top: 36 * scale,
+        transform: 'translateX(-50%)',
+        display: 'grid', gap: 4 * scale, justifyItems: 'center',
+      }}>
+        <JavaButton
+          label="Perfil" value={current} options={options}
+          onChange={(v) => { if (v !== 'custom') store.applyProfile(v); }}
+          width={200}
+        />
+        <JavaButton label="Otimizado (máx. desempenho)" onClick={() => store.applyOptimized()} width={200} />
+      </div>
+
+      <div style={{
+        position: 'absolute', left: '50%', top: 92 * scale, transform: 'translateX(-50%)',
+        width: 300 * scale, textAlign: 'center',
+      }}>
+        <GuiText text={PROFILE_DESC[current] || 'Personalizado: uma opção avulsa saiu do perfil.'}
+          color="#A0A0A0" shadow scale={scale} />
+      </div>
+
+      <div style={{
+        position: 'absolute', left: '50%', top: guiHeight - 44 * scale, transform: 'translateX(-50%)',
+        textAlign: 'center',
+      }}>
+        <GuiText text="Mudar uma opção avulsa marca como Personalizado." color="#808080" shadow scale={scale} />
+      </div>
+
+      <GuiButton x={-100} y={guiHeight - 28} width={200} label={t('gui.done')} onClick={onBack} />
+    </>
+  );
+}
+
+export default function QualityProfilesPage({ onBack }) {
+  return (
+    <GuiScreen>
+      <QualityProfilesContent onBack={onBack} />
+    </GuiScreen>
   );
 }

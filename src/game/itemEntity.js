@@ -207,11 +207,10 @@ export class ItemEntityManager {
       if (e.pickupDelay <= 0 && distSq < 3.24) { // Raio de 1.8 blocos
         const dist = Math.sqrt(distSq);
         if (dist < 0.5) {
-          // Coletado!
+          // Coletado! Com inventário cheio o item fica no chão (como na 1.8.9)
           const itemToCollect = { id: e.id, count: e.count, meta: e.meta };
-          if (inventory) {
-            addItem(inventory, itemToCollect);
-          }
+          const leftover = inventory ? addItem(inventory, itemToCollect) : itemToCollect;
+          if (leftover) continue;
           playPopSound(e.pos);
           this.removeItem(i);
         } else {
