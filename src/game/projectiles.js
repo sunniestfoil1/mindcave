@@ -1,11 +1,60 @@
-// Sistema de projéteis genérico e data-driven — PRD 07 RF-020..034
 import * as THREE from 'three';
 import { isSolid, isWater } from './blocks';
 import { stateId } from './chunk';
 import { PROJECTILE_TYPES, calculateArrowDamage, applyKnockback, getArrowVelocity } from './combat';
 import { applyDamage } from './survival';
+import { getPackCanvas, MC } from './pack';
 
 let _id = 0;
+
+let _arrowMaterial = null;
+function getArrowMaterial() {
+  if (_arrowMaterial) return _arrowMaterial;
+  const cv = document.createElement('canvas');
+  cv.width = 32; cv.height = 32;
+  const ctx = cv.getContext('2d');
+  // Textura base fiel 1.8.9 (haste marrom, ponta cinza sílex, penas brancas)
+  ctx.fillStyle = '#8B5A2B';
+  ctx.fillRect(0, 0, 16, 5);
+  ctx.fillStyle = '#6E6E6E';
+  ctx.fillRect(16, 0, 8, 5);
+  ctx.fillStyle = '#EAEAEA';
+  ctx.fillRect(24, 0, 8, 5);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  _arrowMaterial = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
+
+  getPackCanvas(MC + 'textures/entity/arrow.png').then((src) => {
+    if (!src) return;
+    cv.width = src.width;
+    cv.height = src.height;
+    ctx.drawImage(src, 0, 0);
+    tex.needsUpdate = true;
+  }).catch(() => {});
+
+  return _arrowMaterial;
+}
+
+function buildArrowGroup() {
+  const group = new THREE.Group();
+  const mat = getArrowMaterial();
+  
+  // Planos cruzados característicos do Minecraft
+  const plane1 = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.2), mat);
+  plane1.rotation.y = Math.PI / 2;
+  
+  const plane2 = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.2), mat);
+  plane2.rotation.y = Math.PI / 2;
+  plane2.rotation.x = Math.PI / 2;
+
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.65), new THREE.MeshBasicMaterial({ color: 0x8b5a2b }));
+
+  group.add(shaft);
+  group.add(plane1);
+  group.add(plane2);
+  return group;
+}
 
 export class Projectile {
   constructor(type, opts) {
@@ -17,6 +66,7 @@ export class Projectile {
     this.shooterId = opts.shooterId || null;
     this.shooterName = opts.shooterName || null;
     this.charge = opts.charge || 0; // para flechas
+    this.shooterIsMob = !!opts.shooterIsMob; // flecha de mob: só acerta o jogador
     this.inGround = false;
     this.groundBlock = null;
     this.ticksAlive = 0;
@@ -71,7 +121,7 @@ export class ProjectileManager {
     const lookDir = opts.lookDir || this._lookDir(shooter);
     const vel = getArrowVelocity(charge, lookDir, shooter.vel);
     return this.spawn('arrow', {
-      pos: eye, vel, shooterId: shooter.id, shooterName: shooter.nomeJogador || shooter.name,
+      pos: eye, vel, shooterId: shooter.id, shooterName: opts.shooterName || shooter.nomeJogador || shooter.name,
       charge, shooterIsMob: !!opts.shooterIsMob,
       onHitEntity: opts.onHitEntity, onHitBlock: opts.onHitBlock,
     });
@@ -106,7 +156,7 @@ export class ProjectileManager {
       const geo = new THREE.BoxGeometry(0.12, 0.16, 0.12);
       p.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x4a5a3a }));
     } else if (p.type === 'arrow') {
-      p.mesh = new THREE.Mesh(this._arrowGeo, new THREE.MeshBasicMaterial({ color: p.def.color }));
+      p.mesh = buildArrowGroup();
     } else {
       p.mesh = new THREE.Mesh(this._ballGeo, new THREE.MeshBasicMaterial({ color: p.def.color }));
     }
@@ -356,7 +406,12 @@ export class ProjectileManager {
         entity.vel.y = Math.min((entity.vel.y || 0) / 2 + 0.4, 0.4);
       }
       entity._lastAttacker = p.shooterName;
-      applyDamage(entity, damage, 'projectile');
+      if (typeof entity.applyDamage === 'function') {
+        entity.applyDamage(damage, 'projectile', p.shooter || { name: p.shooterName });
+      } else {
+        if (entity && !Array.isArray(entity.effects)) entity.effects = [];
+        applyDamage(entity, damage, 'projectile');
+      }
     } else if (p.type === 'snowball' || p.type === 'egg' || p.type === 'fishing_bobber') {
       // Knockback sem dano (RF-030, RF-031)
       if (p.def.knockback && entity.vel) {

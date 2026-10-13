@@ -1,0 +1,282 @@
+// Teste de fumaça do motor REAL no Chrome headless. Rede do Supabase bloqueada (nada é gravado no banco do jogo).
+import { pathToFileURL } from 'url';
+const root = process.argv[2];
+const port = process.argv[3] || '5181';
+const puppeteer = (await import(pathToFileURL(root + '/node_modules/puppeteer/lib/puppeteer/puppeteer.js').href)).default;
+
+const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'] });
+const page = await browser.newPage();
+await page.setViewport({ width: 800, height: 450 });
+const errors = [];
+await page.setRequestInterception(true);
+page.on('request', (r) => { const u = new URL(r.url()); if (/(^|\.)(supabase\.co|crafthead\.net|vercel\.com)$/.test(u.hostname)) r.abort(); else r.continue(); });
+page.on('requestfailed', (r) => { if (r.url().includes('localhost')) errors.push('requestfailed: ' + r.url() + ' ' + (r.failure()?.errorText)); });
+page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+page.on('console', (m) => { if (m.type() === 'error') { const t = m.text(); if (!/Failed to load resource|ERR_FAILED|net::/.test(t)) errors.push('console: ' + t.slice(0, 300)); } });
+
+await page.goto(`http://localhost:${port}/`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+const result = await page.evaluate(async () => {
+  const out = [];
+  const ok = (c, m) => out.push((c ? 'OK   ' : 'FALHA') + ' ' + m);
+  try {
+    const { ClientWorld } = await import('/src/game/world.js');
+    const { GameEngine } = await import('/src/game/engine.js');
+    const { seedFromString } = await import('/src/game/prng.js');
+    const { DEFAULT_HOTBAR } = await import('/src/game/hotbar.js');
+    const { packState, stateId, stateMeta } = await import('/src/game/chunk.js');
+    const { getBlock } = await import('/src/game/blocks.js');
+    const Surv = await import('/src/game/survival.js');
+
+    const canvas = document.createElement('canvas');
+    canvas.style.cssText = 'width:800px;height:450px;position:fixed;left:0;top:0';
+    document.body.appendChild(canvas);
+    const seed = seedFromString('88888');
+    const cw = new ClientWorld(seed, new Map(), { generatorId: 'open_world', params: { structures: true } });
+    // chão plano de teste em volta do spawn, para não depender do relevo
+    const spawn = { x: 8.5, y: 100, z: 8.5 };
+    const msgs = [];
+    const deaths = [];
+    const pState = { pos: { ...spawn }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, onGround: false, flying: false, sneaking: false, sprinting: false, gameMode: 'survival', hotbar: DEFAULT_HOTBAR.slice(), selectedSlot: 0, nomeJogador: 'Tester' };
+    const engine = new GameEngine(canvas, { world: cw, player: pState, spawn, worldTime: 1000, gameRules: {}, difficulty: 'normal', onHud: () => {}, onProgress: () => {}, onChatMessage: (m) => msgs.push(m), onDeath: (d) => deaths.push(d), onAutosave: async () => {} });
+    await engine.start();
+    engine.paused = false;
+    await new Promise(r => setTimeout(r, 3500)); // deixa o loop carregar chunks
+    ok(cw.chunks.size > 0, `chunks carregados: ${cw.chunks.size}`);
+
+    // plataforma de pedra 21×21 em y=99 e ar acima
+    const B0 = 99;
+    for (let x = -2; x <= 18; x++) for (let z = -2; z <= 18; z++) { for (let y = B0 + 1; y <= B0 + 6; y++) cw.setBlock(x, y, z, 0); cw.setBlock(x, B0, z, packState(1, 0)); }
+    pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 }; pState.vel = { x: 0, y: 0, z: 0 };
+    const tickN = (n) => { for (let i = 0; i < n; i++) engine.tick(); };
+    tickN(3);
+
+    // ---- 1) tecla A com o F3 ligado ----
+    const ev = (code, repeat = false) => ({ code, repeat, preventDefault() {}, target: document.body });
+    engine.onKey(ev('F3'), true); engine.onKey(ev('F3'), false); // toque no F3: liga o painel
+    ok(engine.f3 === true, 'F3 (toque) liga o painel');
+    const chunksBefore = [...cw.chunks.values()].reduce((a, c) => a + c.secVer.reduce((s, v) => s + v, 0), 0);
+    engine.onKey(ev('KeyA'), true);
+    ok(engine.isAction('left') === true, 'com o F3 ligado, apertar A registra "esquerda"');
+    const chunksAfter = [...cw.chunks.values()].reduce((a, c) => a + c.secVer.reduce((s, v) => s + v, 0), 0);
+    ok(chunksBefore === chunksAfter, 'A com o F3 ligado NÃO recarrega chunks');
+    const x0 = pState.pos.x; tickN(10);
+    ok(Math.abs(pState.pos.x - x0) > 0.2 || Math.abs(pState.pos.z - 8.5) > 0.2, `jogador anda com A (dx=${(pState.pos.x - x0).toFixed(2)})`);
+    engine.onKey(ev('KeyA'), false);
+    ok(engine.isAction('left') === false, 'soltar A limpa a tecla');
+    engine.f3 = false;
+    // keyup durante o chat não gruda
+    engine.onKey(ev('KeyD'), true); engine.chatOpen = true; engine.onKey(ev('KeyD'), false); engine.chatOpen = false;
+    ok(engine.isAction('right') === false, 'soltar D com o chat aberto não deixa a tecla grudada');
+    tickN(20);
+
+    // ---- 2) quebrar flor/grama alta e terra à mão ----
+    const aimAt = (bx, by, bz) => { const e = engine.eyePos(); const dx = bx + 0.5 - e.x, dy = by + 0.5 - e.y, dz = bz + 0.5 - e.z; pState.yaw = Math.atan2(-dx, dz); pState.pitch = -Math.atan2(dy, Math.hypot(dx, dz)); engine._cachedRaycastFrame = -1; };
+    pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 }; pState.vel = { x: 0, y: 0, z: 0 }; tickN(3);
+    cw.setBlock(8, B0 + 1, 11, packState(38, 0)); // papoula
+    aimAt(8, B0 + 1, 11);
+    const dropsBefore = engine.itemEntities.items.length;
+    engine.mouseBtn[0] = true;
+    let t = 0; while (t < 30 && stateId(cw.getBlock(8, B0 + 1, 11)) !== 0) { engine.tick(); t++; }
+    engine.mouseBtn[0] = false; tickN(8);
+    ok(stateId(cw.getBlock(8, B0 + 1, 11)) === 0 && t <= 3, `flor quebra em ${t} tick(s)`);
+    cw.setBlock(8, B0 + 1, 11, packState(3, 0)); // terra
+    aimAt(8, B0 + 1, 11);
+    engine.mouseBtn[0] = true; t = 0; while (t < 80 && stateId(cw.getBlock(8, B0 + 1, 11)) !== 0) { engine.tick(); t++; }
+    engine.mouseBtn[0] = false;
+    ok(t >= 12 && t <= 20, `terra à mão quebra em ${t} ticks (oficial: 15)`);
+    const afterBreak = engine.itemEntities.items.length;
+    ok(afterBreak > dropsBefore, `bloco quebrado gera item no chão (${dropsBefore} → ${afterBreak})`);
+    // coleta: o jogador está a ~2,5 blocos; o item atrai e entra no inventário em segundos
+    let picked = false; const invCount = () => [...engine.inventory.hotbar, ...engine.inventory.main].reduce((s, i) => s + (i && i.id === 3 ? i.count : 0), 0);
+    const dirtBefore = invCount();
+    const it0 = engine.itemEntities.items.find(i => i.id === 3);
+    if (it0) { pState.pos.x = it0.pos.x; pState.pos.z = it0.pos.z; }
+    for (let i = 0; i < 100 && !picked; i++) { engine.tick(); await new Promise(r => requestAnimationFrame(r)); picked = invCount() > dirtBefore; }
+    ok(picked, 'o drop é coletado em poucos segundos');
+
+    // ---- 3) escada e laje: colocação pelo motor ----
+    const slotSet = (id, meta = 0, n = 64) => { engine.player.hotbar[0] = { id, count: n, meta }; engine.player.selectedSlot = 0; };
+    pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 }; pState.yaw = 0; tickN(2);
+    slotSet(53); aimAt(8, B0, 11); // olha para o chão à frente
+    engine._cachedRaycastFrame = -1; engine.placeBlock();
+    const hitSt = [...Array(5).keys()].map(i => cw.getBlock(8, B0 + 1, 10 + i)).find(s => stateId(s) === 53);
+    ok(!!hitSt, `escada colocada pelo motor (meta=${hitSt ? stateMeta(hitSt) : 'n/a'})`);
+    slotSet(44, 3); engine.placeCd = 0; aimAt(12, B0, 8); engine._cachedRaycastFrame = -1; engine.placeBlock();
+    const slabSt = [...Array(5).keys()].map(i => cw.getBlock(10 + i, B0 + 1, 8)).find(s => stateId(s) === 44);
+    ok(!!slabSt && stateMeta(slabSt) === 3, 'laje de pedregulho colocada (meta 3)');
+
+    // ---- 4) morte: mensagem, inventário, chat ----
+    engine.inventory.hotbar[1] = { id: 1, count: 10, meta: 0 };
+    msgs.length = 0; const itemsBefore = engine.itemEntities.items.length;
+    pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 };
+    Surv.applyDamage(pState, 100, 'fall');
+    tickN(3);
+    const deathMsg = msgs.map(m => m.text).find(t => /Tester/.test(t));
+    ok(!!deathMsg && /caiu de um lugar alto/.test(deathMsg), `chat recebe a morte: "${deathMsg}"`);
+    ok(engine.itemEntities.items.length > itemsBefore, 'itens caem no chão na morte');
+    ok(deaths.length === 1 && deaths[0].itemsLost.length > 0, `onDeath chamado uma vez com itens perdidos (${deaths[0]?.itemsLost.length})`);
+    ok(engine.inventory.hotbar.every(i => !i || !i.id), 'inventário esvaziado');
+    engine.respawn();
+    ok(!pState.isDead && pState.health === 20, 'renascer restaura a vida');
+    // /kill
+    msgs.length = 0; const { processCommand } = await import('/src/game/commands.js');
+    processCommand(engine, '/kill'); tickN(3);
+    ok(msgs.some(m => /caiu para fora do mundo/.test(m.text)), '/kill: "caiu para fora do mundo"');
+    engine.respawn();
+
+    // ---- 5) TAB offline ----
+    engine.playerListOpen = true; engine.emitHud();
+    ok(engine._lastHud && engine._lastHud.pings.length === 1 && engine._lastHud.pings[0].name === 'Tester', 'TAB offline lista o próprio jogador');
+
+    // ---- 6) esqueleto: arco e flecha atinge o jogador ----
+    pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 }; pState.health = 20; pState.isDead = false; pState.hurtResistantTime = 0; tickN(2);
+    engine.difficulty = 'normal'; engine.worldTime = 15000; // noite: de dia o esqueleto foge do sol
+    const sk = engine.mobs.summon('skeleton', { x: 8.5, y: B0 + 1, z: 14.5 });
+    ok(!!sk, 'esqueleto invocado');
+    let arrows = 0, hurt = false;
+    for (let i = 0; i < 400 && !hurt; i++) { engine.tick(); arrows = Math.max(arrows, engine.projectiles.projectiles.filter(p => p.type === 'arrow').length); if (pState.health < 20) hurt = true; }
+    ok(arrows > 0, `esqueleto disparou flechas (máx ${arrows} no ar)`);
+    ok(hurt, `flecha do esqueleto feriu o jogador (vida ${pState.health})`);
+    // morte por flecha: o nome do esqueleto aparece na mensagem
+    msgs.length = 0; pState.health = 1; pState.hurtResistantTime = 0;
+    for (let i = 0; i < 400 && !pState.isDead; i++) engine.tick();
+    tickN(2);
+    const arrowMsg = msgs.map(m => m.text).find(t => /Tester/.test(t));
+    ok(pState.isDead && /alvejado por Esqueleto/.test(arrowMsg || ''), `morte por flecha no chat: "${arrowMsg}"`);
+    const bowChild = sk._model && (() => { let f = false; sk._model.traverse(o => { if (o.name === 'bow') f = true; }); return f; })();
+    ok(!!bowChild, 'modelo do esqueleto tem o arco');
+
+    // ======== RODADA 3: itens, cama, agachar ========
+    const reset = () => { for (let x = -2; x <= 18; x++) for (let z = -2; z <= 18; z++) for (const yy of [B0 + 1, B0 + 2]) { const f = stateId(cw.getBlock(x, yy, z)); if (f >= 8 && f <= 11) cw.setBlock(x, yy, z, 0); } /* água do teste do balde */ engine.mobs.mobs.length = 0; engine.projectiles.projectiles.length = 0; pState.hunger = 20; pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 }; pState.vel = { x: 0, y: 0, z: 0 }; pState.yaw = 0; pState.health = 20; pState.isDead = false; pState.sleeping = false; engine.worldTime = 15000; engine.placeCd = 0; tickN(3); };
+    reset();
+    const held = (id, meta = 0, n = 5) => { pState.hotbar[0] = { id, count: n, meta, ...(id >= 259 && id <= 294 ? { durability: 0 } : {}) }; pState.selectedSlot = 0; return pState.hotbar[0]; };
+    const floorAim = (x, z) => { aimTop(x, B0, z); };
+    const aimTop = (bx, by, bz) => { const e = engine.eyePos(); const dx = bx + 0.5 - e.x, dy = by + 1 - e.y, dz = bz + 0.5 - e.z; pState.yaw = Math.atan2(-dx, dz); pState.pitch = -Math.atan2(dy, Math.hypot(dx, dz)); engine._cachedRaycastFrame = -1; };
+    const st = (x, y, z) => stateId(cw.getBlock(x, y, z));
+    // graveto não vira bloco
+    held(280, 0, 5); floorAim(8, 11); engine.placeBlock();
+    ok([...Array(5).keys()].every(i => st(8, B0 + 1, 10 + i) === 0 || st(8, B0 + 1, 10 + i) === 53), 'item que não é bloco (graveto) NÃO é colocado no mundo');
+    // enxada
+    cw.setBlock(9, B0 + 1, 11, packState(2, 0)); aimTop(9, B0 + 1, 11);
+    let h = held(290); const usedHoe = engine.useHeldItem(h);
+    ok(usedHoe && st(9, B0 + 1, 11) === 60, 'enxada transforma grama em terra arada');
+    // sementes
+    h = held(295, 0, 5); aimTop(9, B0 + 1, 11); engine.useHeldItem(h);
+    ok(st(9, B0 + 2, 11) === 59 && h.count === 4, 'sementes plantam trigo na terra arada e gastam 1');
+    // farinha de osso
+    h = held(351, 15, 5); aimAt(9, B0 + 2, 11); engine._cachedRaycastFrame = -1; engine.useHeldItem(h);
+    ok(stateMeta(cw.getBlock(9, B0 + 2, 11)) > 0, `farinha de osso acelera o trigo (meta=${stateMeta(cw.getBlock(9, B0 + 2, 11))})`);
+    // baldes e pederneira (área livre ao norte)
+    pState.pos = { x: 8.5, y: B0 + 1, z: 2.5 }; pState.vel = { x: 0, y: 0, z: 0 }; tickN(2);
+    cw.setBlock(7, B0 + 1, 5, packState(9, 0)); aimAt(7, B0 + 1, 5); engine._cachedRaycastFrame = -1;
+    h = held(325, 0, 3); engine.useHeldItem(h);
+    const hasWaterBucket = [...pState.hotbar, ...engine.inventory.main].some(i => i && i.id === 326);
+    ok(st(7, B0 + 1, 5) === 0 && hasWaterBucket, 'balde vazio recolhe a fonte de água e vira balde de água');
+    h = held(326, 0, 1); floorAim(10, 5); engine.useHeldItem(h);
+    ok(st(10, B0 + 1, 5) === 9 && pState.hotbar[0] && pState.hotbar[0].id === 325, 'balde de água derrama uma fonte e volta a ser balde vazio');
+    h = held(259, 0, 1); floorAim(6, 5); engine.useHeldItem(h);
+    ok(st(6, B0 + 1, 5) === 51, 'pederneira e aço acende fogo');
+    // cama
+    reset(); held(355, 0, 2); pState.yaw = 0; floorAim(6, 8); engine.placeBlock();
+    const beds = []; for (let x = 3; x <= 9; x++) for (let z = 5; z <= 11; z++) { const stt = cw.getBlock(x, B0 + 1, z); if (stateId(stt) === 26) beds.push({ x, z, meta: stateMeta(stt) }); }
+    const foot = beds.find(b => !(b.meta & 8)), head = beds.find(b => (b.meta & 8));
+    const dirs = [[0, 1], [-1, 0], [0, -1], [1, 0]]; const dd = foot ? dirs[foot.meta & 3] : [9, 9];
+    ok(beds.length === 2 && foot && head && head.x === foot.x + dd[0] && head.z === foot.z + dd[1] && (head.meta & 3) === (foot.meta & 3), `cama ocupa 2 blocos alinhados (pé ${JSON.stringify(foot)}, cabeceira ${JSON.stringify(head)})`);
+    ok(pState.hotbar[0].count === 1, 'cama gasta 1 item');
+    // quebrar uma metade remove a outra
+    pState.gameMode = 'creative'; aimAt(foot.x, B0 + 1, foot.z); engine._cachedRaycastFrame = -1; engine.breakBlock(); pState.gameMode = 'survival';
+    ok(st(foot.x, B0 + 1, foot.z) === 0 && st(head.x, B0 + 1, head.z) === 0, 'quebrar uma metade da cama remove a outra');
+    // dormir define o spawn e renascer usa a cama
+    held(355, 0, 1); floorAim(6, 8); engine.placeBlock();
+    const bed2 = []; for (let x = 3; x <= 9; x++) for (let z = 5; z <= 11; z++) if (st(x, B0 + 1, z) === 26) bed2.push({ x, z });
+    pState.pos = { x: 6.5, y: B0 + 1, z: 4.5 }; pState.health = 20; engine.worldTime = 15000;
+    engine.trySleep(bed2[0].x, B0 + 1, bed2[0].z);
+    ok(pState.hasBedSpawn === true && pState.spawnX === bed2[0].x, 'dormir define o ponto de renascimento na cama');
+    engine.wakeUp();
+    Surv.applyDamage(pState, 100, 'fall'); tickN(2); engine.respawn();
+    ok(Math.hypot(pState.pos.x - (bed2[0].x + 0.5), pState.pos.z - (bed2[0].z + 0.5)) < 2.5, `renasce ao lado da cama (${pState.pos.x.toFixed(1)}, ${pState.pos.z.toFixed(1)})`);
+    // cama destruída: volta ao spawn do mundo
+    for (const b of bed2) cw.setBlock(b.x, B0 + 1, b.z, 0);
+    msgs.length = 0; Surv.applyDamage(pState, 100, 'fall'); tickN(2); engine.respawn();
+    ok(pState.hasBedSpawn === false && msgs.some(m => /cama estava ausente/.test(m.text)), 'cama destruída: aviso e volta ao spawn do mundo');
+
+    // ======== PORTAS, CERCAS, PORTÃO ======== (alvos a até ~3 blocos do jogador: o alcance é 4,5)
+    reset(); pState.pos = { x: 8.5, y: B0 + 1, z: 1.5 }; tickN(2);
+    h = held(324, 0, 3); pState.yaw = 0; floorAim(8, 3); engine.placeBlock();
+    const dl = cw.getBlock(8, B0 + 1, 3), du = cw.getBlock(8, B0 + 2, 3);
+    ok(stateId(dl) === 64 && stateId(du) === 64 && (stateMeta(du) & 8) === 8, `porta ocupa 2 blocos (meta baixo ${stateMeta(dl)}, cima ${stateMeta(du)})`);
+    ok(pState.hotbar[0].count === 2, 'porta gasta 1 item');
+    pState.sneaking = false; aimAt(8, B0 + 2, 3); engine._cachedRaycastFrame = -1;
+    const openBefore = (stateMeta(cw.getBlock(8, B0 + 1, 3)) & 4) !== 0;
+    engine.interactBlock(pState);
+    ok(!openBefore && (stateMeta(cw.getBlock(8, B0 + 1, 3)) & 4) !== 0, 'botão direito (mirando a metade de cima) abre a porta pela de baixo');
+    // aberta, a placa sai da frente e a mira passa pelo vão (como no jogo): fechar pelo método, sem raio
+    engine.toggleOpenable(8, B0 + 1, 3);
+    ok((stateMeta(cw.getBlock(8, B0 + 1, 3)) & 4) === 0, 'e fecha de novo');
+    pState.gameMode = 'survival'; const itemsBeforeDoor = engine.itemEntities.items.length;
+    aimAt(8, B0 + 2, 3); engine._cachedRaycastFrame = -1; engine.mouseBtn[0] = true; for (let i = 0; i < 160 && st(8, B0 + 2, 3) === 64; i++) engine.tick(); engine.mouseBtn[0] = false; // porta à mão: dureza 3 → ~90 ticks
+    ok(st(8, B0 + 1, 3) === 0 && st(8, B0 + 2, 3) === 0, 'quebrar uma metade remove a porta inteira');
+    const newItems = engine.itemEntities.items.slice(itemsBeforeDoor);
+    ok(newItems.length === 1 && newItems[0].id === 324, `e dropa exatamente 1 porta (${newItems.length} item(ns))`);
+    held(330, 0, 1); pState.yaw = 0; floorAim(11, 3); engine.placeBlock();
+    aimAt(11, B0 + 1, 3); engine._cachedRaycastFrame = -1; engine.interactBlock(pState);
+    ok(st(11, B0 + 1, 3) === 71 && (stateMeta(cw.getBlock(11, B0 + 1, 3)) & 4) === 0, 'porta de ferro não abre com o botão direito');
+    held(85, 0, 4); engine.placeCd = 0; floorAim(6, 3); engine.placeBlock();
+    ok(st(6, B0 + 1, 3) === 85, 'cerca colocada');
+    held(85, 0, 3); engine.placeCd = 0; floorAim(7, 3); engine.placeBlock();
+    ok(st(7, B0 + 1, 3) === 85, 'segunda cerca ao lado (a conexão é automática pela vizinhança)');
+    held(107, 0, 2); engine.placeCd = 0; floorAim(9, 3); engine.placeBlock();
+    ok(st(9, B0 + 1, 3) === 107, 'portão colocado');
+    const gateBefore = stateMeta(cw.getBlock(9, B0 + 1, 3));
+    aimAt(9, B0 + 1, 3); engine._cachedRaycastFrame = -1; engine.interactBlock(pState);
+    ok(((stateMeta(cw.getBlock(9, B0 + 1, 3)) ^ gateBefore) & 4) === 4, 'botão direito abre o portão');
+    ok(st(6, B0 + 1, 3) === 85 && st(7, B0 + 1, 3) === 85, 'as cercas continuam de pé');
+
+    // ======== MOBS: criativo é ignorado; sem ataque pelo teto/piso ========
+    reset(); engine.difficulty = 'normal'; engine.worldTime = 15000;
+    for (let x = 6; x <= 11; x++) for (let z = 6; z <= 11; z++) for (let y = B0 + 1; y <= B0 + 7; y++) cw.setBlock(x, y, z, 0);
+    const hp = () => pState.health;
+    const nearby = (kind, x, y, z) => engine.mobs.summon(kind, { x, y, z });
+    // 1) criativo: zumbi colado no jogador não o ataca nem o escolhe como alvo
+    pState.gameMode = 'creative'; pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 }; pState.health = 20; tickN(2);
+    const z1 = nearby('zombie', 9.5, B0 + 1, 8.5);
+    tickN(120);
+    ok(hp() === 20 && !z1.target, `criativo: zumbi ao lado não ataca nem mira o jogador (vida ${hp()}, alvo ${z1.target ? 'sim' : 'não'})`);
+    // 2) sobrevivência: o mesmo zumbi passa a atacar
+    pState.gameMode = 'survival'; pState.hurtResistantTime = 0;
+    for (let i = 0; i < 200 && hp() >= 20; i++) engine.tick();
+    ok(hp() < 20, `sobrevivência: o mesmo zumbi ataca (vida ${hp()})`);
+    pState.isDead = false; pState.deathPending = false; pState.health = 20;
+    // 3) voltou ao criativo: larga o alvo e para de bater
+    pState.gameMode = 'creative'; pState.health = 20; tickN(60);
+    const afterCreative = hp(); tickN(80);
+    ok(hp() === 20 && afterCreative === 20 && !z1.target, 'virou criativo no meio da luta: o mob larga o alvo e para de ferir');
+    engine.mobs.mobs.length = 0;
+    // 4) teto: zumbi em cima de um piso (3 blocos acima), jogador embaixo; sem bloco no meio não existiria ataque, com o piso nao pode haver
+    pState.gameMode = 'survival'; pState.health = 20; pState.hurtResistantTime = 0; pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 }; tickN(2);
+    for (let x = 7; x <= 10; x++) for (let z = 7; z <= 10; z++) cw.setBlock(x, B0 + 4, z, packState(1, 0)); // piso do andar de cima
+    const zUp = nearby('zombie', 8.5, B0 + 5, 8.5); zUp.target = pState;
+    tickN(200);
+    ok(hp() === 20, `zumbi no andar de cima (sobre o teto) NÃO fere o jogador embaixo (vida ${hp()})`);
+    // 5) controle: sem o piso e no mesmo nível, o ataque acontece
+    engine.mobs.mobs.length = 0; for (let x = 7; x <= 10; x++) for (let z = 7; z <= 10; z++) cw.setBlock(x, B0 + 4, z, 0);
+    pState.health = 20; pState.hurtResistantTime = 0; tickN(2);
+    pState.isDead = false; const zSame = nearby('zombie', 9.5, B0 + 1, 8.5);
+    for (let i = 0; i < 200 && hp() >= 20; i++) engine.tick();
+    ok(hp() < 20, `controle: zumbi no mesmo nível ainda ataca (vida ${hp()})`);
+    // 6) esqueleto não atira no criativo
+    engine.mobs.mobs.length = 0; engine.projectiles.projectiles.length = 0; pState.gameMode = 'creative'; pState.health = 20;
+    const sk2 = nearby('skeleton', 8.5, B0 + 1, 14.5); engine.worldTime = 15000;
+    let shot = 0; for (let i = 0; i < 200; i++) { engine.tick(); shot = Math.max(shot, engine.projectiles.projectiles.filter(q => q.type === 'arrow').length); }
+    ok(shot === 0 && hp() === 20, `esqueleto não atira no criativo (flechas no ar: ${shot})`);
+    pState.gameMode = 'survival'; void zSame; void sk2;
+    engine.stop?.();
+  } catch (e) { out.push('ERRO ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')); }
+  return out;
+});
+console.log(result.join('\n'));
+console.log('--- erros de console/página:', errors.length);
+errors.slice(0, 12).forEach(e => console.log('  ' + e));
+await browser.close();
+process.exit(result.some(l => l.startsWith('FALHA') || l.startsWith('ERRO')) ? 1 : 0);

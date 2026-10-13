@@ -1,34 +1,57 @@
-// Moldura comum dos containers (bancada, fornalha, baú): textura oficial na escala inteira da GUI, slots de 16×16 px de GUI
-// sobre a malha da textura, item no cursor, tooltip e as teclas E/Esc. O conteúdo é desenhado pelo filho com { S, slot, tex }.
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ItemSlot from './ItemSlot';
 import ItemTooltip from './ItemTooltip';
 import { Sprite, usePackTexture, useGuiScaleValue } from './GuiSprite';
+import { settingsStore } from '@/game/settingsStore';
+import { playClickSound } from '@/game/sounds';
 
-export default function ContainerFrame({ texture, w, h, inv, onClose, children }) {
+export default function ContainerFrame({ texture, w, h, inv, onClose, onUpdate, children }) {
   const S = useGuiScaleValue();
   const tex = usePackTexture(texture);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [hovered, setHovered] = useState(null);
+  const hoveredSlotRef = useRef(null);
 
   useEffect(() => {
     const onMove = (e) => setMouse({ x: e.clientX, y: e.clientY });
     window.addEventListener('mousemove', onMove);
     const onKey = (e) => {
       if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
-      if (e.key === 'Escape' || e.key === 'e' || e.key === 'E' || e.code === 'KeyE') {
+      const invKey = settingsStore.get('user.keys.inventory') || 'KeyE';
+      if (e.key === 'Escape' || e.code === invKey || (invKey.startsWith('Key') && e.key.toLowerCase() === invKey.slice(3).toLowerCase())) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation?.();
         onClose();
+        return;
+      }
+      // Troca rápida de slots 1-9 com a hotbar
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= 9 && hoveredSlotRef.current) {
+        const targetHotbarIdx = num - 1;
+        const target = hoveredSlotRef.current;
+        if (target && target.arr && target.index !== undefined && inv?.hotbar) {
+          e.preventDefault();
+          e.stopPropagation();
+          const temp = target.arr[target.index];
+          target.arr[target.index] = inv.hotbar[targetHotbarIdx];
+          inv.hotbar[targetHotbarIdx] = temp;
+          playClickSound();
+          onUpdate?.();
+        }
       }
     };
     window.addEventListener('keydown', onKey, true);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('keydown', onKey, true); };
-  }, [onClose]);
+  }, [onClose, inv, onUpdate]);
 
   const slot = (key, x, y, item, props) => (
-    <div key={key} style={{ position: 'absolute', left: x * S, top: y * S, width: 16 * S, height: 16 * S }}>
+    <div
+      key={key}
+      style={{ position: 'absolute', left: x * S, top: y * S, width: 16 * S, height: 16 * S }}
+      onMouseEnter={() => { if (props?.slotRef) hoveredSlotRef.current = props.slotRef; }}
+      onMouseLeave={() => { if (hoveredSlotRef.current === props?.slotRef) hoveredSlotRef.current = null; }}
+    >
       <ItemSlot item={item} size={16 * S} transparent fill guiScale={S} onHover={(it) => setHovered(it)} {...props} />
     </div>
   );
@@ -66,13 +89,16 @@ export function PlayerSlots({ inv, slot, mainY, hotY, click, rightClick, shift }
   return (
     <>
       {inv.main.map((item, i) => slot('m' + i, 8 + (i % 9) * 18, mainY + Math.floor(i / 9) * 18, item, {
+        slotRef: { arr: inv.main, index: i },
         onClick: () => click(inv.main, i), onRightClick: () => rightClick(inv.main, i), onShiftClick: () => shift('main', i),
       }))}
       {inv.hotbar.map((item, i) => slot('h' + i, 8 + i * 18, hotY, item, {
+        slotRef: { arr: inv.hotbar, index: i },
         onClick: () => click(inv.hotbar, i), onRightClick: () => rightClick(inv.hotbar, i), onShiftClick: () => shift('hotbar', i),
       }))}
     </>
   );
 }
+
 
 export { Sprite };

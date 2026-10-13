@@ -168,6 +168,7 @@ export default function ModelScene({ url, visibleNodeName, colorize, wireTexture
       window.removeEventListener("resize", handleResize);
       controls.dispose();
       renderer.dispose();
+      renderer.forceContextLoss?.();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
       scene.traverse((obj) => {
         if (obj.geometry) obj.geometry.dispose();

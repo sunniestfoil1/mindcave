@@ -34,7 +34,76 @@ export default function GameHud({ hud, onPause }) {
   const hideInGameHud = hud.hasGuiOpen || hud.paused;
   return (
     <div className="pointer-events-none fixed inset-0 select-none font-mono text-white">
-      {!hideInGameHud && <SurvivalHud hud={hud} />}
+      {/* Camada do HUD de jogo: Transição suave de opacidade (100% jogando, 0% ao abrir GUI) */}
+      <div className={`transition-opacity duration-150 ${hideInGameHud ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+        <SurvivalHud hud={hud} />
+        {/* Mira */}
+        {!hud.paused && !hud.chatOpen && (
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+            <div className="relative w-4 h-4">
+              <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[2px] h-4 bg-white/90 shadow-[0_0_2px_rgba(0,0,0,0.9)]" />
+              <div className="absolute top-1/2 left-0 -translate-y-1/2 h-[2px] w-4 bg-white/90 shadow-[0_0_2px_rgba(0,0,0,0.9)]" />
+            </div>
+            {/* Indicador de bloqueio com espada */}
+            {hud.blocking && (
+              <div className="absolute -top-1 left-1/2 -translate-x-1/2 text-lg">🛡️</div>
+            )}
+            {/* Barra de carga do arco */}
+            {hud.bowDrawing && hud.bowCharge > 0 && (
+              <div className="absolute top-6 left-1/2 -translate-x-1/2 w-16 h-1 bg-black/50 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-white/80 transition-all"
+                  style={{ width: `${hud.bowCharge * 100}%` }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+        {/* Hotbar, vida, fome, armadura e XP com a textura oficial */}
+        <HudBars hud={hud} />
+        {/* Título / Subtítulo de tela (/title) */}
+        {(hud.title || hud.subtitle) && (
+          <div className="absolute inset-x-0 top-[16%] flex flex-col items-center gap-1 pointer-events-none">
+            {hud.title && (
+              <div className="text-4xl sm:text-5xl md:text-6xl font-bold text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] text-center px-4">
+                {hud.title}
+              </div>
+            )}
+            {hud.subtitle && (
+              <div className="text-lg sm:text-xl text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] text-center px-4">
+                {hud.subtitle}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Mensagem de Sono Multiplayer (1/4 jogadores dormindo, durma para amanhecer) */}
+      {hud.sleepingStatus && (
+        <div className="pointer-events-none absolute bottom-28 left-1/2 -translate-x-1/2 z-20">
+          <div className="bg-black/60 px-3 py-1 rounded text-sm text-yellow-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] animate-fade-in font-mono border border-yellow-500/30">
+            {hud.sleepingStatus}
+          </div>
+        </div>
+      )}
+
+      {/* Tela de Dormir (Fade out escuro e dica de acordar) */}
+      {hud.sleeping && (
+        <div
+          className="fixed inset-0 z-40 flex flex-col items-center justify-center pointer-events-none transition-colors duration-300"
+          style={{ backgroundColor: `rgba(0, 0, 0, ${Math.min(0.92, 0.4 + (hud.sleepFade || 0) * 0.52)})` }}
+        >
+          <div className="text-center space-y-3 pointer-events-auto">
+            <div className="text-xl text-white font-bold drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+              Você está dormindo...
+            </div>
+            <div className="text-sm text-white/75 bg-black/50 px-4 py-1.5 rounded-full border border-white/10">
+              Pressione <kbd className="px-2 py-0.5 bg-white/20 rounded text-white font-mono font-bold">Espaço</kbd> para sair da cama
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Overlay de fluido */}
       {hud.inFluid === 'water' && (
         <div className="absolute inset-0 bg-blue-600/20" />
@@ -42,32 +111,6 @@ export default function GameHud({ hud, onPause }) {
       {hud.inFluid === 'lava' && (
         <div className="absolute inset-0 bg-red-700/50" />
       )}
-
-      {/* Mira */}
-      {!hud.paused && !hud.chatOpen && !hud.hasGuiOpen && (
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-          <div className="relative w-4 h-4">
-            <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[2px] h-4 bg-white/90 shadow-[0_0_2px_rgba(0,0,0,0.9)]" />
-            <div className="absolute top-1/2 left-0 -translate-y-1/2 h-[2px] w-4 bg-white/90 shadow-[0_0_2px_rgba(0,0,0,0.9)]" />
-          </div>
-          {/* Indicador de bloqueio com espada */}
-          {hud.blocking && (
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 text-lg">🛡️</div>
-          )}
-          {/* Barra de carga do arco */}
-          {hud.bowDrawing && hud.bowCharge > 0 && (
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 w-16 h-1 bg-black/50 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-white/80 transition-all"
-                style={{ width: `${hud.bowCharge * 100}%` }}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Hotbar, vida, fome, armadura e XP com a textura oficial — oculta quando qualquer GUI está aberta */}
-      {!hideInGameHud && <HudBars hud={hud} />}
 
       {/* Status da Trilha Sonora C418 & Voice Chat */}
       <div className="absolute top-2 left-2 flex items-center gap-2 pointer-events-auto z-30">
@@ -110,11 +153,6 @@ export default function GameHud({ hud, onPause }) {
             🎶 {hud.musicTrack}
           </div>
         )}
-      </div>
-
-      {/* Relógio */}
-      <div className="absolute top-2 right-2 text-xs text-white/80 bg-black/30 px-2 py-0.5 rounded">
-        🕐 {hud.clock} · {SHADER_NAMES[hud.shaderMode]} [V]
       </div>
 
       {/* F3 Screen - Authentic Minecraft 1.8.9 Layout */}

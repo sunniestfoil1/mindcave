@@ -143,6 +143,11 @@ export const RECIPES = [
   R(['CCC'], { C: { id: 5 } }, { id: 126, meta: 0, count: 6 }),
   R(['CCC'], { C: { id: 176 } }, { id: 182, meta: 0, count: 6 }),
 
+  // Cercas e portão (1.8.9)
+  R(['PSP', 'PSP'], { P: { id: 5 }, S: STICK }, { id: 85, count: 2 }),
+  R(['NNN', 'NNN'], { N: { id: 112 } }, { id: 113, count: 6 }),
+  R(['SPS', 'SPS'], { P: { id: 5 }, S: STICK }, { id: 107, count: 1 }),
+
   // Escadas: 6 blocos em degraus (nos dois sentidos) → 4 escadas
   ...[[5, 53], [4, 67], [45, 108], [98, 109], [112, 114], [24, 128], [155, 156], [176, 180]].flatMap(([src, out]) => [
     R(['C  ', 'CC ', 'CCC'], { C: { id: src } }, { id: out, count: 4 }),

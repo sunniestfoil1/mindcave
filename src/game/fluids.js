@@ -140,11 +140,7 @@ export function tickFluids(world, tickCount, playerPos) {
               const s = data[chunkIndex(lx, y, lz)];
               const id = stateId(s);
               if (!isFluid(id)) continue;
-              // Pula água/lava estática (fontes apoiadas por outro bloco não se movem)
-              const belowState = data[chunkIndex(lx, Math.max(0, y - 1), lz)];
-              const belowId = stateId(belowState);
               const isSource = id === 9 || id === 11;
-              if (isSource && (belowId !== 0 && !isReplaceable(belowId))) continue;
               if (isSource || (s & 0xf) === 8) {
                 const checkInteraction = lava || !isWater(id); // água sem lava por perto não interage com nada
                 if (!isSource && !checkInteraction) continue;  // queda de água: só interage
@@ -196,20 +192,34 @@ function processFluidBlock(world, x, y, z, state, tickCount) {
     return;
   }
 
-  // 2. Espalha horizontalmente se não é queda
-  if (isSource || level < MAX_FLOW) {
+  // 2. Espalha horizontalmente se não é queda (Água: 7 blocos; Lava no Overworld: 3 blocos - MCP 1.8.9)
+  const maxFlowDist = type === 'water' ? 7 : 3;
+  if (isSource || level < maxFlowDist) {
     const newLevel = isSource ? 1 : level + 1;
-    if (newLevel > MAX_FLOW) return;
+    if (newLevel <= maxFlowDist) {
+      const flowingId = type === 'water' ? 8 : 10;
 
-    const flowingId = type === 'water' ? 8 : 10;
-    const sourceId = type === 'water' ? 9 : 11;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, nz = z + dz;
+        const ns = world.getBlock(nx, y, nz);
+        const nid = stateId(ns);
+        if (canFlowInto(nid)) {
+          world.setBlock(nx, y, nz, packState(flowingId, newLevel));
+        }
+      }
+    }
+  }
 
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = x + dx, nz = z + dz;
-      const ns = world.getBlock(nx, y, nz);
-      const nid = stateId(ns);
-      if (canFlowInto(nid)) {
-        world.setBlock(nx, y, nz, packState(flowingId, newLevel));
+  // Se lava encostar em TNT (bloco 46), ativa ignição imediata da TNT
+  if (type === 'lava') {
+    for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      const tx = x + dx, ty = y + dy, tz = z + dz;
+      const tid = stateId(world.getBlock(tx, ty, tz));
+      if (tid === 46) {
+        world.setBlock(tx, ty, tz, 0);
+        if (typeof world.onTntIgnite === 'function') {
+          world.onTntIgnite(tx + 0.5, ty + 0.5, tz + 0.5);
+        }
       }
     }
   }
@@ -220,8 +230,8 @@ function processFluidBlock(world, x, y, z, state, tickCount) {
   }
 
   // 4. Seca corrente sem fonte
-  if (!isSource && type === 'water') {
-    checkDryUp(world, x, y, z);
+  if (!isSource) {
+    checkDryUp(world, x, y, z, type);
   }
 }
 
@@ -241,7 +251,7 @@ function checkInfiniteWaterSource(world, x, y, z) {
   }
 }
 
-function checkDryUp(world, x, y, z) {
+function checkDryUp(world, x, y, z, type = 'water') {
   // Se não tem fonte ou corrente adjacente de nível menor, seca
   const state = world.getBlock(x, y, z);
   const level = fluidLevel(state);
@@ -251,7 +261,7 @@ function checkDryUp(world, x, y, z) {
   for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
     const ns = world.getBlock(x + dx, y + dy, z + dz);
     if (!isFluid(stateId(ns))) continue;
-    if (fluidType(ns) !== 'water') continue;
+    if (fluidType(ns) !== type) continue;
     const nl = fluidLevel(ns);
     if (isFluidSource(ns) || (nl >= 0 && nl < level)) { hasFeeder = true; break; }
   }

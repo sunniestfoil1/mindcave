@@ -184,9 +184,9 @@ export function attackEntity(attacker, target, world, opts = {}) {
     applyKnockback(target, attacker.pos, sprinting, kbLevel);
   }
 
-  // Gastar exaustão (RF-004.5)
+  // Gastar exaustão (RF-004.5 / MCP 1.8.9: 0.1 por ataque)
   if (attacker.exhaustion !== undefined) {
-    attacker.exhaustion = Math.min(40, attacker.exhaustion + 0.3);
+    attacker.exhaustion = Math.min(40, attacker.exhaustion + 0.1);
   }
   // Durabilidade (RF-004.5 / RF-007)
   if (item && item.durability !== undefined) {

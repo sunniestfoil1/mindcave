@@ -25,7 +25,7 @@ export default function ChestUI({ title, container, inv, onUpdate, onClose }) {
   const off = (rows - 4) * 18; // deslocamento do inventário em relação à janela de 4 linhas
 
   return (
-    <ContainerFrame texture="textures/gui/container/generic_54.png" w={176} h={h} inv={inv} onClose={onClose}>
+    <ContainerFrame texture="textures/gui/container/generic_54.png" w={176} h={h} inv={inv} onClose={onClose} onUpdate={refresh}>
       {({ S, slot, tex }) => (
         <>
           <Sprite url={tex} u={0} v={0} w={176} h={topH} S={S} />
@@ -33,9 +33,11 @@ export default function ChestUI({ title, container, inv, onUpdate, onClose }) {
           <McText text={title || 'Baú'} x={8} y={6} S={S} />
           <McText text="Inventário" x={8} y={h - 94} S={S} />
           {container.slots.map((item, i) => slot('c' + i, 8 + (i % 9) * 18, 18 + Math.floor(i / 9) * 18, item, {
+            slotRef: { arr: container.slots, index: i },
             onClick: () => click(container.slots, i, true),
             onRightClick: () => click(container.slots, i, false),
           }))}
+
           <PlayerSlots inv={inv} slot={slot} mainY={103 + off} hotY={161 + off}
             click={(a, i) => click(a, i, true)} rightClick={(a, i) => click(a, i, false)}
             shift={(section, index) => { shiftClick(inv, section, index); refresh(); }} />

@@ -51,3 +51,4 @@ ceu_extracted/
 
 .vercel
 .env*
+supabase/.temp/

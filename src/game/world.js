@@ -546,6 +546,8 @@ export class ClientWorld {
     this.atlas.texture.dispose();
     this.pool.dispose();
   }
+
+  onTntIgnite(x, y, z) {}
 }
 
 function applyDelta(data, changes, deltaBytes) {

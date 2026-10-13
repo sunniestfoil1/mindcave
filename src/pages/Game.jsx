@@ -10,6 +10,7 @@ import { DEFAULT_HOTBAR, CREATIVE_DEFAULT_HOTBAR } from "@/game/hotbar";
 import { stateId, chunkCoord } from "@/game/chunk";
 import { isWater, getBlock } from "@/game/blocks";
 import GameHud from "@/components/game/GameHud";
+import RadioWidget from "@/components/game/RadioWidget";
 import Options from "@/pages/Options";
 import { settingsStore } from "@/game/settingsStore";
 import InventoryUI from "@/components/game/InventoryUI";
@@ -34,7 +35,8 @@ import { serializeAchievements } from "@/game/achievements";
 import { serializeInventory } from "@/game/inventory";
 import { serializeSurvival } from "@/game/survival";
 import { createFurnaceState } from "@/game/furnace";
-import { getOrCreateContainer } from "@/game/containers";
+import { getOrCreateContainer, serializeContainers, deserializeContainers } from "@/game/containers";
+
 
 function parseHotbar(s) {
   try { const h = JSON.parse(s); return Array.isArray(h) && h.length === 9 ? h : DEFAULT_HOTBAR.slice(); }
@@ -118,7 +120,6 @@ export default function Game() {
   const [playerNames, setPlayerNames] = useState([]);
   const [user, setUser] = useState(null);
 
-  const guiClosingCooldownRef = useRef(0);
   const showInventoryRef = useRef(false);
   const showCreativeRef = useRef(false);
   const showCraftingTableRef = useRef(false);
@@ -141,7 +142,6 @@ export default function Game() {
   useEffect(() => { showFeedbackRef.current = showFeedback; }, [showFeedback]);
 
   const closeAllGuis = useCallback(() => {
-    guiClosingCooldownRef.current = Date.now() + 400;
     setShowInventory(false);
     setShowCreative(false);
     setShowCraftingTable(false);
@@ -250,6 +250,7 @@ export default function Game() {
         };
 
         if (cancelled) return;
+        deserializeContainers(world.containersData);
         engine = new GameEngine(canvasRef.current, {
           world: cw, player: pState, spawn, worldTime: world.worldTime || 0,
           gameRules,
@@ -258,6 +259,8 @@ export default function Game() {
           savedStats: playerStatsRec?.stats,
           savedAchievements: playerStatsRec?.achievements,
           savedInventory: player.inventoryData,
+          savedMobs: world.mobsData,
+          savedItemEntities: world.itemEntitiesData,
           weatherState: world.weatherData,
           onHud: setHud,
           onDeath: async (d) => {
@@ -274,17 +277,17 @@ export default function Game() {
           onToggleInventory: () => {
             const p = engineRef.current?.player;
             if (p?.isDead) return;
-            const anyGuiOpen = showInventoryRef.current || showCreativeRef.current ||
-              showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current ||
-              showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current;
-            if (anyGuiOpen) {
+            const containerOpen = showInventoryRef.current || showCreativeRef.current ||
+              showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current;
+            // REGRA DA TECLA E (não mexer sem testar): ela só abre/fecha inventário e containers.
+            // Em Opções, Estatísticas, LAN, Feedback e no menu de pausa a tecla E é IGNORADA (como no 1.8.9);
+            // fechar essas telas é com Esc ou com os botões delas. Antes, qualquer tela aberta fechava com E.
+            if (containerOpen) {
               closeAllGuisRef.current();
               return;
             }
-            setShowOptions(false);
-            setShowStats(false);
-            setShowOpenToLAN(false);
-            setShowFeedback(false);
+            if (showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current) return;
+            if (engineRef.current?.paused && !engineRef.current?.netManager) return; // menu de pausa (singleplayer)
             if (p?.gameMode === 'creative') setShowCreative(true);
             else setShowInventory(true);
             document.exitPointerLock?.();
@@ -316,6 +319,9 @@ export default function Game() {
               player.survivalData = serializeSurvival(pState);
               if (engine.inventory) player.inventoryData = serializeInventory(engine.inventory);
               if (engine.weather) world.weatherData = engine.weather.serialize();
+              world.containersData = serializeContainers();
+              if (engine.mobs) world.mobsData = engine.mobs.serialize();
+              if (engine.itemEntities) world.itemEntitiesData = engine.itemEntities.serialize();
               player.extra = player.extra || {};
               if (!player.id) { player.worldId = worldId; player.userId = userId; player.nomeJogador = nome; }
               await savePlayer(player);
@@ -323,11 +329,12 @@ export default function Game() {
               world.gameRules = JSON.stringify(engine.gameRules || gameRules);
               // Mescla com o registro mais novo: ajustes da tela de opções não podem ser revertidos aqui
               const latest = worldRecRef.current || world;
-              if (latest !== world) {
-                latest.worldTime = world.worldTime;
-                latest.gameRules = world.gameRules;
-                if (world.weatherData) latest.weatherData = world.weatherData;
-              }
+              latest.worldTime = world.worldTime;
+              latest.gameRules = world.gameRules;
+              latest.containersData = world.containersData;
+              latest.mobsData = world.mobsData;
+              latest.itemEntitiesData = world.itemEntitiesData;
+              if (world.weatherData) latest.weatherData = world.weatherData;
               await touchWorld(latest);
               try {
                 const statsData = serializeStats(pState.stats);
@@ -341,6 +348,7 @@ export default function Game() {
             } catch (e) { console.error("[Save]", e); }
           },
         });
+
         engineRef.current = engine;
         await engine.start();
         console.log('[Game] Spawn:', spawn, 'Player pos:', pState.pos, 'Flying:', pState.flying, 'GameMode:', pState.gameMode);
@@ -388,6 +396,20 @@ export default function Game() {
       if (e.ctrlKey) e.preventDefault();
     };
     const onKeyDown = (e) => {
+      // Bloquear atalhos do navegador que interferem no jogo (F1 = ajuda Brave, F7 = caret browsing)
+      if (e.code === 'F1' || e.key === 'F1' || e.code === 'F7' || e.key === 'F7') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      if (e.code === 'F11' || e.key === 'F11') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (document.fullscreenElement) {
+          document.exitFullscreen?.().catch(() => {});
+        } else {
+          document.documentElement.requestFullscreen?.().catch(() => {});
+        }
+      }
       if (e.ctrlKey) {
         if (e.key === 'w' || e.key === 'W' || e.code === 'KeyW') {
           e.preventDefault();
@@ -398,14 +420,18 @@ export default function Game() {
         }
       }
     };
+
     const onBeforeUnload = (e) => {
       e.preventDefault();
       e.returnValue = 'Deseja realmente sair? Seu mundo foi salvo.';
       return e.returnValue;
     };
 
+    const onDragStart = (e) => e.preventDefault();
+
     window.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('keydown', onKeyDown, { capture: true });
+    window.addEventListener('dragstart', onDragStart);
     window.addEventListener('beforeunload', onBeforeUnload);
 
     if (navigator.keyboard && typeof navigator.keyboard.lock === 'function') {
@@ -415,6 +441,7 @@ export default function Game() {
     return () => {
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', onKeyDown, { capture: true });
+      window.removeEventListener('dragstart', onDragStart);
       window.removeEventListener('beforeunload', onBeforeUnload);
       if (navigator.keyboard && typeof navigator.keyboard.unlock === 'function') {
         navigator.keyboard.unlock();
@@ -439,7 +466,7 @@ export default function Game() {
     safePointerLock(canvasRef.current);
   };
 
-  const isAnyGuiOpen = showInventory || showCreative || showCraftingTable || showFurnace || showChest || showStats || showOptions || showOpenToLAN || showFeedback || (Date.now() < guiClosingCooldownRef.current);
+  const isAnyGuiOpen = showInventory || showCreative || showCraftingTable || showFurnace || showChest || showStats || showOptions || showOpenToLAN || showFeedback;
 
   return (
     <div className="fixed inset-0 bg-black">
@@ -485,6 +512,8 @@ export default function Game() {
           onPause={handleResume}
         />
       )}
+      {/* Só depois que hud existe: o engine já chamou musicManager.start() e o rádio toma a trilha. */}
+      {hud && <RadioWidget />}
       <PerformancePanel visible={!!hud?.f3} />
 
       {/* Diagnóstico de spawn/render — só com F3 aberto */}
@@ -504,7 +533,7 @@ export default function Game() {
 
       {/* Inventário sobrevivência (PRD 06) */}
       {showInventory && !hud?.isDead && engineRef.current?.inventory && (
-        <InventoryUI inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} />
+        <InventoryUI inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} onCraft={() => { const p = engineRef.current?.player; if (p?.stats) p.stats.crafts = (p.stats.crafts || 0) + 1; }} />
       )}
       {/* Inventário criativo (PRD 06) */}
       {showCreative && !hud?.isDead && engineRef.current?.inventory && (
@@ -512,7 +541,7 @@ export default function Game() {
       )}
       {/* Bancada de trabalho (PRD 06) */}
       {showCraftingTable && !hud?.isDead && engineRef.current?.inventory && (
-        <CraftingTableUI inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} />
+        <CraftingTableUI inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} onCraft={() => { const p = engineRef.current?.player; if (p?.stats) p.stats.crafts = (p.stats.crafts || 0) + 1; }} />
       )}
       {/* Fornalha (PRD 06) */}
       {showFurnace && furnaceState && !hud?.isDead && engineRef.current?.inventory && (
@@ -521,6 +550,17 @@ export default function Game() {
       {/* Baú (PRD 06) */}
       {showChest && chestContainer && !hud?.isDead && engineRef.current?.inventory && (
         <ChestUI container={chestContainer} inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} />
+      )}
+
+      {/* Toast de conquista */}
+      {hud?.achievements?.pendingToast && (
+        <AchievementToast
+          toast={hud.achievements.pendingToast}
+          onClose={() => {
+            const ach = engineRef.current?.player?.achievements;
+            if (ach) { ach.pendingToast = null; engineRef.current.emitHud(); }
+          }}
+        />
       )}
 
       {showOptions && (

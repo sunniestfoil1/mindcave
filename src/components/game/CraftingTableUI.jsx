@@ -6,7 +6,7 @@ import { leftClick, rightClick, shiftClick } from "@/game/inventory";
 import { matchRecipe, consumeIngredients, createResult } from "@/game/recipes";
 import { playClickSound } from "@/game/sounds";
 
-export default function CraftingTableUI({ inv, onUpdate, onClose }) {
+export default function CraftingTableUI({ inv, onUpdate, onClose, onCraft }) {
   const [, forceUpdate] = useState(0);
   const refresh = () => { forceUpdate(n => n + 1); onUpdate?.(); };
 
@@ -45,21 +45,24 @@ export default function CraftingTableUI({ inv, onUpdate, onClose }) {
       inv.cursor.count += recipe.result.count;
       consumeIngredients(inv.crafting3);
     }
+    onCraft?.();
     updateCraftResult();
     refresh();
   };
 
   return (
-    <ContainerFrame texture="textures/gui/container/crafting_table.png" w={176} h={166} inv={inv} onClose={onClose}>
+    <ContainerFrame texture="textures/gui/container/crafting_table.png" w={176} h={166} inv={inv} onClose={onClose} onUpdate={refresh}>
       {({ S, slot, tex }) => (
         <>
           <Sprite url={tex} u={0} v={0} w={176} h={166} S={S} />
           <McText text="Criação" x={28} y={6} S={S} />
           {inv.crafting3.map((item, i) => slot('c' + i, 30 + (i % 3) * 18, 17 + Math.floor(i / 3) * 18, item, {
+            slotRef: { arr: inv.crafting3, index: i },
             onClick: () => click(inv.crafting3, i, true),
             onRightClick: () => click(inv.crafting3, i, false),
             onShiftClick: () => handleShift('crafting', i),
           }))}
+
           {slot('result', 124, 35, inv.craftResult, { onClick: takeResult, onRightClick: takeResult, onShiftClick: takeResult })}
           <PlayerSlots inv={inv} slot={slot} mainY={84} hotY={142}
             click={(a, i) => click(a, i, true)} rightClick={(a, i) => click(a, i, false)} shift={handleShift} />

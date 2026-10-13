@@ -15,6 +15,61 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+function normalizeRoom(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    worldId: row.worldid || row.worldId || row.world_id,
+    worldName: row.worldname || row.worldName || row.world_name,
+    hostId: row.hostid || row.hostId || row.host_id,
+    hostName: row.hostname || row.hostName || row.host_name,
+    visibility: row.visibility || 'public',
+    code: row.code,
+    passwordHash: row.passwordhash || row.passwordHash || '',
+    motd: row.motd || '',
+    guestGameMode: row.guestgamemode || row.guestGameMode || 'survival',
+    allowCommands: row.allowcommands ?? row.allowCommands ?? false,
+    pvp: row.pvp ?? true,
+    maxPlayers: row.maxplayers ?? row.maxPlayers ?? 8,
+    playerCount: row.playercount ?? row.playerCount ?? 1,
+    playerNames: row.playernames || row.playerNames || [],
+    buildVersion: row.buildversion || row.buildVersion || '',
+    lastHeartbeat: row.lastheartbeat || row.lastHeartbeat || row.created_at,
+    status: row.status || 'open',
+    ops: row.ops || [],
+    banned: typeof row.banned === 'string' ? row.banned : JSON.stringify(row.banned || []),
+    whitelist: row.whitelist || [],
+    whitelistEnabled: row.whitelistenabled ?? row.whitelistEnabled ?? false,
+    created_at: row.created_at || row.created_date,
+  };
+}
+
+function toRoomPayload(item) {
+  const payload = {};
+  if (item.worldId !== undefined || item.worldid !== undefined) payload.worldid = item.worldId || item.worldid;
+  if (item.worldName !== undefined || item.worldname !== undefined) payload.worldname = item.worldName || item.worldname;
+  if (item.hostId !== undefined || item.hostid !== undefined) payload.hostid = item.hostId || item.hostid;
+  if (item.hostName !== undefined || item.hostname !== undefined) payload.hostname = item.hostName || item.hostname;
+  if (item.visibility !== undefined) payload.visibility = item.visibility;
+  if (item.code !== undefined) payload.code = item.code;
+  if (item.passwordHash !== undefined || item.passwordhash !== undefined) payload.passwordhash = item.passwordHash || item.passwordhash;
+  if (item.motd !== undefined) payload.motd = item.motd;
+  if (item.guestGameMode !== undefined || item.guestgamemode !== undefined) payload.guestgamemode = item.guestGameMode || item.guestgamemode;
+  if (item.allowCommands !== undefined || item.allowcommands !== undefined) payload.allowcommands = item.allowCommands ?? item.allowcommands;
+  if (item.pvp !== undefined) payload.pvp = item.pvp;
+  if (item.maxPlayers !== undefined || item.maxplayers !== undefined) payload.maxplayers = item.maxPlayers ?? item.maxplayers;
+  if (item.playerCount !== undefined || item.playercount !== undefined) payload.playercount = item.playerCount ?? item.playercount;
+  if (item.playerNames !== undefined || item.playernames !== undefined) payload.playernames = item.playerNames || item.playernames;
+  if (item.buildVersion !== undefined || item.buildversion !== undefined) payload.buildversion = item.buildVersion || item.buildversion;
+  if (item.lastHeartbeat !== undefined || item.lastheartbeat !== undefined) payload.lastheartbeat = item.lastHeartbeat || item.lastheartbeat;
+  if (item.status !== undefined) payload.status = item.status;
+  if (item.ops !== undefined) payload.ops = item.ops;
+  if (item.banned !== undefined) payload.banned = typeof item.banned === 'string' ? item.banned : JSON.stringify(item.banned);
+  if (item.whitelist !== undefined) payload.whitelist = item.whitelist;
+  if (item.whitelistEnabled !== undefined || item.whitelistenabled !== undefined) payload.whitelistenabled = item.whitelistEnabled ?? item.whitelistenabled;
+  return payload;
+}
+
 export const mindcaveApi = {
   auth: {
     me: async () => {
@@ -49,36 +104,40 @@ export const mindcaveApi = {
       get: async (id) => {
         const { data, error } = await supabase.from('rooms').select('*').eq('id', id).maybeSingle();
         if (error || !data) return null;
-        return data;
+        return normalizeRoom(data);
       },
       filter: async (query, opts) => {
         let q = supabase.from('rooms').select('*');
         for (const [k, v] of Object.entries(query)) {
+          const col = k === 'lastHeartbeat' ? 'lastheartbeat' : (k === 'worldId' ? 'worldid' : k);
           if (v && typeof v === 'object' && '$gte' in v) {
-            q = q.gte(k, v.$gte);
+            q = q.gte(col, v.$gte);
           } else {
-            q = q.eq(k, v);
+            q = q.eq(col, v);
           }
         }
         if (opts?.sort) {
           const desc = opts.sort.startsWith('-');
-          const field = desc ? opts.sort.slice(1) : opts.sort;
+          let field = desc ? opts.sort.slice(1) : opts.sort;
+          if (field === 'lastHeartbeat') field = 'lastheartbeat';
           q = q.order(field, { ascending: !desc });
         }
         if (opts?.limit) q = q.limit(opts.limit);
         const { data, error } = await q;
         if (error) return [];
-        return data || [];
+        return (data || []).map(normalizeRoom);
       },
       create: async (item) => {
-        const { data, error } = await supabase.from('rooms').insert(item).select().single();
+        const payload = toRoomPayload(item);
+        const { data, error } = await supabase.from('rooms').insert(payload).select().single();
         if (error) throw error;
-        return data;
+        return normalizeRoom(data);
       },
       update: async (id, item) => {
-        const { data, error } = await supabase.from('rooms').update(item).eq('id', id).select().single();
+        const payload = toRoomPayload(item);
+        const { data, error } = await supabase.from('rooms').update(payload).eq('id', id).select().single();
         if (error) throw error;
-        return data;
+        return normalizeRoom(data);
       },
       delete: async (id) => {
         const { error } = await supabase.from('rooms').delete().eq('id', id);
@@ -88,7 +147,8 @@ export const mindcaveApi = {
         try {
           const channel = supabase.channel('rooms_channel_' + Math.random().toString(36).slice(2));
           const sub = channel.on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, (payload) => {
-            callback({ type: payload.eventType.toLowerCase(), data: payload.new || payload.old });
+            const raw = payload.new || payload.old;
+            callback({ type: payload.eventType.toLowerCase(), data: raw ? normalizeRoom(raw) : null });
           });
           sub.subscribe();
           return () => {

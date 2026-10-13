@@ -119,10 +119,14 @@ export function initAudio() {
 
 if (typeof window !== 'undefined') {
   const resumeOnGesture = () => {
-    if (audioCtx && audioCtx.state === 'suspended') {
+    if (!audioCtx) {
+      initAudio();
+    } else if (audioCtx.state === 'suspended') {
       audioCtx.resume().catch(() => {});
     }
   };
+  window.addEventListener('click', resumeOnGesture, { passive: true, once: false });
+  window.addEventListener('mousedown', resumeOnGesture, { passive: true, once: false });
   window.addEventListener('pointerdown', resumeOnGesture, { passive: true });
   window.addEventListener('keydown', resumeOnGesture, { passive: true });
   window.addEventListener('touchstart', resumeOnGesture, { passive: true });
@@ -408,7 +412,7 @@ export function playExplodeSound(pos) {
 
 // XP / Level Up / Item Pop
 export function playLevelUpSound() {
-  playSound(`random/levelup.ogg`, { volume: 0.9, pitch: 1.0 });
+  playSound(`random/levelup.ogg`, { volume: 0.3, pitch: 1.0 });
 }
 
 export function playPopSound(pos) {
@@ -524,4 +528,10 @@ export function playMobSound(mob, kind) {
   const generic = { primed: 'entity.creeper.primed', shoot: 'entity.arrow.shoot' };
   const event = generic[kind] || `entity.${name}.${kind}`;
   return playEvent(event, { pos: mob.pos, volume: kind === 'step' ? 0.35 : 1 });
+}
+
+// Orbe de XP (Minecraft 1.8.9: random.orb com tom variável 0.5 a 1.0)
+export function playXpOrbSound(pos) {
+  const pitch = 0.5 + Math.random() * 0.5;
+  return playEvent('entity.experience_orb.pickup', { pos, pitch, volume: 0.7 });
 }

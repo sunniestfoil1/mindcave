@@ -37,8 +37,9 @@ function ChatLine({ msg, myName }) {
   } else if (msg.type === 'chat') {
     display = <>
       {scopeTag}
-      <span className="text-yellow-200 font-medium">{userStr}: </span>
+      <span className="text-yellow-200 font-medium">&lt;{userStr}&gt; </span>
       <span className={isMention ? 'text-yellow-300 font-bold bg-yellow-900/50 px-1 rounded' : 'text-white'}>
+
         {extractLinks(textStr).map((p, i) => p.type === 'link'
           ? <a key={i} href={p.text} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300" onClick={(e) => { if (!confirm('Abrir link: ' + p.text + '?')) e.preventDefault(); }}>{p.text}</a>
           : <McText key={i} text={p.text} />)}
@@ -70,7 +71,19 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
     if (!engine) return;
     const addMessage = (msg) => {
       const channelTag = msg.channel || (netManager ? 'mundo' : 'global');
-      const full = { ...msg, channel: channelTag, timestamp: msg.timestamp || Date.now() };
+      const textStr = typeof msg.text === 'string' ? msg.text : (typeof msg.m === 'string' ? msg.m : (msg.cmd || ''));
+      const userStr = msg.user || msg.u || 'Player';
+      const now = msg.timestamp || Date.now();
+      
+      // Previne mensagens duplicadas (eco do servidor/race conditions)
+      const isDuplicate = messagesRef.current.some(m => {
+        const mText = typeof m.text === 'string' ? m.text : (typeof m.m === 'string' ? m.m : (m.cmd || ''));
+        const mUser = m.user || m.u || 'Player';
+        return mUser === userStr && mText === textStr && Math.abs(now - (m.timestamp || 0)) < 1800;
+      });
+      if (isDuplicate) return;
+
+      const full = { ...msg, channel: channelTag, timestamp: now, text: textStr, user: userStr };
       messagesRef.current = [...messagesRef.current.slice(-99), full];
       setMessages(messagesRef.current);
     };
@@ -98,10 +111,16 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, showHistory]);
 
+  // REGRA DO CHAT: depois de enviar (ou Enter vazio) o chat fecha por engine.closeChat(), que devolve o mouse ao jogo.
+  // Não troque por `engine.chatOpen = false` solto: o jogo ficaria pausado/sem mouse. Teste: T, digitar, Enter → continua jogando.
   const handleSend = useCallback(() => {
     const text = input.trim();
     if (!text) {
-      engine.chatOpen = false;
+      if (engine?.closeChat) engine.closeChat();
+      else {
+        if (engine) engine.chatOpen = false;
+        engine?._requestPointerLock?.();
+      }
       setChatOpen(false);
       setInput('');
       return;
@@ -109,20 +128,31 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
     setHistory(prev => [...prev.slice(-49), text]);
     setHistoryIdx(-1);
 
+    const myName = engine?.player?.nomeJogador || '';
     if (netManager) {
-      netManager.sendChat(text);
+      netManager.sendChat(myName || 'Player', text);
     } else {
       engine.executeCommand(text);
     }
-    engine.chatOpen = false;
+    if (engine?.closeChat) engine.closeChat();
+    else {
+      if (engine) engine.chatOpen = false;
+      engine?._requestPointerLock?.();
+    }
     setChatOpen(false);
     setInput('');
   }, [input, engine, netManager]);
 
+
   const handleKeyDown = useCallback((e) => {
     e.stopPropagation();
     if (e.key === 'Enter') { handleSend(); }
-    else if (e.key === 'Escape') { engine.chatOpen = false; setChatOpen(false); setInput(''); }
+    else if (e.key === 'Escape') {
+      if (engine?.closeChat) engine.closeChat();
+      else if (engine) engine.chatOpen = false;
+      setChatOpen(false);
+      setInput('');
+    }
     else if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (history.length === 0) return;
@@ -167,7 +197,13 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
               value={input}
               onChange={(e) => setInput(e.target.value.slice(0, 100))}
               onKeyDown={handleKeyDown}
-              onBlur={() => { if (!input) { engine.chatOpen = false; setChatOpen(false); } }}
+              onBlur={() => {
+                if (!input) {
+                  if (engine?.closeChat) engine.closeChat();
+                  else if (engine) engine.chatOpen = false;
+                  setChatOpen(false);
+                }
+              }}
               placeholder="Digite no chat (Enter envia, Esc fecha)..."
               className="w-full bg-black/90 text-white text-sm px-3.5 py-2.5 rounded border border-emerald-500/50 shadow-xl outline-none font-mono"
             />

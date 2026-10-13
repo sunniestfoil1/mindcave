@@ -256,6 +256,12 @@ const DRAWERS = {
     if (r() > 0.4) return [255, 100, 20, 200];
     return [0, 0, 0, 0];
   },
+  bed_head_top: (x, y, r) => (y < 4 ? shade([240, 240, 240], 6, r) : shade([170, 25, 25], 10, r)),
+  bed_feet_top: (x, y, r) => shade([170, 25, 25], 10, r),
+  bed_head_side: (x, y, r) => (y < 9 ? shade([170, 25, 25], 8, r) : shade([139, 90, 43], 10, r)),
+  bed_feet_side: (x, y, r) => (y < 9 ? shade([170, 25, 25], 8, r) : shade([139, 90, 43], 10, r)),
+  bed_head_end: (x, y, r) => (y < 9 ? shade([240, 240, 240], 6, r) : shade([139, 90, 43], 10, r)),
+  bed_feet_end: (x, y, r) => (y < 9 ? shade([170, 25, 25], 8, r) : shade([139, 90, 43], 10, r)),
 };
 
 const TILE_ORDER = [
@@ -273,6 +279,8 @@ const TILE_ORDER = [
   // lajes e escadas
   'stone_slab_top', 'stone_slab_side', 'quartz_top', 'quartz_bottom', 'planks_spruce', 'planks_birch', 'planks_jungle',
   'planks_acacia', 'planks_dark_oak', 'red_sandstone_top', 'red_sandstone_bottom', 'red_sandstone_side',
+  'bed_head_top', 'bed_feet_top', 'bed_head_side', 'bed_feet_side', 'bed_head_end', 'bed_feet_end',
+  'door_wood_lower', 'door_wood_upper', 'door_iron_lower', 'door_iron_upper',
 ];
 
 let _cache = null;
@@ -357,7 +365,13 @@ const MC_TEXTURE_MAP = {
   'stone_slab_top': 'stone_slab_top', 'stone_slab_side': 'stone_slab_side', 'quartz_top': 'quartz_block_top',
   'quartz_bottom': 'quartz_block_bottom', 'planks_spruce': 'planks_spruce', 'planks_birch': 'planks_birch',
   'planks_jungle': 'planks_jungle', 'planks_acacia': 'planks_acacia', 'planks_dark_oak': 'planks_big_oak',
+  'door_wood_lower': 'door_wood_lower', 'door_wood_upper': 'door_wood_upper', 'door_iron_lower': 'door_iron_lower', 'door_iron_upper': 'door_iron_upper',
+  'bed_head_top': 'bed_head_top', 'bed_feet_top': 'bed_feet_top', 'bed_head_side': 'bed_head_side',
+  'bed_feet_side': 'bed_feet_side', 'bed_head_end': 'bed_head_end', 'bed_feet_end': 'bed_feet_end',
   'red_sandstone_top': 'red_sandstone_top', 'red_sandstone_bottom': 'red_sandstone_bottom', 'red_sandstone_side': 'red_sandstone_normal',
+  'bed_head_top': 'bed_head_top', 'bed_feet_top': 'bed_feet_top',
+  'bed_head_side': 'bed_head_side', 'bed_feet_side': 'bed_feet_side',
+  'bed_head_end': 'bed_head_end', 'bed_feet_end': 'bed_feet_end',
 };
 
 let _realLoaded = false;

@@ -7,7 +7,8 @@ import * as THREE from 'three';
 import { getBlock, tileForFace, blockTint } from './blocks';
 import { getItem } from './items';
 import { addItem } from './inventory';
-import { playPopSound } from './sounds';
+import { playPopSound, playXpOrbSound } from './sounds';
+import { addXP } from './survival';
 import { stateId } from './chunk';
 import { MC, getPackUrl } from './pack';
 import { itemIconFile, itemBlockTile } from './gui/iconNames';
@@ -78,6 +79,47 @@ function blockMesh(block, meta, atlas) {
   return new THREE.Mesh(geo, mats);
 }
 
+function crossBlockMesh(block, meta, atlas) {
+  const tileName = tileForFace(block, 'side', meta) || tileForFace(block, 'top', meta) || block.faces?.all || block.name;
+  const tiles = atlas?.tiles;
+  const tint = blockTint(block, 'side', meta) || (block.tint === 'grass' ? [0x91 / 255, 0xbd / 255, 0x59 / 255] : null);
+  const rgb = (t) => (t ? new THREE.Color(t[0], t[1], t[2]) : new THREE.Color(0xffffff));
+
+  if (tiles && atlas?.texture && tiles[tileName]) {
+    const t = tiles[tileName];
+    const geo = new THREE.PlaneGeometry(0.32, 0.32);
+    applyTileToFace(geo, 0, t);
+    const mat = new THREE.MeshBasicMaterial({
+      map: atlas.texture,
+      color: rgb(tint),
+      transparent: true,
+      alphaTest: 0.1,
+      side: THREE.DoubleSide,
+      fog: false,
+    });
+    return new THREE.Mesh(geo, mat);
+  }
+
+  // Fallback: busca arquivo individual do pacote ou usa cor real do bloco
+  const geo = new THREE.PlaneGeometry(0.32, 0.32);
+  const color = block.color || (tint ? new THREE.Color(tint[0], tint[1], tint[2]).getHex() : 0xffffff);
+  const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, alphaTest: 0.1, fog: false });
+  const mesh = new THREE.Mesh(geo, mat);
+
+  getPackUrl(MC + 'textures/blocks/' + tileName + '.png').then((url) => {
+    if (!url) return;
+    new THREE.TextureLoader().load(url, (tex) => {
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      mat.map = tex;
+      mat.color.set(rgb(tint));
+      mat.needsUpdate = true;
+    });
+  }).catch(() => {});
+
+  return mesh;
+}
+
 // --- Itens comum: ícone do pacote 1.8.9 em plano; fallback de cor até carregar ---
 function iconTexture(id) {
   const cached = iconTexCache.get(id);
@@ -138,9 +180,14 @@ export function createItemMesh(item, count = 1, atlas = null) {
   for (let i = 0; i < subMeshCount; i++) {
     let mesh;
     if (isBlock) {
-      mesh = blockMesh(block, item.meta || 0, atlas);
-      if (!mesh) {
-        mesh = new THREE.Mesh(BLOCK_GEO, new THREE.MeshLambertMaterial({ color: block.color || 0x888888, fog: false }));
+      const isCutout = block.model === 'cross' || block.model === 'torch' || block.model === 'crop' || !block.solid;
+      if (isCutout) {
+        mesh = crossBlockMesh(block, item.meta || 0, atlas);
+      } else {
+        mesh = blockMesh(block, item.meta || 0, atlas);
+        if (!mesh) {
+          mesh = new THREE.Mesh(BLOCK_GEO, new THREE.MeshLambertMaterial({ color: block.color || 0x7c9c3e, fog: false }));
+        }
       }
     } else {
       iconTexture(item.id);
@@ -160,11 +207,89 @@ export function createItemMesh(item, count = 1, atlas = null) {
   return group;
 }
 
+// --- Orbes de Experiência (Minecraft 1.8.9: textures/entity/experience_orb.png) ---
+let xpOrbTex = null;
+let xpOrbTexLoading = false;
+const pendingXpOrbMeshes = new Set();
+
+function getXpOrbTexture() {
+  if (xpOrbTex) return xpOrbTex;
+  if (!xpOrbTexLoading) {
+    xpOrbTexLoading = true;
+    getPackUrl(MC + 'textures/entity/experience_orb.png').then((url) => {
+      const texUrl = url || '/assets/minecraft/textures/entity/experience_orb.png';
+      new THREE.TextureLoader().load(texUrl, (tex) => {
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        xpOrbTex = tex;
+        for (const m of pendingXpOrbMeshes) {
+          if (m.material) {
+            m.material.map = tex;
+            m.material.color.setHex(0xffffff);
+            m.material.needsUpdate = true;
+          }
+        }
+        pendingXpOrbMeshes.clear();
+      }, undefined, () => {});
+    }).catch(() => {});
+  }
+  return xpOrbTex;
+}
+
+function getXpTextureIndex(xp) {
+  if (xp < 3) return 0;
+  if (xp < 7) return 1;
+  if (xp < 17) return 2;
+  if (xp < 37) return 3;
+  if (xp < 73) return 4;
+  if (xp < 149) return 5;
+  if (xp < 307) return 6;
+  if (xp < 617) return 7;
+  if (xp < 1237) return 8;
+  if (xp < 2477) return 9;
+  return 10;
+}
+
+function createXpOrbMesh(xpValue) {
+  const tex = getXpOrbTexture();
+  const index = getXpTextureIndex(xpValue);
+  const col = index % 4;
+  const row = Math.floor(index / 4);
+
+  // Grade 4x4 de sprites 16x16 em textura 64x64
+  const u0 = (col * 16) / 64;
+  const u1 = ((col + 1) * 16) / 64;
+  const v0 = 1 - ((row + 1) * 16) / 64;
+  const v1 = 1 - (row * 16) / 64;
+
+  const geo = new THREE.PlaneGeometry(0.28, 0.28);
+  const uv = geo.attributes.uv;
+  uv.setXY(0, u0, v1);
+  uv.setXY(1, u1, v1);
+  uv.setXY(2, u0, v0);
+  uv.setXY(3, u1, v0);
+  uv.needsUpdate = true;
+
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex || null,
+    color: tex ? 0xffffff : 0x76fc47,
+    transparent: true,
+    alphaTest: 0.1,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  if (!tex) pendingXpOrbMeshes.add(mesh);
+  return mesh;
+}
+
 export class ItemEntityManager {
   constructor(scene, world = null) {
     this.scene = scene;
     this.world = world;
     this.items = [];
+    this.xpOrbs = [];
     // Pré-aquecimento: um item minúsculo e fora da vista força a compilação dos dois shaders já no carregamento
     const warmBlock = new THREE.Mesh(BLOCK_GEO, new THREE.MeshLambertMaterial({ color: 0x888888, fog: false }));
     const warmPlane = new THREE.Mesh(PLANE_GEO, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, fog: false }));
@@ -238,8 +363,53 @@ export class ItemEntityManager {
     return entity;
   }
 
-  update(dt, player, inventory, world, time, frustum = null) {
-    if (!this.items.length) return;
+  spawnXpOrb(amount, pos, vel = null) {
+    if (!amount || amount <= 0) return null;
+    let spawnPos = pos;
+    const w = this.world;
+    if (w) {
+      const at = (x, y, z) => {
+        if (y < 0 || y >= 256) return 0;
+        if (typeof w.getBlockId === 'function') return w.getBlockId(x, y, z);
+        if (typeof w.getBlock === 'function') return stateId(w.getBlock(x, y, z));
+        return 0;
+      };
+      const sx = Math.floor(pos.x), sz = Math.floor(pos.z);
+      let sy = Math.floor(pos.y);
+      const b0 = getBlock(at(sx, sy, sz));
+      if (b0 && b0.solid) {
+        for (let up = 1; up <= 2; up++) {
+          const b = getBlock(at(sx, sy + up, sz));
+          if (!(b && b.solid)) { sy += up; break; }
+        }
+        spawnPos = { x: pos.x, y: sy + 0.1, z: pos.z };
+      }
+    }
+
+    const mesh = createXpOrbMesh(amount);
+    mesh.position.set(spawnPos.x, spawnPos.y, spawnPos.z);
+    mesh.renderOrder = 1;
+    this.scene.add(mesh);
+
+    const vx = vel ? vel.x : (Math.random() - 0.5) * 0.2;
+    const vy = vel ? vel.y : 0.25 + Math.random() * 0.15;
+    const vz = vel ? vel.z : (Math.random() - 0.5) * 0.2;
+
+    const orb = {
+      amount,
+      pos: { x: spawnPos.x, y: spawnPos.y, z: spawnPos.z },
+      vel: { x: vx, y: vy, z: vz },
+      mesh,
+      age: 0,
+      despawnAge: 6000,
+      onGround: false,
+    };
+    this.xpOrbs.push(orb);
+    return orb;
+  }
+
+  update(dt, player, inventory, world, time, frustum = null, camera = null) {
+    if ((!this.items || !this.items.length) && (!this.xpOrbs || !this.xpOrbs.length)) return;
     this.world = world;
 
     // Agrupamento de itens próximos do mesmo tipo (Item Stacking / Grouping)
@@ -372,6 +542,7 @@ export class ItemEntityManager {
           const leftover = inventory ? addItem(inventory, itemToCollect) : itemToCollect;
           if (leftover) continue;
           playPopSound(e.pos);
+          this.onItemPickup?.(itemToCollect, e.pos);
           this.removeItem(i);
         } else {
           // Atração magnética em direção ao jogador
@@ -382,6 +553,101 @@ export class ItemEntityManager {
         }
       }
     }
+
+    // === Atualização dos Orbes de Experiência (XP Orbs - Minecraft 1.8.9) ===
+    if (this.xpOrbs && this.xpOrbs.length > 0) {
+      for (let k = this.xpOrbs.length - 1; k >= 0; k--) {
+        const orb = this.xpOrbs[k];
+        orb.age += ticks;
+        if (orb.age >= orb.despawnAge) {
+          this.removeXpOrb(k);
+          continue;
+        }
+
+        const canCollect = player && !player.isDead && player.gameMode !== 'spectator';
+        let attracted = false;
+
+        if (canCollect) {
+          const dx = pPos.x - orb.pos.x;
+          const dy = (pPos.y + 0.8) - orb.pos.y;
+          const dz = pPos.z - orb.pos.z;
+          const distSq = dx * dx + dy * dy + dz * dz;
+
+          // Raio oficial 1.8.9: Só começa a atrair a menos de 7.25 blocos de distância
+          if (distSq < 52.56) {
+            const dist = Math.sqrt(distSq);
+            // Coleta imediata quando encosta (< 1.25 blocos)
+            if (dist < 1.25) {
+              addXP(player, orb.amount);
+              playXpOrbSound(orb.pos);
+              this.removeXpOrb(k);
+              continue;
+            }
+
+            // Atração física proporcional à proximidade
+            attracted = true;
+            const factor = 1.0 - (dist / 8.0);
+            if (factor > 0) {
+              const speed = factor * factor * 14.0 * dt;
+              orb.vel.x += (dx / dist) * speed;
+              orb.vel.y += (dy / dist) * speed;
+              orb.vel.z += (dz / dist) * speed;
+            }
+          }
+        }
+
+        // Gravidade e atrito com ar/solo quando não está em atração direta
+        if (!attracted) {
+          if (!orb.onGround) orb.vel.y -= GRAVITY * dt;
+          orb.vel.x *= 0.96;
+          orb.vel.z *= 0.96;
+        }
+
+        const nextX = orb.pos.x + orb.vel.x * dt;
+        const nextY = orb.pos.y + orb.vel.y * dt;
+        const nextZ = orb.pos.z + orb.vel.z * dt;
+
+        const bx = Math.floor(nextX), by = Math.floor(nextY), bz = Math.floor(nextZ);
+        if (world && solidAt(bx, by, bz)) {
+          orb.vel.x = 0; orb.vel.y = 0; orb.vel.z = 0;
+          orb.onGround = true;
+        } else if (world && orb.vel.y <= 0 && solidAt(Math.floor(orb.pos.x), Math.floor(nextY), Math.floor(orb.pos.z))) {
+          orb.pos.y = Math.floor(nextY) + 1;
+          orb.vel.y = 0;
+          orb.onGround = true;
+        } else {
+          orb.pos.x = nextX;
+          orb.pos.y = nextY;
+          orb.pos.z = nextZ;
+          orb.onGround = false;
+        }
+
+        // Billboard para a câmera / jogador + animação senoidal suave
+        if (orb.mesh) {
+          if (frustum && !frustum.containsPoint(orb.pos)) {
+            orb.mesh.visible = false;
+          } else {
+            orb.mesh.visible = true;
+            const bob = fastSin(time * 0.2 + orb.pos.x + orb.pos.z) * 0.04 + 0.08;
+            orb.mesh.position.set(orb.pos.x, orb.pos.y + bob, orb.pos.z);
+            if (camera) {
+              orb.mesh.quaternion.copy(camera.quaternion);
+            } else if (player) {
+              orb.mesh.lookAt(pPos.x, orb.pos.y + bob, pPos.z);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  removeXpOrb(index) {
+    const orb = this.xpOrbs[index];
+    if (orb && orb.mesh) {
+      pendingXpOrbMeshes.delete(orb.mesh);
+      this.scene.remove(orb.mesh);
+    }
+    this.xpOrbs.splice(index, 1);
   }
 
   removeItem(index) {
@@ -393,10 +659,44 @@ export class ItemEntityManager {
     this.items.splice(index, 1);
   }
 
+  serialize() {
+    return (this.items || []).map(e => ({
+      id: e.id,
+      count: e.count,
+      meta: e.meta || 0,
+      pos: { x: e.pos.x, y: e.pos.y, z: e.pos.z },
+      vel: { x: e.vel.x, y: e.vel.y, z: e.vel.z },
+      age: e.age || 0,
+      pickupDelay: e.pickupDelay || 0,
+    }));
+  }
+
+  deserialize(data) {
+    if (!Array.isArray(data)) return;
+    for (let i = this.items.length - 1; i >= 0; i--) this.removeItem(i);
+    for (const item of data) {
+      if (!item || !item.id || !item.pos) continue;
+      const entity = this.spawnItem(
+        { id: item.id, count: item.count || 1, meta: item.meta || 0 },
+        item.pos,
+        item.vel || { x: 0, y: 0, z: 0 },
+        item.pickupDelay || 0
+      );
+      if (entity && typeof item.age === 'number') entity.age = item.age;
+    }
+  }
+
   dispose() {
     for (let i = this.items.length - 1; i >= 0; i--) {
       this.removeItem(i);
     }
     this.items = [];
+    if (this.xpOrbs) {
+      for (let i = this.xpOrbs.length - 1; i >= 0; i--) {
+        this.removeXpOrb(i);
+      }
+      this.xpOrbs = [];
+    }
   }
 }
+

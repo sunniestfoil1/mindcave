@@ -208,14 +208,14 @@ export async function saveDirtyChunks(worldId, chunks) {
       saved++;
 
       // Cloud Sync Supabase
-      supabase.from('chunk_deltas').upsert({
+      Promise.resolve(supabase.from('chunk_deltas').upsert({
         id,
         world_id: worldId,
         cx: c.cx,
         cz: c.cz,
         data: { b64: data },
         updated_at: new Date().toISOString()
-      }, { onConflict: 'id' }).catch(() => {});
+      }, { onConflict: 'id' })).catch(() => {});
     }
   } catch (e) {
     console.warn('[Save] Falha ao salvar chunks:', e);
@@ -315,7 +315,7 @@ export async function savePlayer(p) {
       inventorydata: typeof p.inventoryData === 'object' ? p.inventoryData : (p.inventoryData ? JSON.parse(p.inventoryData) : {}),
       updated_at: new Date().toISOString(),
     };
-    supabase.from('players').upsert(cloudPayload, { onConflict: 'id' }).catch(() => {});
+    Promise.resolve(supabase.from('players').upsert(cloudPayload, { onConflict: 'id' })).catch(() => {});
   } catch {}
 
   return data;

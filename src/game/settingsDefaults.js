@@ -78,7 +78,7 @@ export const DEFAULT_DEVICE = {
   // Desempenho
   meshingWorkers: 'auto',
   genWorkers: 'auto',
-  memoryBudget: 'auto',
+  memoryBudget: 512,
   loadPace: 'balanced',
   greedyMeshing: 'auto',
   pauseRenderWhenHidden: true,

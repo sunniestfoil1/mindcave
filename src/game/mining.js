@@ -42,6 +42,8 @@ export const HARVEST = {
   67: { tool: 'pickaxe', level: 0 }, 108: { tool: 'pickaxe', level: 0 }, 109: { tool: 'pickaxe', level: 0 }, 114: { tool: 'pickaxe', level: 0 },
   128: { tool: 'pickaxe', level: 0 }, 156: { tool: 'pickaxe', level: 0 }, 180: { tool: 'pickaxe', level: 0 },
   126: { tool: 'axe', level: 0 }, 125: { tool: 'axe', level: 0 },
+  64: { tool: 'axe', level: 0 }, 85: { tool: 'axe', level: 0 }, 107: { tool: 'axe', level: 0 }, // madeira: machado só é mais rápido
+  71: { tool: 'pickaxe', level: 0 }, 113: { tool: 'pickaxe', level: 0 },                       // ferro e nether exigem picareta
   53: { tool: 'axe', level: 0 }, 134: { tool: 'axe', level: 0 }, 135: { tool: 'axe', level: 0 }, 136: { tool: 'axe', level: 0 },
   163: { tool: 'axe', level: 0 }, 164: { tool: 'axe', level: 0 },
   // Pá
@@ -95,6 +97,12 @@ export const DROP_TABLE = {
     if (tool && tool.id === 359) return [{ id: 31, count: 1 }]; // tesoura → grama
     return Math.random() < 0.125 ? [{ id: 295, count: 1 }] : [];  // 1/8 sementes
   },
+  // Plantações (a meta é o estágio de crescimento 0–7): imaturas dropam só a semente; maduras, a colheita
+  59: (tool, meta) => (meta >= 7
+    ? [{ id: 296, count: 1 }, ...(Math.random() < 0.6 ? [{ id: 295, count: 1 + Math.floor(Math.random() * 3) }] : [])]
+    : [{ id: 295, count: 1 }]),
+  141: (tool, meta) => [{ id: 391, count: meta >= 7 ? 2 + Math.floor(Math.random() * 3) : 1 }],
+  142: (tool, meta) => [{ id: 392, count: meta >= 7 ? 1 + Math.floor(Math.random() * 4) : 1 }],
   143: () => Math.random() < 0.6 ? [{ id: 280, count: 1 + Math.floor(Math.random() * 2) }] : [], // arbusto morto → gravetos
   47: () => [{ id: 339, count: 3 }],   // estante → 3 livros
   103: () => [{ id: 360, count: 3 + Math.floor(Math.random() * 5) }], // melancia → 3-7 fatias
@@ -194,7 +202,7 @@ export function getDrops(blockId, tool, meta = 0) {
     return [{ id: blk.singleId || blockId, count: blk.singleId ? 2 : 1, meta: meta & 7 }];
   }
   const dropFn = DROP_TABLE[blockId];
-  if (dropFn) return dropFn(tool);
+  if (dropFn) return dropFn(tool, meta);
   // Drop padrão: o próprio bloco (se puder colher)
   if (canHarvest(blockId, tool)) {
     const block = getBlock(blockId);

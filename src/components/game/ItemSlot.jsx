@@ -2,14 +2,22 @@ import React, { useState, useEffect } from "react";
 import { itemColor, ITEMS } from "@/game/items";
 import { BLOCKS, tileForFace } from "@/game/blocks";
 import { getDurabilityRatio } from "@/game/mining";
-import { getPackUrl, MC } from "@/game/pack";
+import { getPackUrl, MC, isPackReady, onPackReady } from "@/game/pack";
 import { getAtlasTileCanvas, getAtlasVersion } from "@/game/textures";
 import { itemIconFile, itemBlockTile, ICON_TINT } from "@/game/gui/iconNames";
-import { drawIsoBoxes, ICON_SLAB, ICON_STAIRS } from "@/game/gui/isoIcon";
+import { drawIsoBoxes, ICON_SLAB, ICON_STAIRS, ICON_FENCE, ICON_GATE } from "@/game/gui/isoIcon";
 
 const blockCanvasCache = new Map();
 const flatCanvasCache = new Map();
 const itemUrlCache = new Map();
+
+function canvasToOptimizedDataUrl(canvas) {
+  try {
+    const webp = canvas.toDataURL('image/webp', 0.9);
+    if (webp && webp.startsWith('data:image/webp')) return webp;
+  } catch {}
+  return canvas.toDataURL();
+}
 
 function get3DBlockDataUrl(topImg, sideImg, cacheKey) {
   if (blockCanvasCache.has(cacheKey)) return blockCanvasCache.get(cacheKey);
@@ -48,16 +56,21 @@ function get3DBlockDataUrl(topImg, sideImg, cacheKey) {
     ctx.restore();
   }
 
-  const dataUrl = canvas.toDataURL();
+  const dataUrl = canvasToOptimizedDataUrl(canvas);
   blockCanvasCache.set(cacheKey, dataUrl);
   return dataUrl;
 }
 
 // fill: o ícone ocupa o slot inteiro (slots de container de 16×16 px de GUI); guiScale: fator inteiro para o tamanho do número
-export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, onHover, size = 44, highlight = false, transparent = false, fill = false, guiScale = 0 }) {
+export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, onHover, size = 44, highlight = false, transparent = false, fill = false, guiScale = 0, ...rest }) {
+
   const [hover, setHover] = useState(false);
   const [imgUrl, setImgUrl] = useState(null);
   const atlasVer = getAtlasVersion(); // o ícone é refeito quando as texturas reais terminam de carregar
+  const [packVer, setPackVer] = useState(isPackReady() ? 1 : 0);
+  useEffect(() => {
+    return onPackReady(() => setPackVer(v => v + 1));
+  }, []);
 
   const hasItem = Boolean(item && item.id && item.id > 0);
 
@@ -88,15 +101,15 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
       const top = b.variants ? tileForFace(b, 'top', meta) : (typeof f === 'string' ? f : (f?.top || f?.all || f?.side || b.name));
       const side = b.variants ? tileForFace(b, 'side', meta) : (typeof f === 'string' ? f : (f?.side || f?.front || f?.all || top));
       const tint = b.tint === 'grass' || b.tint === 'foliage' ? b.tint : null;
-      if (b.model === 'slab' || b.model === 'stairs') {
+      if (b.model === 'slab' || b.model === 'stairs' || b.model === 'fence' || b.model === 'gate') {
         const t = tile(top, null), sd = tile(side, null);
         if (t && sd) {
           const key = `${b.model}|${top}|${side}`;
           if (!blockCanvasCache.has(key)) {
             const c = document.createElement('canvas');
             c.width = 32; c.height = 32;
-            drawIsoBoxes(c.getContext('2d'), b.model === 'slab' ? ICON_SLAB : ICON_STAIRS, t, sd);
-            blockCanvasCache.set(key, c.toDataURL());
+            drawIsoBoxes(c.getContext('2d'), { slab: ICON_SLAB, stairs: ICON_STAIRS, fence: ICON_FENCE, gate: ICON_GATE }[b.model], t, sd);
+            blockCanvasCache.set(key, canvasToOptimizedDataUrl(c));
           }
           setImgUrl(blockCanvasCache.get(key));
           return true;
@@ -114,7 +127,7 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
         }
         const flat = tile(side || top, tint);
         if (flat) {
-          const u = flat.toDataURL();
+          const u = canvasToOptimizedDataUrl(flat);
           flatCanvasCache.set(flatKey, u);
           setImgUrl(u);
           return true;
@@ -157,7 +170,7 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
         setImgUrl(null);
       }
     });
-  }, [item?.id, item?.meta, atlasVer, hasItem]);
+  }, [item?.id, item?.meta, atlasVer, packVer, hasItem]);
 
   const handleClick = (e) => {
     e.preventDefault();
@@ -171,8 +184,17 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
     if (onRightClick) onRightClick();
   };
 
-  const handleMouseEnter = (e) => { setHover(true); if (onHover && hasItem) onHover(item, e); };
-  const handleMouseLeave = (e) => { setHover(false); if (onHover) onHover(null, e); };
+  const handleMouseEnter = (e) => {
+    setHover(true);
+    if (onHover) onHover(hasItem ? item : null, e);
+    if (rest.onMouseEnter) rest.onMouseEnter(e);
+  };
+  const handleMouseLeave = (e) => {
+    setHover(false);
+    if (onHover) onHover(null, e);
+    if (rest.onMouseLeave) rest.onMouseLeave(e);
+  };
+
 
   const bg = hasItem ? itemColor(item.id) : undefined;
   const durRatio = hasItem ? getDurabilityRatio(item) : 1;

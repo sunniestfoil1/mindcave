@@ -82,6 +82,7 @@ export const BLOCKS = {
   46: B(46, 'tnt', 'TNT', { hardness: 0, faces: { all: 'tnt' }, drop: 46 }),
   89: B(89, 'glowstone', 'Glowstone', { hardness: 0.3, faces: { all: 'glowstone' }, drop: 89, lightEmission: 15 }),
   58: B(58, 'crafting_table', 'Bancada', { hardness: 2.5, faces: { top: 'crafting_top', bottom: 'planks', side: 'crafting_side' }, drop: 58, soundCategory: 'wood' }),
+  26: B(26, 'bed', 'Cama', { hardness: 0.2, faces: { top: 'bed_head_top', side: 'bed_head_side', bottom: 'planks' }, drop: 355, model: 'bed', solid: true, opaque: false, lightOpacity: 0, render: 'opaque', soundCategory: 'wood' }),
   61: B(61, 'furnace', 'Fornalha', { hardness: 3.5, faces: { top: 'furnace_top', bottom: 'furnace_top', side: 'furnace_side', front: 'furnace_front' }, drop: 61 }),
   95: B(95, 'stained_glass', 'Vidro Tingido', { hardness: 0.3, faces: { all: 'glass' }, drop: null, render: 'translucent', opaque: false, lightOpacity: 0, metaColors: true }),
   24: B(24, 'sandstone', 'Arenito', { hardness: 0.8, faces: { top: 'sandstone_top', bottom: 'sandstone_bottom', side: 'sandstone_side' }, drop: 24 }),
@@ -209,6 +210,9 @@ export function getSelectionBox(id, meta = 0) {
     case 'snow': return [0, 0, 0, 1, ((meta & 7) + 1) / 8, 1];
     case 'box': return b.box || FULL_BOX;
     case 'slab': return (meta & 8) ? [0, 0.5, 0, 1, 1, 1] : [0, 0, 0, 1, 0.5, 1];
+    case 'bed': return [0, 0, 0, 1, 0.5625, 1];
+    case 'fence': case 'gate': return [0.375, 0, 0.375, 0.625, 1, 0.625];
+    case 'door': return [0, 0, 0, 1, 1, 1];
     default: return FULL_BOX;
   }
 }
@@ -271,6 +275,13 @@ const STAIRS = [
 for (const [id, name, namePt, faces, hardness, snd] of STAIRS) {
   BLOCKS[id] = shaped(id, name, namePt, { model: 'stairs', faces, hardness, soundCategory: snd, drop: id });
 }
+
+// === Portas, cercas e portões (1.8.9) === formas em shapes.js; estados e regras lá
+BLOCKS[64] = shaped(64, 'wooden_door', 'Porta de Carvalho', { model: 'door', hardness: 3.0, faces: { all: 'door_wood_lower' }, doorTiles: ['door_wood_lower', 'door_wood_upper'], drop: 324, lightOpacity: 0, soundCategory: 'wood', hiddenInCreative: true });
+BLOCKS[71] = shaped(71, 'iron_door', 'Porta de Ferro', { model: 'door', hardness: 5.0, faces: { all: 'door_iron_lower' }, doorTiles: ['door_iron_lower', 'door_iron_upper'], drop: 330, lightOpacity: 0, soundCategory: 'metal', hiddenInCreative: true });
+BLOCKS[85] = shaped(85, 'fence', 'Cerca de Carvalho', { model: 'fence', hardness: 2.0, faces: { all: 'planks' }, drop: 85, lightOpacity: 0, soundCategory: 'wood' });
+BLOCKS[113] = shaped(113, 'nether_brick_fence', 'Cerca de Tijolos do Nether', { model: 'fence', hardness: 2.0, faces: { all: 'nether_brick' }, drop: 113, lightOpacity: 0 });
+BLOCKS[107] = shaped(107, 'fence_gate', 'Portão de Carvalho', { model: 'gate', hardness: 2.0, faces: { all: 'planks' }, drop: 107, lightOpacity: 0, soundCategory: 'wood' });
 export const SLAB_IDS = [44, 126, 182];
 export const STAIR_IDS = STAIRS.map(s => s[0]);
 

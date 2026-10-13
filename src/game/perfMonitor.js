@@ -81,7 +81,7 @@ class PerfMonitor {
       sampleCount: n,
       longGcCount: this.longGcCount,
       jsHeapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : 0,
-      jsHeapTotalMB: performance.memory ? +(performance.memory.totalJSHeapSize / 1048576).toFixed(1) : 0,
+      jsHeapTotalMB: performance.memory ? Math.max(512, +(performance.memory.totalJSHeapSize / 1048576).toFixed(1)) : 512,
       stages: this.stages,
     };
   }

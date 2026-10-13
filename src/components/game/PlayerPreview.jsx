@@ -79,6 +79,7 @@ export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisibl
       disposed = true;
       cancelAnimationFrame(raf);
       renderer.dispose();
+      renderer.forceContextLoss(); // sem isto cada abertura do inventário deixava um contexto WebGL vivo até estourar o limite (o do jogo era perdido)
     };
   }, [S, preset, capeVisible]);
 

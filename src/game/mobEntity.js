@@ -108,7 +108,7 @@ export class MobEntity {
     this.vel.z = (dz / dist) * speed;
     this.yaw = Math.atan2(-dx, dz);
     // Pular se próximo nó está mais alto
-    if (wp.y > this.pos.y + 0.5 && this.onGround) this.vel.y = 0.42;
+    if (wp.y > this.pos.y + 0.25 && this.onGround) this.vel.y = 0.42;
     return true;
   }
 
@@ -250,9 +250,24 @@ export class MobEntity {
     // Mover
     const res = moveEntity(this.pos, this.vel, world, 1, {
       width: this.type.width, height: this.type.height,
+      stepHeight: 0.6,
       onGround: this.onGround,
     });
     this.onGround = res.onGround;
+
+    // Escalar paredes (Aranha) ou Pular degraus de 1 bloco (Creeper, Zumbi, etc.)
+    if (res.collidedX || res.collidedZ) {
+      if (this.type.canClimb) {
+        // Aranhas escalam superfícies verticais com fluidez (Minecraft 1.8.9: motionY = 0.2)
+        this.vel.y = 0.2;
+      } else if (this.onGround) {
+        // Salto autêntico de 1 bloco para subir desníveis
+        this.vel.y = 0.42;
+        const spd = this.type.speed || 0.23;
+        this.vel.x = -Math.sin(this.yaw) * spd;
+        this.vel.z = Math.cos(this.yaw) * spd;
+      }
+    }
   }
 
   applyDamage(amount, source, attacker, opts = {}) {

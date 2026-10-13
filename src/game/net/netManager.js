@@ -6,6 +6,9 @@ import { roomManager } from './roomManager';
 import { WebRTCConnection } from './webrtc';
 import { parseChatMessage, FloodController, systemMessage, joinMessage, leaveMessage, checkMention } from './chatSystem';
 import { receiveRemoteHit } from '@/game/combat';
+import { playMobSound, playEvent, playSound } from '@/game/sounds';
+import { processCommand, WORLD_COMMANDS, PLAYER_COMMANDS } from '@/game/commands';
+import { fillRegion, cloneRegion, validRegion } from './regionOps';
 
 // === HOST ===
 export class NetHost {
@@ -162,7 +165,7 @@ export class NetHost {
         }
         const full = '<' + userName + '> ' + msg.m;
         this.onChatMessage({ type: 'chat', user: userName, text: msg.m, timestamp: Date.now() });
-        this.broadcast({ t: 'chat', u: userName, m: msg.m });
+        this.broadcast({ t: 'chat', u: userName, m: msg.m }, userId);
         break;
       }
       case 'whisper': {
@@ -209,10 +212,23 @@ export class NetHost {
           p.targetYaw = msg.yaw;
           p.pitch = msg.pitch;
         }
-        // Repassa posição do jogador para outros convidados
+        // Repassa posição do jogador para outros convidados via canal UDP/não confiável
         p.isDead = !!msg.dead;
+        p.sleeping = !!msg.sleeping;
         p.held = msg.h || 0;
-        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, h: msg.h || 0 }, userId);
+        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, sleeping: !!msg.sleeping, h: msg.h || 0 }, userId, false);
+        break;
+      }
+      case 'sleep': {
+        if (!this.remotePlayers) this.remotePlayers = new Map();
+        let p = this.remotePlayers.get(userId);
+        if (p) {
+          p.sleeping = !!msg.sleeping;
+          p.bedPos = msg.bedPos;
+        }
+        this.broadcast({ t: 'sleep', id: userId, sleeping: !!msg.sleeping, bedPos: msg.bedPos }, userId);
+        this.engine?.checkAllSleeping?.();
+        this.engine?.emitHud?.();
         break;
       }
       case 'cmd': {
@@ -226,6 +242,60 @@ export class NetHost {
         this.broadcast({ t: 'chat', system: true, text: '§f' + text }, userId);
         break;
       }
+      case 'sound': {
+        if (msg.mobType && msg.kind) {
+          playMobSound({ typeId: msg.mobType, pos: msg.pos }, msg.kind);
+        } else if (msg.event) {
+          playEvent(msg.event, { pos: msg.pos, volume: msg.volume, pitch: msg.pitch });
+        } else if (msg.sound) {
+          playSound(msg.sound, { pos: msg.pos, volume: msg.volume, pitch: msg.pitch });
+        }
+        this.broadcast(msg, userId);
+        break;
+      }
+      case 'item_drop': {
+        if (this.engine?.itemEntities && msg.item) {
+          this.engine.itemEntities.spawnItem(msg.item, msg.pos, msg.vel, msg.pickupDelay || 20);
+        }
+        this.broadcast(msg, userId);
+        break;
+      }
+      case 'item_pickup': {
+        if (this.engine?.itemEntities && msg.pos) {
+          const items = this.engine.itemEntities.items;
+          for (let i = items.length - 1; i >= 0; i--) {
+            const it = items[i];
+            if (it && it.id === msg.id && Math.hypot(it.pos.x - msg.pos.x, it.pos.y - msg.pos.y, it.pos.z - msg.pos.z) < 2.0) {
+              this.engine.itemEntities.removeItem(i);
+              break;
+            }
+          }
+        }
+        this.broadcast(msg, userId);
+        break;
+      }
+    }
+  }
+
+  // Comando de jogo (/fill, /give, /tp...) vindo de um convidado, já com a permissão checada:
+  //  · comando de MUNDO roda aqui no host, com as coordenadas relativas (~) tomadas da posição do convidado; a resposta volta a ele;
+  //  · comando de JOGADOR volta para o convidado, que o executa no próprio jogador (inventário, modo de jogo, posição...).
+  _routeGameCommand(userId, text) {
+    const peer = this.peers.get(userId);
+    if (!peer || !text.startsWith('/')) return;
+    const name = text.slice(1).split(/\s+/)[0].toLowerCase();
+    const reply = (t) => peer.conn.send({ t: 'chat', system: true, text: t });
+    if (PLAYER_COMMANDS.has(name)) { peer.conn.send({ t: 'runcmd', cmd: text.slice(0, 200) }); return; }
+    if (!WORLD_COMMANDS.has(name)) { reply('§cComando desconhecido: /' + name); return; }
+    const engine = this.engine;
+    if (!engine?.player) return;
+    const rp = this.remotePlayers?.get(userId);
+    const pos = engine.player.pos, saved = { x: pos.x, y: pos.y, z: pos.z };
+    if (rp && rp.x !== undefined) { pos.x = rp.x; pos.y = rp.y; pos.z = rp.z; }
+    engine._cmdReply = reply;
+    try { processCommand(engine, text); } catch (e) { reply('§cErro no comando: ' + e.message); } finally {
+      engine._cmdReply = null;
+      pos.x = saved.x; pos.y = saved.y; pos.z = saved.z;
     }
   }
 
@@ -236,7 +306,7 @@ export class NetHost {
       return;
     }
     const parsed = parseChatMessage(msg.cmd, userName);
-    if (!parsed) return;
+    if (!parsed) { this._routeGameCommand(userId, String(msg.cmd || '')); return; }
 
     if (parsed.type === 'command') {
       switch (parsed.cmd) {
@@ -260,9 +330,9 @@ export class NetHost {
     }
   }
 
-  broadcast(msg, excludeUserId) {
+  broadcast(msg, excludeUserId, reliable = true) {
     for (const [uid, peer] of this.peers) {
-      if (uid !== excludeUserId) peer.conn.send(msg);
+      if (uid !== excludeUserId) peer.conn.send(msg, reliable);
     }
   }
 
@@ -274,7 +344,7 @@ export class NetHost {
 
   getAllPings() {
     const list = [
-      { name: this.user.full_name || this.user.email || 'Host', pingMs: 0, isHost: true, id: this.user.id, rank: 'owner' }
+      { name: this.engine?.player?.nomeJogador || this.user.full_name || this.user.email || 'Host', pingMs: 0, isHost: true, id: this.user.id, rank: 'owner' }
     ];
     for (const [uid, p] of this.peers) {
       list.push({
@@ -288,9 +358,27 @@ export class NetHost {
     return list.sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0) || a.name.localeCompare(b.name));
   }
 
-  sendChat(userName, text) {
+  sendChat(arg1, arg2) {
+    let userName, text;
+    if (arg2 !== undefined) {
+      userName = arg1;
+      text = arg2;
+    } else {
+      userName = this.engine?.player?.nomeJogador || this.user?.full_name || this.user?.email || 'Host';
+      text = arg1;
+    }
     this.onChatMessage({ type: 'chat', user: userName, text, timestamp: Date.now() });
     this.broadcast({ t: 'chat', u: userName, m: text });
+  }
+
+  // /tell — whisper direto para um convidado por nome
+  sendWhisper(targetName, message) {
+    const from = this.engine?.player?.nomeJogador || this.user?.full_name || this.user?.email || 'Host';
+    const entry = [...this.peers.entries()].find(([_, peer]) => peer.name?.toLowerCase() === String(targetName).toLowerCase());
+    if (!entry) return false;
+    entry[1].conn.send({ t: 'whisper', from, m: message });
+    this.onChatMessage({ type: 'whisper-out', user: from, text: message, target: entry[1].name, timestamp: Date.now() });
+    return true;
   }
 
   sendBlock(x, y, z, state) {
@@ -444,17 +532,99 @@ export class NetClient {
           p.pitch = msg.pitch;
         }
         p.isDead = !!msg.dead;
+        p.sleeping = !!msg.sleeping;
         p.held = msg.h || 0;
-        // Smooth lerp towards target position
-        p.x += (p.targetX - p.x) * 0.3;
-        p.y += (p.targetY - p.y) * 0.3;
-        p.z += (p.targetZ - p.z) * 0.3;
-        p.yaw += (p.targetYaw - p.yaw) * 0.3;
+        // Interpolação suave e rápida para combate fluido (0.55), com snap se distância > 4 blocos
+        const dx = p.targetX - p.x;
+        const dy = p.targetY - p.y;
+        const dz = p.targetZ - p.z;
+        if (dx * dx + dy * dy + dz * dz > 16) {
+          p.x = p.targetX;
+          p.y = p.targetY;
+          p.z = p.targetZ;
+          p.yaw = p.targetYaw;
+        } else {
+          p.x += dx * 0.55;
+          p.y += dy * 0.55;
+          p.z += dz * 0.55;
+          p.yaw += (p.targetYaw - p.yaw) * 0.55;
+        }
         this.onPlayerUpdate({ id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, time: msg.t || Date.now() });
         break;
       }
       case 'plist': {
         if (Array.isArray(msg.list)) this.listCache = msg.list;
+        break;
+      }
+      case 'sound': {
+        if (msg.mobType && msg.kind) {
+          playMobSound({ typeId: msg.mobType, pos: msg.pos }, msg.kind);
+        } else if (msg.event) {
+          playEvent(msg.event, { pos: msg.pos, volume: msg.volume, pitch: msg.pitch });
+        } else if (msg.sound) {
+          playSound(msg.sound, { pos: msg.pos, volume: msg.volume, pitch: msg.pitch });
+        }
+        break;
+      }
+      case 'item_drop': {
+        if (this.engine?.itemEntities && msg.item) {
+          this.engine.itemEntities.spawnItem(msg.item, msg.pos, msg.vel, msg.pickupDelay || 20);
+        }
+        break;
+      }
+      case 'item_pickup': {
+        if (this.engine?.itemEntities && msg.pos) {
+          const items = this.engine.itemEntities.items;
+          for (let i = items.length - 1; i >= 0; i--) {
+            const it = items[i];
+            if (it && it.id === msg.id && Math.hypot(it.pos.x - msg.pos.x, it.pos.y - msg.pos.y, it.pos.z - msg.pos.z) < 2.0) {
+              this.engine.itemEntities.removeItem(i);
+              break;
+            }
+          }
+        }
+        break;
+      }
+      case 'sleep': {
+        if (!this.remotePlayers) this.remotePlayers = new Map();
+        let p = this.remotePlayers.get(msg.id);
+        if (p) {
+          p.sleeping = !!msg.sleeping;
+          p.bedPos = msg.bedPos;
+        }
+        this.engine?.emitHud?.();
+        break;
+      }
+      case 'runcmd': {
+        // O host mandou executar no meu jogador um comando que eu pedi (permissão já checada por ele); só a lista de comandos de jogador
+        const name = String(msg.cmd || '').slice(1).split(/\s+/)[0].toLowerCase();
+        if (this.engine && PLAYER_COMMANDS.has(name)) processCommand(this.engine, msg.cmd);
+        break;
+      }
+      case 'FILL': {
+        if (this.engine?.world && validRegion(msg, ['x1', 'y1', 'z1', 'x2', 'y2', 'z2', 'blockState'])) {
+          fillRegion(this.engine.world, msg);
+          this.engine._cachedRaycastFrame = -1;
+        }
+        break;
+      }
+      case 'CLONE': {
+        if (this.engine?.world && validRegion(msg, ['x1', 'y1', 'z1', 'x2', 'y2', 'z2', 'dx', 'dy', 'dz'])) {
+          cloneRegion(this.engine.world, msg);
+          this.engine._cachedRaycastFrame = -1;
+        }
+        break;
+      }
+      case 'time': {
+        if (this.engine && msg.worldTime !== undefined) {
+          this.engine.worldTime = msg.worldTime;
+        }
+        break;
+      }
+      case 'wake_all': {
+        if (this.engine?.player?.sleeping) {
+          this.engine.wakeUp();
+        }
         break;
       }
       case 'players': {
@@ -471,7 +641,8 @@ export class NetClient {
 
   sendChat(text) {
     if (!this.conn) return;
-    const parsed = parseChatMessage(text, this.user.full_name || this.user.email || 'Player');
+    const author = this.engine?.player?.nomeJogador || this.user?.full_name || this.user?.email || 'Player';
+    const parsed = parseChatMessage(text, author);
 
     if (!parsed) {
       // Não é comando de chat — envia como comando do jogo
@@ -482,19 +653,29 @@ export class NetClient {
     switch (parsed.type) {
       case 'chat':
         this.conn.send({ t: 'chat', m: parsed.text });
-        this.onChatMessage({ type: 'chat', user: this.user.full_name || 'Player', text: parsed.text, timestamp: Date.now() });
+        this.onChatMessage({ type: 'chat', user: author, text: parsed.text, timestamp: Date.now() });
         break;
       case 'whisper':
         this.conn.send({ t: 'whisper', to: parsed.target, m: parsed.message });
-        this.onChatMessage({ type: 'whisper-out', user: this.user.full_name || 'Player', text: parsed.message, target: parsed.target, timestamp: Date.now() });
+        this.onChatMessage({ type: 'whisper-out', user: author, text: parsed.message, target: parsed.target, timestamp: Date.now() });
         break;
       case 'me':
-        this.conn.send({ t: 'chat', m: '* ' + (this.user.full_name || 'Player') + ' ' + parsed.text });
+        this.conn.send({ t: 'chat', m: '* ' + author + ' ' + parsed.text });
         break;
+
       case 'command':
         this.conn.send({ t: 'cmd', cmd: text });
         break;
     }
+  }
+
+  // /tell — convidado sussurra para o host ou outro convidado (host roteia)
+  sendWhisper(to, message) {
+    if (!this.conn) return false;
+    const author = this.engine?.player?.nomeJogador || this.user?.full_name || this.user?.email || 'Player';
+    this.conn.send({ t: 'whisper', to, m: message });
+    this.onChatMessage({ type: 'whisper-out', user: author, text: message, target: to, timestamp: Date.now() });
+    return true;
   }
 
   sendBlock(x, y, z, state) {

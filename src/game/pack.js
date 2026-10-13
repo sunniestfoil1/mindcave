@@ -202,7 +202,11 @@ export async function getPackBytes(path) {
 }
 
 export function getPackCanvas(path) {
-  if (!_ready) return Promise.resolve(null);
+  if (!_ready) {
+    return new Promise((resolve) => {
+      onPackReady(() => resolve(getPackCanvas(path)));
+    });
+  }
   const entry = resolveEntry(path);
   if (!entry) return Promise.resolve(null);
   if (_canvasCache.has(path)) return _canvasCache.get(path);
@@ -220,7 +224,11 @@ export function getPackCanvas(path) {
 }
 
 export function getPackUrl(path) {
-  if (!_ready) return Promise.resolve(null);
+  if (!_ready) {
+    return new Promise((resolve) => {
+      onPackReady(() => resolve(getPackUrl(path)));
+    });
+  }
   const entry = resolveEntry(path);
   if (!entry) return Promise.resolve(null);
   if (_urlCache.has(path)) return _urlCache.get(path);

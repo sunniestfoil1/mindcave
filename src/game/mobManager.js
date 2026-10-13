@@ -40,7 +40,7 @@ export class MobManager {
       ...ctx, player, mobs: this.mobs,
       onAttackPlayer: (mob, damage) => {
         const p = player;
-        if (p.isDead || p.gameMode === 'creative') return;
+        if (p.isDead || p.gameMode === 'creative' || p.gameMode === 'spectator') return;
         let dmg = damage;
         if (p.blocking && canBlockDamage('attack')) dmg = getBlockedDamage(damage);
         applyDamage(p, dmg, 'attack');
@@ -60,7 +60,7 @@ export class MobManager {
         const inacc = 0.0075 * (14 - diff * 4) * 2;
         const jit = () => (Math.random() - 0.5) * inacc;
         ctx.projectiles.spawnArrow(mob, 1.6 / 3, {
-          eye, shooterIsMob: true,
+          eye, shooterIsMob: true, shooterName: mob.type.namePt,
           lookDir: { x: tx / len + jit(), y: ty / len + jit(), z: tz / len + jit() },
         });
         MobEntity.onSound?.(mob, 'shoot');
@@ -98,7 +98,13 @@ export class MobManager {
         } else if (ctx.inventory && drops.length > 0) {
           for (const d of drops) addItem(ctx.inventory, d);
         }
-        if (mob.type.xp > 0) addXP(player, mob.type.xp);
+        if (mob.type.xp > 0) {
+          if (ctx.itemEntities?.spawnXpOrb) {
+            ctx.itemEntities.spawnXpOrb(mob.type.xp, { x: mob.pos.x, y: mob.pos.y + 0.3, z: mob.pos.z });
+          } else {
+            addXP(player, mob.type.xp);
+          }
+        }
       }
 
       // Remover mortos após 20 ticks (1s) de tombamento clássico ou por explosão imediata
@@ -120,7 +126,7 @@ export class MobManager {
   _explode(pos, power, player, ctx) {
     const dx = player.pos.x - pos.x, dy = (player.pos.y + 1) - pos.y, dz = player.pos.z - pos.z;
     const dist = Math.hypot(dx, dy, dz);
-    if (dist < power * 2 && player.gameMode !== 'creative') {
+    if (dist < power * 2 && player.gameMode !== 'creative' && player.gameMode !== 'spectator') {
       let dmg = (1 - dist / (power * 2)) * power * 4;
       if (player.blocking && canBlockDamage('explosion')) dmg = getBlockedDamage(dmg);
       applyDamage(player, dmg, 'explosion');
@@ -176,6 +182,35 @@ export class MobManager {
 
   getEntities() { return this.mobs.filter(m => !m.isDead); }
   getMobCount() { return this.mobs.length; }
+
+  serialize() {
+    return this.mobs
+      .filter(m => !m.isDead)
+      .map(m => ({
+        typeId: m.typeId,
+        pos: { x: m.pos.x, y: m.pos.y, z: m.pos.z },
+        yaw: m.yaw,
+        pitch: m.pitch,
+        health: m.health,
+        isBaby: !!m.isBaby,
+      }));
+  }
+
+  deserialize(data) {
+    if (!Array.isArray(data)) return;
+    for (const m of this.mobs) m.removeModel(this.scene);
+    this.mobs = [];
+    for (const item of data) {
+      if (!item || !item.typeId || !item.pos) continue;
+      const mob = new MobEntity(item.typeId, item.pos);
+      if (typeof item.yaw === 'number') mob.yaw = item.yaw;
+      if (typeof item.pitch === 'number') mob.pitch = item.pitch;
+      if (typeof item.health === 'number') mob.health = item.health;
+      if (item.isBaby) mob.isBaby = true;
+      mob.ensureModel(this.scene);
+      this.mobs.push(mob);
+    }
+  }
 
   dispose() {
     for (const m of this.mobs) m.removeModel(this.scene);

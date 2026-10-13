@@ -215,6 +215,24 @@ export class RedstoneSystem {
     else if (id === COMPARATOR_OFF || id === COMPARATOR_ON) this.evalComparator(x, y, z, meta, id);
     else if (id === LAMP_OFF || id === LAMP_ON) this.evalLamp(x, y, z);
     else if (id === TNT) this.evalTNT(x, y, z);
+    else if (id === 64 || id === 71) this.evalDoor(x, y, z, meta);
+  }
+
+  // Porta: abre quando passa a receber energia e fecha quando deixa de receber (BlockDoor). Só reage à MUDANÇA de energia, então
+  // abrir à mão uma porta sem energia não é desfeito pela redstone vizinha.
+  evalDoor(x, y, z, meta) {
+    const ly = (meta & 8) ? y - 1 : y;
+    const lower = this.world.getBlock(x, ly, z);
+    const id = stateId(lower);
+    if (id !== 64 && id !== 71) return;
+    if (!this.doorPower) this.doorPower = new Map();
+    const k = this.key(x, ly, z);
+    const powered = this.isPowered(x, ly, z) || this.isPowered(x, ly + 1, z);
+    if ((this.doorPower.get(k) || false) === powered) return;
+    this.doorPower.set(k, powered);
+    const m = stateMeta(lower);
+    if (((m & 4) !== 0) === powered) return;
+    this.world.setBlock(x, ly, z, packState(id, powered ? (m | 4) : (m & ~4)));
   }
 
   // Verifica se um bloco sólido está energizado (strong + weak)

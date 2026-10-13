@@ -8,6 +8,8 @@ import { playClickSound } from "@/game/sounds";
 import ItemTooltip from "./ItemTooltip";
 import PlayerPreview, { PREVIEW_CREATIVE } from "./PlayerPreview";
 import { Sprite, McText, usePackTexture, useGuiScaleValue } from "./GuiSprite";
+import { settingsStore } from "@/game/settingsStore";
+
 
 // Categorização rica e abrangente para todos os blocos e itens do jogo
 const REDSTONE_IDS = new Set([
@@ -132,12 +134,14 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
         }
         return;
       }
-      if (e.key === 'Escape' || e.key === 'e' || e.key === 'E' || e.code === 'KeyE') {
+      const invKey = settingsStore.get('user.keys.inventory') || 'KeyE';
+      if (e.key === 'Escape' || e.code === invKey || (invKey.startsWith('Key') && e.key.toLowerCase() === invKey.slice(3).toLowerCase())) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation?.();
         onClose();
       }
+
     };
     window.addEventListener('keydown', handleKey, true);
     return () => {
@@ -148,22 +152,30 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
 
   const allItems = useMemo(() => {
     const list = [];
+    const seen = new Set();
     for (const id in BLOCKS) {
       const numId = parseInt(id, 10);
       const b = BLOCKS[id];
       if (numId === 0 || !b) continue;
-      if (b.singleId) continue; // laje dupla não aparece no criativo (vem de duas lajes)
-      if (b.variants && b.model === 'slab') {
+      if (b.singleId || b.hiddenInCreative) continue; // laje dupla e blocos de porta não aparecem (a porta é o item 324/330)
+      if (b.variants && b.model === 'slab' && Array.isArray(b.variants)) {
         // uma entrada por tipo de laje (a meta guarda o tipo)
         b.variants.forEach((_, meta) => {
           if (numId === 44 && meta === 2) return; // "laje de madeira" antiga: duplicata da laje de carvalho
+          const key = `b_${numId}_${meta}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          const vName = (Array.isArray(b.variantNames) && b.variantNames[meta]) || b.namePt || b.name;
           list.push({
-            id: numId, meta, name: b.variantNames[meta], nameEn: b.name, isBlock: true,
+            id: numId, meta, name: vName, nameEn: b.name, isBlock: true,
             categories: getItemCategories(numId, true, b), maxStack: 64, block: b,
           });
         });
         continue;
       }
+      const key = `b_${numId}_0`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       list.push({
         id: numId, name: b.namePt || b.name, nameEn: b.name, isBlock: true,
         categories: getItemCategories(numId, true, b), maxStack: 64, block: b,
@@ -173,6 +185,9 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
       const numId = parseInt(id, 10);
       const it = ITEMS[id];
       if (!it) continue;
+      const key = `i_${numId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       list.push({
         id: numId, name: it.namePt || it.name, nameEn: it.name, isBlock: false,
         categories: getItemCategories(numId, false, it), maxStack: it.maxStack || 64, item: it,
@@ -307,18 +322,18 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
           {tab === 'survival' ? (
             <>
               <PlayerPreview S={S} preset={PREVIEW_CREATIVE} />
-              {inv.armor.map((item, i) => slot('a' + i, 9 + Math.floor(i / 2) * 54, 6 + (i % 2) * 27, item, {
-                onClick: () => slotAction(inv.armor, i, true),
-                onRightClick: () => slotAction(inv.armor, i, false),
+              {(Array.isArray(inv?.armor) ? inv.armor : new Array(4).fill(null)).map((item, i) => slot('a' + i, 9 + Math.floor(i / 2) * 54, 6 + (i % 2) * 27, item, {
+                onClick: () => inv?.armor && slotAction(inv.armor, i, true),
+                onRightClick: () => inv?.armor && slotAction(inv.armor, i, false),
               }))}
-              {inv.main.map((item, i) => slot('m' + i, 9 + (i % 9) * 18, 54 + Math.floor(i / 9) * 18, item, {
-                onClick: () => slotAction(inv.main, i, true),
-                onRightClick: () => slotAction(inv.main, i, false),
+              {(Array.isArray(inv?.main) ? inv.main : new Array(27).fill(null)).map((item, i) => slot('m' + i, 9 + (i % 9) * 18, 54 + Math.floor(i / 9) * 18, item, {
+                onClick: () => inv?.main && slotAction(inv.main, i, true),
+                onRightClick: () => inv?.main && slotAction(inv.main, i, false),
               }))}
               {/* Lixeira: solta o item do cursor */}
               <div
                 title="Destruir item"
-                onClick={() => { if (inv.cursor) { playClickSound(); inv.cursor = null; refresh(); } }}
+                onClick={() => { if (inv?.cursor) { playClickSound(); inv.cursor = null; refresh(); } }}
                 style={{ position: 'absolute', left: 173 * S, top: 112 * S, width: 18 * S, height: 18 * S, cursor: 'pointer' }}
               />
             </>
@@ -326,17 +341,17 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
             Array.from({ length: 45 }).map((_, idx) => {
               const itemData = pageItems[idx];
               return slot('g' + idx, 9 + (idx % 9) * 18, 18 + Math.floor(idx / 9) * 18, itemData, {
-                onClick: () => itemData && pickItem(itemData, false, false),
-                onRightClick: () => itemData && pickItem(itemData, false, true),
-                onShiftClick: () => itemData && pickItem(itemData, true, false),
+                onClick: () => itemData && inv && pickItem(itemData, false, false),
+                onRightClick: () => itemData && inv && pickItem(itemData, false, true),
+                onShiftClick: () => itemData && inv && pickItem(itemData, true, false),
               });
             })
           )}
 
-          {inv.hotbar.map((item, i) => slot('h' + i, 9 + i * 18, 112, item, {
-            onClick: () => slotAction(inv.hotbar, i, true),
-            onRightClick: () => slotAction(inv.hotbar, i, false),
-            onShiftClick: () => slotAction(inv.hotbar, i, true),
+          {(Array.isArray(inv?.hotbar) ? inv.hotbar : new Array(9).fill(null)).map((item, i) => slot('h' + i, 9 + i * 18, 112, item, {
+            onClick: () => inv?.hotbar && slotAction(inv.hotbar, i, true),
+            onRightClick: () => inv?.hotbar && slotAction(inv.hotbar, i, false),
+            onShiftClick: () => inv?.hotbar && slotAction(inv.hotbar, i, true),
           }))}
 
           {/* Barra de rolagem: trilha da textura + alça de tabs.png (232,0 ativa / 244,0 inativa) */}

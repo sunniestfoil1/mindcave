@@ -50,8 +50,10 @@ export function computeArmorPoints(inventory) {
 }
 
 // === Dano ===
-export function applyDamage(p, amount, source, opts = {}) {
-  if (p.isDead) return false;
+export function applyDamage(p, amount, source = 'generic', opts = {}) {
+  if (!p || p.isDead) return false;
+  if (!Array.isArray(p.effects)) p.effects = [];
+  if (!p.stats) p.stats = { damageTaken: 0, damageDealt: 0 };
   if (p.gameMode === 'creative' && source !== 'void' && source !== 'kill') return false;
   if (p.gameMode === 'spectator') return false;
 
@@ -102,7 +104,7 @@ export function applyDamage(p, amount, source, opts = {}) {
   p.hurtSeq = (p.hurtSeq || 0) + 1; // a cada dano aplicado: o motor toca o som e a câmera balança
   p.lastDamage = amount;
   p.lastDamageSource = source;
-  p.exhaustion = Math.min(40, p.exhaustion + 0.3);
+  p.exhaustion = Math.min(40, (p.exhaustion || 0) + 0.1);
   p.stats.damageTaken += finalDamage;
 
   if (p.health <= 0) {
@@ -244,11 +246,30 @@ export function eatFood(p, foodId) {
   }
 }
 
-// === Sono ===
-export function canSleep(p, worldTime, isThundering) {
+// === Sono (Minecraft 1.8.9: EntityPlayer.trySleep) ===
+export function canSleep(p, worldTime, isThundering, mobs = []) {
   const t = worldTime % 24000;
   const isNight = t >= 12541 && t <= 23458;
-  if (!isNight && !isThundering) return { ok: false, reason: 'Você só pode dormir à noite' };
+  if (!isNight && !isThundering) return { ok: false, reason: 'Você só pode dormir à noite ou durante tempestades' };
+
+  // MCP 1.8.9: Procura monstros hostis em raio horizontal de 8.0m e vertical de 5.0m
+  if (mobs && mobs.length > 0) {
+    const HOSTILE_MOBS = new Set([
+      'zombie', 'zombie_soldier', 'zombie_miner', 'zombie_scout', 'zombie_sapper',
+      'zombie_armored', 'zombie_sniper', 'skeleton', 'creeper', 'spider', 'enderman', 'witch', 'slime'
+    ]);
+    for (const m of mobs) {
+      if (!m || m.isDead) continue;
+      if (!HOSTILE_MOBS.has(m.typeId)) continue; // Animais passivos como cachorro/ovelha deixam dormir
+      const dx = m.pos.x - p.pos.x;
+      const dy = Math.abs(m.pos.y - p.pos.y);
+      const dz = m.pos.z - p.pos.z;
+      if (Math.hypot(dx, dz) <= 8.0 && dy <= 5.0) {
+        return { ok: false, reason: 'Você não pode dormir agora, há monstros por perto!' };
+      }
+    }
+  }
+
   return { ok: true };
 }
 
@@ -410,7 +431,20 @@ function tickEnvDamage(p, world, ctx, eyeId, feetId) {
 }
 
 function tickHunger(p, difficulty, gameRules) {
-  // Processar exaustão
+  // Pacífico: sem fome, regenera continuamente
+  if (difficulty === 'peaceful') {
+    p.exhaustion = 0;
+    p.hunger = 20;
+    p.foodTimer = (p.foodTimer || 0) + 1;
+    if (p.foodTimer >= 20) {
+      p.foodTimer = 0;
+      if (p.health < (p.maxHealth || 20)) p.health = Math.min(p.maxHealth || 20, p.health + 1);
+    }
+    return;
+  }
+  p.foodTimer = 0;
+
+  // Processar exaustão (MCP 1.8.9 FoodStats.java: 4.0 limiar para 1 ponto de saturação/fome)
   if (p.exhaustion >= 4.0) {
     p.exhaustion -= 4.0;
     if (p.saturation > 0) p.saturation = Math.max(0, p.saturation - 1);
@@ -418,31 +452,18 @@ function tickHunger(p, difficulty, gameRules) {
   }
 
   // Regeneração natural (naturalRegeneration default true)
-  if (gameRules.naturalRegeneration !== false && p.hunger >= 18 && p.health < p.maxHealth) {
-    p.regenTimer++;
+  if (gameRules.naturalRegeneration !== false && p.hunger >= 18 && p.health < (p.maxHealth || 20)) {
+    p.regenTimer = (p.regenTimer || 0) + 1;
     if (p.regenTimer >= 80) {
       p.regenTimer = 0;
-      p.health = Math.min(p.maxHealth, p.health + 1);
-      p.exhaustion = Math.min(40, p.exhaustion + 3.0);
+      p.health = Math.min(p.maxHealth || 20, p.health + 1);
+      p.exhaustion = Math.min(40, (p.exhaustion || 0) + 3.0);
     }
   } else p.regenTimer = 0;
 
-  // Pacífico: regenera mesmo com fome baixa
-  if (difficulty === 'peaceful') {
-    p.foodTimer++;
-    if (p.foodTimer >= 20) {
-      p.foodTimer = 0;
-      if (p.health < p.maxHealth) p.health = Math.min(p.maxHealth, p.health + 1);
-    }
-    p.hunger = Math.min(20, p.hunger + 0.1);
-    if (p.hunger > 20) p.hunger = 20;
-    return;
-  }
-  p.foodTimer = 0;
-
-  // Fome = 0 → dano de fome
+  // Fome = 0 → dano de fome (Easy para em 10, Normal em 1, Hard mata)
   if (p.hunger <= 0) {
-    p.starveTimer++;
+    p.starveTimer = (p.starveTimer || 0) + 1;
     if (p.starveTimer >= 80) {
       p.starveTimer = 0;
       let stopAt = 0;
@@ -451,7 +472,9 @@ function tickHunger(p, difficulty, gameRules) {
       else stopAt = 0;
       if (p.health > stopAt) applyDamage(p, Dmg.STARVE, 'hunger');
     }
-  } else p.starveTimer = 0;
+  } else {
+    p.starveTimer = 0;
+  }
 }
 
 export function respawn(p, spawnPoint) {

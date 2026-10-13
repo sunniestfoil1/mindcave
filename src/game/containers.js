@@ -68,3 +68,31 @@ export function getEnderChest(userId) {
 export function clearContainers() {
   _containers.clear();
 }
+
+// Serialização dos contêineres para salvamento completo do mundo
+export function serializeContainers() {
+  const data = {};
+  for (const [key, c] of _containers.entries()) {
+    if (c && c.slots) {
+      data[key] = {
+        type: c.type || 'chest',
+        slots: c.slots.map(s => (s && s.id) ? { id: s.id, count: s.count, meta: s.meta ?? s.data ?? 0 } : null),
+      };
+    }
+  }
+  return data;
+}
+
+// Restauração dos contêineres a partir dos dados salvos
+export function deserializeContainers(data) {
+  _containers.clear();
+  if (!data || typeof data !== 'object') return;
+  for (const [key, c] of Object.entries(data)) {
+    if (c && Array.isArray(c.slots)) {
+      _containers.set(key, {
+        type: c.type || 'chest',
+        slots: c.slots.map(s => (s && s.id) ? { id: s.id, count: s.count, meta: s.meta ?? s.data ?? 0 } : null),
+      });
+    }
+  }
+}

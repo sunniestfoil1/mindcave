@@ -36,3 +36,7 @@ export function drawIsoBoxes(ctx, boxes, topImg, sideImg, bottomImg) {
 // Caixas do ícone: laje de baixo; escada subindo para o fundo-direita (como no inventário do original)
 export const ICON_SLAB = [[0, 0, 0, 1, 0.5, 1]];
 export const ICON_STAIRS = [[0, 0, 0, 1, 0.5, 1], [0, 0.5, 0, 1, 1, 0.5]];
+
+// Cerca (poste + 2 barras de cada lado) e portão (2 postes + barras): ícones de inventário
+export const ICON_FENCE = [[0.375, 0, 0.375, 0.625, 1, 0.625], [0, 0.375, 0.4375, 0.375, 0.5625, 0.5625], [0, 0.75, 0.4375, 0.375, 0.9375, 0.5625], [0.625, 0.375, 0.4375, 1, 0.5625, 0.5625], [0.625, 0.75, 0.4375, 1, 0.9375, 0.5625]];
+export const ICON_GATE = [[0, 0.3125, 0.375, 0.125, 1, 0.625], [0.875, 0.3125, 0.375, 1, 1, 0.625], [0.125, 0.375, 0.4375, 0.875, 0.5625, 0.5625], [0.125, 0.75, 0.4375, 0.875, 0.9375, 0.5625]];

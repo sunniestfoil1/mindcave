@@ -201,6 +201,46 @@ export class ParticleManager {
     }
   }
 
+  // Partículas por nome (comando /particle) — cores representativas da 1.8.9
+  spawnNamed(name, x, y, z, count = 10) {
+    const COLORS = {
+      flame: [255, 140, 40], smoke: [120, 120, 120], largesmoke: [90, 90, 90],
+      crit: [255, 220, 100], magic_crit: [190, 90, 220],
+      heart: [255, 40, 80], happyvillager: [90, 220, 90], angryvillager: [200, 40, 40],
+      note: [230, 90, 230], portal: [150, 70, 220], ender: [220, 80, 220],
+      dragonbreath: [190, 90, 255], fireworkspark: [255, 220, 130],
+      reddust: [255, 40, 40], driplava: [255, 110, 20], dripwater: [90, 140, 255],
+      snowball: [245, 250, 255], snowshovel: [230, 245, 255], itemslime: [130, 210, 90],
+      waterbubble: [170, 220, 255], watersplash: [120, 170, 230], suspended: [210, 210, 210],
+      depthsuspend: [170, 190, 220], townaura: [160, 200, 90], hugeexplosion: [200, 160, 80],
+      explosion: [180, 150, 90], cloud: [230, 230, 240], instantspell: [200, 160, 255],
+      spell: [180, 140, 255], witchspell: [120, 200, 90],
+    };
+    const RISE = new Set(['flame', 'smoke', 'largesmoke', 'portal', 'ender', 'driplava', 'dripwater', 'townaura', 'suspended', 'depthsuspend', 'note', 'happyvillager', 'angryvillager', 'spell', 'instantspell', 'witchspell', 'dragonbreath', 'cloud']);
+    const key = String(name || '').toLowerCase();
+    const color = COLORS[key] || [200, 200, 200];
+    const n = Math.max(1, Math.min(50, count | 0));
+    const rise = RISE.has(key);
+    for (let i = 0; i < n; i++) {
+      const p = this._getFreeParticle();
+      p.active = true;
+      p.x = x + (Math.random() - 0.5) * 0.5;
+      p.y = y + (Math.random() - 0.5) * 0.5;
+      p.z = z + (Math.random() - 0.5) * 0.5;
+      p.vx = (Math.random() - 0.5) * 0.04;
+      p.vy = rise ? 0.02 + Math.random() * 0.03 : (Math.random() - 0.5) * 0.04;
+      p.vz = (Math.random() - 0.5) * 0.04;
+      const vary = (Math.random() - 0.5) * 20;
+      p.r = Math.max(10, Math.min(255, color[0] + vary));
+      p.g = Math.max(10, Math.min(255, color[1] + vary));
+      p.b = Math.max(10, Math.min(255, color[2] + vary));
+      p.life = 0;
+      p.maxLife = 12 + Math.floor(Math.random() * 14);
+      p.onGround = false;
+    }
+    return true;
+  }
+
   tick(world) {
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const p = this.particles[i];

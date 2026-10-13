@@ -62,10 +62,22 @@ export default function PlayerListOverlay({ visible, worldName, players = [], se
             )}
             <McText text={tag} x={x + 11} y={y + 0.5} S={S} color={rank.color} shadow />
             <McText text={String(p.name)} x={x + 11 + tagW + 3} y={y + 0.5} S={S} color={isMe ? '#FFFF55' : '#FFFFFF'} shadow />
-            <Sprite url={icons} u={0} v={176 + pingRow(p.pingMs) * 8} w={10} h={8} S={S} x={x + ROW_W - 11} y={y + 0.5} title={p.pingMs != null ? `${p.pingMs} ms` : 'medindo'} />
+            {(() => {
+              const pingVal = p.pingMs != null ? p.pingMs : (p.isHost ? 0 : null);
+              const pingStr = pingVal != null ? `${pingVal}ms` : '...';
+              const pingColor = pingVal != null ? (pingVal < 80 ? '#55FF55' : pingVal < 160 ? '#FFFF55' : '#FF5555') : '#AAAAAA';
+              const pingW = measureMcText(pingStr, pingColor, 8 * S) / S;
+              return (
+                <>
+                  <McText text={pingStr} x={x + ROW_W - 13 - pingW} y={y + 0.5} S={S} color={pingColor} shadow />
+                  <Sprite url={icons} u={0} v={176 + pingRow(pingVal) * 8} w={10} h={8} S={S} x={x + ROW_W - 11} y={y + 0.5} title={pingVal != null ? `${pingVal} ms` : 'medindo'} />
+                </>
+              );
+            })()}
           </React.Fragment>
         );
       })}
+
     </div>
   );
 }

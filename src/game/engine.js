@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { TICK_MS, TPS, PLAYER, AUTOSAVE_TICKS } from './constants';
 import { moveEntity, unstickPlayer, pushOutOfBlocks, collidesAt, chunkLoadedAt, getBlockSlipperiness } from './physics';
 import { packState, stateId, stateMeta, chunkCoord } from './chunk';
-import { getBlock, isWater, isLava, isFluid, isReplaceable, isSolid, BLOCK_NAMES, getSelectionBox } from './blocks';
-import { blockBoxes, rayBox, hasShape, isSlabBlock, isStairsBlock, computePlacement } from './shapes';
+import { getBlock, BLOCKS, isWater, isLava, isFluid, isReplaceable, isSolid, BLOCK_NAMES, getSelectionBox } from './blocks';
+import { blockBoxes, rayBox, hasShape, isSlabBlock, isStairsBlock, computePlacement, bedPartner, BED_DIRS, DOOR_FACES, isDoorBlock } from './shapes';
 import { Sky } from './sky';
 import { skyBrightnessFactor, sunsetFactor, sunBrightness } from './lighting';
 import { tickFluids } from './fluids';
@@ -37,7 +37,7 @@ import { loadRealTextures, isRealTexturesLoaded, tickTextureAnimations } from '.
 import { lookDirFromAngles } from './viewMath';
 import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel, setModelHeldItem, setModelCape } from './playerModel';
 import { onSkinChange, onCapeChange, getCapeChoice } from './skinStore';
-import { fetchCraftheadCape } from './crafthead';
+import { fetchCraftheadCape, fetchCraftheadSkin } from './crafthead';
 import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
 import { initBiomeTint } from './biomeTint';
 import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener, playPopSound } from './sounds';
@@ -47,6 +47,7 @@ import { ItemEntityManager, createItemMesh } from './itemEntity';
 import { perfMonitor } from './perfMonitor';
 import { musicManager } from './musicManager';
 import { voiceChat } from './net/voiceChat';
+import { handleBlockBreakPhysics, tickNearbyFallingBlocks, FALLING_BLOCK_IDS, canFallThrough, triggerFallingColumn } from './fallingBlocks';
 
 // MC24-RF-032: valores sRGB crus em tudo (texturas, cores, saída) — sem conversão dupla
 THREE.ColorManagement.enabled = false;
@@ -114,6 +115,8 @@ export class GameEngine {
     this._weatherState = opts.weatherState;
     this._savedStats = opts.savedStats;
     this._savedAchievements = opts.savedAchievements;
+    this._savedMobs = opts.savedMobs;
+    this._savedItemEntities = opts.savedItemEntities;
     this._lastPosX = null;
     this._lastPosZ = null;
     this.frame = 0;
@@ -173,6 +176,10 @@ export class GameEngine {
 
     // Inventário (PRD 06) — sempre criado, mesmo sem dados salvos
     this.inventory = { main: new Array(27).fill(null), hotbar: this.player.hotbar, armor: new Array(4).fill(null), crafting: new Array(4).fill(null), craftResult: null, cursor: null };
+    // Título de tela (/title) — 60 ticks ≈ 3 s, como o stay padrão do vanilla
+    this.titleText = null;
+    this.subtitleText = null;
+    this.titleTicks = 0;
     if (this._savedInventory) {
       deserializeInventory(this.inventory, this._savedInventory);
     }
@@ -183,7 +190,17 @@ export class GameEngine {
 
     // Mobs (PRD 08)
     this.mobs = new MobManager(this.scene, this.world);
-    MobEntity.onSound = (mob, kind) => playMobSound(mob, kind);
+    if (this._savedMobs) {
+      this.mobs.deserialize(this._savedMobs);
+    }
+    MobEntity.onSound = (mob, kind) => {
+      playMobSound(mob, kind);
+      if (this.netManager) {
+        const pkt = { t: 'sound', mobType: mob.typeId, kind, pos: { x: mob.pos.x, y: mob.pos.y, z: mob.pos.z } };
+        if (this.netManager.broadcast) this.netManager.broadcast(pkt);
+        else this.netManager.conn?.send(pkt);
+      }
+    };
 
     // Armas de fogo (PRD 09)
     this.gunController = new GunController(this);
@@ -193,6 +210,16 @@ export class GameEngine {
     // Partículas (blocos quebrados, respingos) — estilo 1.8.9
     this.particles = new ParticleManager(this.scene);
     this.itemEntities = new ItemEntityManager(this.scene, this.world);
+    if (this._savedItemEntities) {
+      this.itemEntities.deserialize(this._savedItemEntities);
+    }
+    this.itemEntities.onItemPickup = (item, pos) => {
+      if (this.netManager) {
+        const pkt = { t: 'item_pickup', id: item.id, pos };
+        if (this.netManager.broadcast) this.netManager.broadcast(pkt);
+        else this.netManager.conn?.send(pkt);
+      }
+    };
     this._wasInWater = false;
 
     // Frustum Culling e Otimizações de Renderização (Sodium / Patcher)
@@ -334,13 +361,24 @@ export class GameEngine {
     this._onWheel = (e) => this.onWheel(e);
     this._onResize = () => this.onResize();
     this._onContext = (e) => e.preventDefault();
-    this._onClick = () => { if (this.paused && !this.chatOpen) this._requestPointerLock(); };
+    // Clique no jogo sempre tenta recapturar o mouse se ele não está travado (cobre o pedido de lock recusado pelo navegador)
+    this._onClick = () => { if (!this.chatOpen && document.pointerLockElement !== this.canvas) this._requestPointerLock(); };
     this._onPLChange = () => {
-      this.paused = document.pointerLockElement !== this.canvas;
+      if (this.chatOpen || this.netManager) {
+        this.paused = false;
+      } else {
+        this.paused = document.pointerLockElement !== this.canvas;
+      }
       if (!this.paused) this.mouseBtn = {};
       this.keys = {};
     };
     this._onBlur = () => { this.keys = {}; this.mouseBtn = {}; this.f3Held = false; };
+    this.world.onTntIgnite = (x, y, z) => this.spawnTNT(x, y, z);
+    this._bgInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden && this.netManager && !this.disposed) {
+        this.tick();
+      }
+    }, 50);
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
     window.addEventListener('blur', this._onBlur);
@@ -354,6 +392,18 @@ export class GameEngine {
     document.addEventListener('pointerlockchange', this._onPLChange);
   }
 
+  // REGRA DO CHAT (não mexer sem testar): abrir o chat solta o mouse (exitPointerLock) e fecha com Enter/Esc devolvendo o mouse.
+  // Enviar mensagem NÃO pode pausar o jogo, então o fechamento tem 3 passos, nesta ordem:
+  //   1) chatOpen = false  2) paused = false (senão o menu de pausa aparece um quadro)  3) requestPointerLock().
+  // O `pointerlockchange` que chega depois recalcula `paused` a partir do mouse travado de verdade (ver _onPLChange).
+  // Todo caminho que fecha o chat (Enter, Enter vazio, Esc, clique fora) deve chamar closeChat(), nunca só `chatOpen = false`.
+  closeChat() {
+    this.chatOpen = false;
+    this.paused = false;
+    this._requestPointerLock();
+    this.emitHud();
+  }
+
   isAction(action) {
     const keys = settingsStore.get('user.keys') || {};
     const code = keys[action];
@@ -363,13 +413,45 @@ export class GameEngine {
   }
 
   onKey(e, down) {
+    // Se o usuário está digitando em um campo de texto (modal de feedback, inputs, etc.), não move o personagem nem processa atalhos do jogo
+    const activeTag = document.activeElement?.tagName;
+    if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || document.activeElement?.isContentEditable) {
+      if (!down) this.keys[e.code] = false;
+      return;
+    }
+
+    // Bloquear teclas do navegador que atrapalham a jogabilidade (F1 = Ajuda Brave, F7 = Navegação com cursor)
+    if (e.code === 'F1' || e.key === 'F1' || e.code === 'F7' || e.key === 'F7') {
+      e.preventDefault();
+      if (!down) return;
+    }
+
     // Soltar uma tecla é sempre registrado, em qualquer tela: senão ela "gruda" (ou falha) depois de chat/inventário/F3
     if (!down) this.keys[e.code] = false;
     if (this.chatOpen) {
-      if (down && e.code === 'Escape') { this.chatOpen = false; this.emitHud(); }
+      if (down && e.code === 'Escape') { this.closeChat(); }
       return;
     }
     const keys = settingsStore.get('user.keys') || {};
+    const chatKey = keys.chat || 'KeyT';
+    const cmdKey = keys.command || 'Slash';
+    const invKey = keys.inventory || 'KeyE';
+
+    if (this.player?.sleeping) {
+      if (down && (e.code === 'Space' || e.code === keys.jump)) {
+        e.preventDefault();
+        this.wakeUp();
+        return;
+      }
+      if (down && (e.code === chatKey || e.code === cmdKey)) {
+        this.chatOpen = true;
+        document.exitPointerLock?.();
+        this.emitHud();
+        e.preventDefault();
+        return;
+      }
+      return;
+    }
     const playerListKey = keys.playerList || 'Tab';
     if (e.code === playerListKey || e.code === 'Tab') {
       e.preventDefault();
@@ -380,7 +462,7 @@ export class GameEngine {
     if (down && !e.repeat && (e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === keys.sprint)) {
       this.sprintToggled = !this.sprintToggled;
     }
-    if (down && (e.code === 'KeyE' || e.code === keys.inventory)) {
+    if (down && e.code === invKey) {
       if (this.chatOpen) return;
       e.preventDefault();
       this.unlockAchievement('open_inventory');
@@ -388,7 +470,7 @@ export class GameEngine {
       return;
     }
     if (down && !this.paused) {
-      if (e.code === 'KeyT' || e.code === 'Slash' || e.code === keys.chat || e.code === keys.command) {
+      if (e.code === chatKey || e.code === cmdKey) {
         this.chatOpen = true;
         document.exitPointerLock?.();
         this.emitHud();
@@ -422,12 +504,15 @@ export class GameEngine {
     if (down && e.code === keys.drop) { e.preventDefault(); this.dropHeldItem(); return; }
     if (down && e.code === keys.hideHud) { this.hideHud = !this.hideHud; return; }
     if (down && e.code === keys.smoothCamera) { settingsStore.set('device.smoothCamera', !settingsStore.get('device.smoothCamera')); return; }
-    if (down && e.code === keys.fullscreen) {
-      if (document.fullscreenElement) document.exitFullscreen?.();
-      else document.documentElement.requestFullscreen?.();
+    const fsKey = keys.fullscreen || 'F11';
+    if (down && (e.code === fsKey || e.code === 'F11' || e.key === 'F11')) {
+      e.preventDefault();
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+      else document.documentElement.requestFullscreen?.().catch(() => {});
       return;
     }
     if (down && (e.code === 'Escape')) return;
+
     this.keys[e.code] = down;
     if (down && !e.repeat) { // repetição de tecla (segurar W/espaço) não conta como toque duplo
       if (e.code === keys.forward) {
@@ -448,7 +533,7 @@ export class GameEngine {
   }
 
   onMouseMove(e) {
-    if (this.paused || this.chatOpen || this.player?.isDead) return;
+    if (this.paused || this.chatOpen || this.player?.isDead || this.player?.sleeping) return;
     const sensPct = settingsStore.get('user.mouseSensitivity') || 100;
     // Vanilla 1.8.9: s = pct/200 (slider 0–200%); graus/px = 1,2 × (0,6·s + 0,2)³ → 100% = 0,15°/px
     const s = sensPct / 200;
@@ -460,8 +545,12 @@ export class GameEngine {
       radPerPx *= (settingsStore.get('user.zoomSensitivity') || 50) / 100;
     }
     const invert = settingsStore.get('user.invertMouse') ? -1 : 1;
-    this.player.yaw += e.movementX * radPerPx;
-    this.player.pitch += e.movementY * radPerPx * invert;
+    // Limite máximo de deslocamento por evento para evitar giro brusco de 360° durante congelamentos/quedas de frame
+    const maxDelta = 120;
+    const dx = Math.max(-maxDelta, Math.min(maxDelta, e.movementX || 0));
+    const dy = Math.max(-maxDelta, Math.min(maxDelta, e.movementY || 0));
+    this.player.yaw += dx * radPerPx;
+    this.player.pitch += dy * radPerPx * invert;
     const lim = Math.PI / 2 - 0.001;
     this.player.pitch = Math.max(-lim, Math.min(lim, this.player.pitch));
   }
@@ -583,11 +672,19 @@ export class GameEngine {
     if (block.hardness < 0) return;
     this.particles?.spawnBlockBreak(hit.x, hit.y, hit.z, hit.id);
     playBlockBreakSound(hit.id, { x: hit.x, y: hit.y, z: hit.z });
+    const _brokenState = this.world.getBlock(hit.x, hit.y, hit.z);
     this.world.setBlock(hit.x, hit.y, hit.z, 0);
+    this.breakBedPartner(hit.x, hit.y, hit.z, _brokenState);
     this._cachedRaycastFrame = -1;
     this.onBlockChange?.(hit.x, hit.y, hit.z, 0);
     this.netManager?.sendBlockChange?.(hit.x, hit.y, hit.z, 0);
     this.breakCd = 5;
+
+    handleBlockBreakPhysics(this.world, hit.x, hit.y, hit.z, (dropItem, pos) => {
+      this.particles?.spawnBlockBreak(pos.x, pos.y, pos.z, dropItem.id);
+      this.onBlockChange?.(pos.x, pos.y, pos.z, 0);
+      this.netManager?.sendBlockChange?.(pos.x, pos.y, pos.z, 0);
+    });
   }
 
   interactBlock(p) {
@@ -595,6 +692,15 @@ export class GameEngine {
     const hit = this.raycast();
     if (!hit) return false;
     const blockId = hit.id;
+    if (blockId === 64 || blockId === 107) { // porta de madeira e portão: abrem/fecham com o botão direito (a de ferro só com redstone)
+      this.toggleOpenable(hit.x, hit.y, hit.z);
+      return true;
+    }
+    if (blockId === 71) return true; // porta de ferro: não abre à mão, mas o clique não coloca bloco
+    if (blockId === 26) { // Cama
+      this.trySleep(hit.x, hit.y, hit.z);
+      return true;
+    }
     if (blockId === 58) { // Bancada de trabalho
       this.onOpenCraftingTable?.();
       return true;
@@ -615,10 +721,14 @@ export class GameEngine {
     if (!hit) return;
     const slot = this.player.hotbar[this.player.selectedSlot];
     if (!slot || !slot.id) return;
+    // getBlock() devolve PEDRA para id desconhecido: item que não é bloco (graveto, balde, comida) nunca pode ser colocado
+    if (slot.id !== 355 && slot.id !== 324 && slot.id !== 330 && !BLOCKS[slot.id]) return;
     let px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
+    if (slot.id === 324 || slot.id === 330) { this.placeDoor(hit, slot, px, py, pz); return; }
     const placing = getBlock(slot.id);
     let meta = slot.meta || 0;
     let placeId = slot.id;
+    if (slot.id === 355) { this.placeBed(hit, slot, px, py, pz); return; }
     const plan = computePlacement(placing, meta, hit, this.player.yaw, (a, b, c) => this.world.getBlock(a, b, c));
     if (plan) { px = plan.x; py = plan.y; pz = plan.z; placeId = plan.id; meta = plan.meta; }
     if (hasShape(getBlock(placeId))) { if (this._shapeHitsPlayer(placeId, meta, px, py, pz)) return; }
@@ -638,6 +748,13 @@ export class GameEngine {
     this._cachedRaycastFrame = -1;
     this.onBlockChange?.(px, py, pz, newState);
     this.netManager?.sendBlockChange?.(px, py, pz, newState);
+    if (FALLING_BLOCK_IDS.has(placeId)) {
+      const belowState = this.world.getBlock(px, py - 1, pz);
+      const belowId = stateId(belowState);
+      if (canFallThrough(belowId)) {
+        triggerFallingColumn(this.world, px, py, pz);
+      }
+    }
     if (this.player.gameMode === 'survival' || this.player.gameMode === 'adventure') {
       slot.count = (slot.count || 1) - 1;
       if (slot.count <= 0) {
@@ -651,6 +768,215 @@ export class GameEngine {
       if (rsIds.includes(slot.id)) this.player.stats.redstonePlaced++;
     }
     this.placeCd = 4;
+  }
+
+  _setBlockSync(x, y, z, state) {
+    this.world.setBlock(x, y, z, state);
+    this._cachedRaycastFrame = -1;
+    this.onBlockChange?.(x, y, z, state);
+    this.netManager?.sendBlockChange?.(x, y, z, state);
+  }
+
+  // Raio que PARA em fluido (o raycast normal atravessa água e lava): fonte = água/lava parada (ids 9 e 11)
+  raycastFluidSource() {
+    const eye = this.eyePos(), dir = this.lookDir();
+    const reach = this.player.gameMode === 'creative' ? PLAYER.reachCreative : PLAYER.reach;
+    for (let t = 0; t <= reach; t += 0.05) {
+      const x = Math.floor(eye.x + dir.x * t), y = Math.floor(eye.y + dir.y * t), z = Math.floor(eye.z + dir.z * t);
+      const id = stateId(this.world.getBlock(x, y, z));
+      if (id === 9 || id === 11) return { x, y, z, id };
+      if (id !== 0 && !isFluid(id) && !isReplaceable(id)) return null;
+    }
+    return null;
+  }
+
+  _consumeHeld(slot, n = 1) {
+    if (this.player.gameMode === 'creative') return;
+    slot.count = (slot.count || 1) - n;
+    if (slot.count <= 0) this.player.hotbar[this.player.selectedSlot] = null;
+  }
+
+  _wearHeld(slot) {
+    if (this.player.gameMode === 'creative') return;
+    damageTool(slot, 1);
+    if (isToolBroken(slot)) this.player.hotbar[this.player.selectedSlot] = null;
+  }
+
+  // Botão direito com item que não é bloco (1.8.9): balde, enxada, sementes, pederneira e aço, farinha de osso.
+  // Devolve true se o item foi usado (então não tenta colocar bloco).
+  useHeldItem(slot) {
+    if (!slot || !slot.id) return false;
+    const id = slot.id;
+    const isBucket = id === 325 || id === 326 || id === 327;
+    // Balde vazio: recolhe água/lava parada (mira atravessa o fluido)
+    if (id === 325) {
+      const src = this.raycastFluidSource();
+      if (!src) return false;
+      this._setBlockSync(src.x, src.y, src.z, 0);
+      const filled = { id: src.id === 9 ? 326 : 327, count: 1, meta: 0 };
+      playEvent(src.id === 9 ? 'item.bucket.fill' : 'item.bucket.fill_lava', { pos: { x: src.x + 0.5, y: src.y + 0.5, z: src.z + 0.5 } });
+      if (this.player.gameMode !== 'creative') {
+        this._consumeHeld(slot);
+        const left = addItem(this.inventory, filled);
+        if (left) this.itemEntities?.spawnItem(left, this.eyePos(), { x: 0, y: 1, z: 0 }, 10);
+      }
+      return true;
+    }
+    const hit = this.raycast();
+    if (isBucket) {
+      // Balde cheio: derrama uma fonte no espaço à frente do bloco mirado
+      if (!hit) return false;
+      let tx = hit.x + hit.nx, ty = hit.y + hit.ny, tz = hit.z + hit.nz;
+      const cur = stateId(this.world.getBlock(tx, ty, tz));
+      if (cur !== 0 && !isReplaceable(cur) && !(isFluid(cur))) return false;
+      if (this.intersectsPlayer(tx, ty, tz) && id === 327) return false;
+      this._setBlockSync(tx, ty, tz, packState(id === 326 ? 9 : 11, 0));
+      playEvent(id === 326 ? 'item.bucket.empty' : 'item.bucket.empty_lava', { pos: { x: tx + 0.5, y: ty + 0.5, z: tz + 0.5 } });
+      if (this.player.gameMode !== 'creative') this.player.hotbar[this.player.selectedSlot] = { id: 325, count: 1, meta: 0 };
+      return true;
+    }
+    if (!hit) return false;
+    const above = stateId(this.world.getBlock(hit.x, hit.y + 1, hit.z));
+    const topFree = hit.ny === 1 && (above === 0 || isReplaceable(above));
+    const pos = { x: hit.x + 0.5, y: hit.y + 1, z: hit.z + 0.5 };
+    // Enxada: grama/terra → terra arada
+    if (id >= 290 && id <= 294) {
+      if (!topFree || (hit.id !== 2 && hit.id !== 3)) return false;
+      this._setBlockSync(hit.x, hit.y, hit.z, packState(60, 0));
+      playBlockPlaceSound(3, pos);
+      this._wearHeld(slot);
+      return true;
+    }
+    // Sementes e raízes: plantam em terra arada
+    const CROPS = { 295: 59, 391: 141, 392: 142, 361: 104, 362: 105 };
+    if (CROPS[id] && hit.id === 60 && topFree) {
+      this._setBlockSync(hit.x, hit.y + 1, hit.z, packState(CROPS[id], 0));
+      playBlockPlaceSound(2, pos);
+      this._consumeHeld(slot);
+      return true;
+    }
+    // Pederneira e aço: acende TNT ou põe fogo no espaço à frente
+    if (id === 259) {
+      if (hit.id === 46) {
+        this._setBlockSync(hit.x, hit.y, hit.z, 0);
+        this.spawnTNT(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+        playEvent('fire.ignite', { pos });
+        this._wearHeld(slot);
+        return true;
+      }
+      const fx = hit.x + hit.nx, fy = hit.y + hit.ny, fz = hit.z + hit.nz;
+      if (stateId(this.world.getBlock(fx, fy, fz)) !== 0) return false;
+      this._setBlockSync(fx, fy, fz, packState(51, 0));
+      playEvent('fire.ignite', { pos: { x: fx + 0.5, y: fy + 0.5, z: fz + 0.5 } });
+      this._wearHeld(slot);
+      return true;
+    }
+    // Farinha de osso (corante meta 15): acelera plantação; na grama espalha grama alta
+    if (id === 351 && (slot.meta || 0) === 15) {
+      if ([59, 141, 142].includes(hit.id)) {
+        const m = stateMeta(this.world.getBlock(hit.x, hit.y, hit.z));
+        if (m >= 7) return false;
+        this._setBlockSync(hit.x, hit.y, hit.z, packState(hit.id, Math.min(7, m + 2 + Math.floor(Math.random() * 4))));
+        this._consumeHeld(slot);
+        return true;
+      }
+      if (hit.id === 2 && topFree) {
+        for (let i = 0; i < 12; i++) {
+          const gx = hit.x + Math.floor(Math.random() * 7) - 3, gz = hit.z + Math.floor(Math.random() * 7) - 3;
+          for (let gy = hit.y + 2; gy >= hit.y - 2; gy--) {
+            if (stateId(this.world.getBlock(gx, gy, gz)) === 2 && stateId(this.world.getBlock(gx, gy + 1, gz)) === 0) {
+              this._setBlockSync(gx, gy + 1, gz, packState(31, 1));
+              break;
+            }
+          }
+        }
+        this._consumeHeld(slot);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Porta (item 324 madeira / 330 ferro): 2 blocos de altura, precisa de chão sólido e espaço livre nos dois. Fica virada
+  // para onde o jogador olha; se há uma porta igual à esquerda, a dobradiça vai para a direita (porta dupla espelhada).
+  placeDoor(hit, slot, px, py, pz) {
+    const doorId = slot.id === 330 ? 71 : 64;
+    const i = Math.floor(this.player.yaw * 2 / Math.PI + 0.5) & 3;
+    const facing = [3, 0, 1, 2][i];
+    for (const yy of [py, py + 1]) {
+      const here = stateId(this.world.getBlock(px, yy, pz));
+      if (here !== 0 && !isFluid(here) && !isReplaceable(here)) return;
+    }
+    const below = getBlock(stateId(this.world.getBlock(px, py - 1, pz)));
+    if (!below || !below.solid || !below.opaque) return;
+    if (this._shapeHitsPlayer(doorId, facing, px, py, pz)) return;
+    const F = DOOR_FACES[facing], left = [F[1], -F[0]]; // esquerda de quem olha na direção F
+    const ln = this.world.getBlock(px + left[0], py, pz + left[1]);
+    const hingeRight = stateId(ln) === doorId && (stateMeta(ln) & 3) === facing && !(stateMeta(ln) & 8);
+    this._setBlockSync(px, py, pz, packState(doorId, facing));
+    this._setBlockSync(px, py + 1, pz, packState(doorId, 8 | (hingeRight ? 1 : 0)));
+    playBlockPlaceSound(5, { x: px, y: py, z: pz });
+    this._consumeHeld(slot);
+    if (this.player.stats) this.player.stats.blocksPlaced++;
+    this.placeCd = 4;
+  }
+
+  // Abre/fecha porta (o estado fica na metade de baixo) ou portão (meta & 4) e toca o som certo
+  toggleOpenable(x, y, z) {
+    const st = this.world.getBlock(x, y, z);
+    const id = stateId(st);
+    let ty = y;
+    if (id !== 107 && (stateMeta(st) & 8)) ty = y - 1;
+    const target = this.world.getBlock(x, ty, z);
+    if (stateId(target) !== id) return;
+    const meta = stateMeta(target) ^ 4;
+    this._setBlockSync(x, ty, z, packState(id, meta));
+    const open = (meta & 4) !== 0;
+    const name = id === 107 ? 'fence_gate' : id === 71 ? 'iron_door' : 'wooden_door';
+    playEvent(`block.${name}.${open ? 'open' : 'close'}`, { pos: { x: x + 0.5, y: ty + 0.5, z: z + 0.5 } });
+  }
+
+  // Cama (1.8.9): ocupa 2 blocos. O pé fica onde se clicou e a cabeceira na direção do olhar; os dois precisam de espaço livre
+  // e de chão sólido embaixo. Quebrar uma das metades remove a outra (breakBedPartner).
+  placeBed(hit, slot, px, py, pz) {
+    const facing = Math.floor(this.player.yaw * 2 / Math.PI + 0.5) & 3;
+    const [dx, dz] = BED_DIRS[facing];
+    const cells = [{ x: px, z: pz, meta: facing }, { x: px + dx, z: pz + dz, meta: facing | 8 }];
+    for (const c of cells) {
+      const here = stateId(this.world.getBlock(c.x, py, c.z));
+      if (here !== 0 && !isFluid(here) && !isReplaceable(here)) return;
+      const below = getBlock(stateId(this.world.getBlock(c.x, py - 1, c.z)));
+      if (!below || !below.solid) return;
+      if (this._shapeHitsPlayer(26, c.meta, c.x, py, c.z)) return;
+    }
+    for (const c of cells) {
+      const st = packState(26, c.meta);
+      this.world.setBlock(c.x, py, c.z, st);
+      this.onBlockChange?.(c.x, py, c.z, st);
+      this.netManager?.sendBlockChange?.(c.x, py, c.z, st);
+    }
+    this._cachedRaycastFrame = -1;
+    playBlockPlaceSound(26, { x: px, y: py, z: pz });
+    if (this.player.gameMode === 'survival' || this.player.gameMode === 'adventure') {
+      slot.count = (slot.count || 1) - 1;
+      if (slot.count <= 0) this.player.hotbar[this.player.selectedSlot] = null;
+    }
+    if (this.player.stats) this.player.stats.blocksPlaced++;
+    this.placeCd = 4;
+  }
+
+  // Ao quebrar uma metade da cama ou da porta, a outra some junto (sem drop extra)
+  breakBedPartner(x, y, z, state) {
+    const id = stateId(state);
+    if (id === 26) {
+      const pt = bedPartner(x, z, stateMeta(state));
+      const other = this.world.getBlock(pt.x, y, pt.z);
+      if (stateId(other) !== 26) return;
+      this._setBlockSync(pt.x, y, pt.z, 0);
+    } else if (isDoorBlock(getBlock(id))) {
+      const py = (stateMeta(state) & 8) ? y - 1 : y + 1;
+      if (stateId(this.world.getBlock(x, py, z)) === id) this._setBlockSync(x, py, z, 0);
+    }
   }
 
   pickBlock() {
@@ -742,9 +1068,12 @@ export class GameEngine {
     }
     this._wasInWater = this.inFluid === 'water';
 
-    const W = (!p.isDead && this.isAction('forward')) ? 1 : 0, S = (!p.isDead && this.isAction('back')) ? 1 : 0;
-    const A = (!p.isDead && this.isAction('left')) ? 1 : 0, Dd = (!p.isDead && this.isAction('right')) ? 1 : 0;
-    const forward = W - S, strafe = A - Dd;
+    const canMove = !p.isDead && !p.sleeping;
+    const W = (canMove && this.isAction('forward')) ? 1 : 0, S = (canMove && this.isAction('back')) ? 1 : 0;
+    const A = (canMove && this.isAction('left')) ? 1 : 0, Dd = (canMove && this.isAction('right')) ? 1 : 0;
+    let forward = W - S, strafe = A - Dd;
+    // MovementInputFromOptions (MCP 1.8.9): agachado, a entrada de andar vale 30% (≈1,3 blocos/s no chão, não só um teto de velocidade)
+    if (this.isAction('sneak') && !p.flying) { forward *= 0.3; strafe *= 0.3; }
     const yaw = p.yaw;
     const fx = -Math.sin(yaw), fz = Math.cos(yaw);
     const rx = Math.cos(yaw), rz = Math.sin(yaw);
@@ -752,6 +1081,39 @@ export class GameEngine {
     let wz = forward * fz + strafe * rz;
     const wl = Math.hypot(wx, wz);
     if (wl > 1e-4) { wx /= wl; wz /= wl; }
+
+    if (p.sleeping) {
+      p.vel.x = 0; p.vel.y = 0; p.vel.z = 0;
+      p.sleepTimer = (p.sleepTimer || 0) + 1;
+
+      const isNight = (this.worldTime % 24000) >= 12541 && (this.worldTime % 24000) <= 23458;
+      const isThunder = !!this.weather?.isThundering?.();
+
+      const totalPlayers = 1 + (this.netManager?.remotePlayers ? this.netManager.remotePlayers.size : (this.remotePlayers ? Object.keys(this.remotePlayers).length : 0));
+      let sleepingCount = 1;
+      if (this.netManager?.remotePlayers) {
+        for (const rp of this.netManager.remotePlayers.values()) {
+          if (rp.sleeping) sleepingCount++;
+        }
+      } else if (this.remotePlayers) {
+        for (const rp of Object.values(this.remotePlayers)) {
+          if (rp.sleeping) sleepingCount++;
+        }
+      }
+
+      const allSleeping = sleepingCount >= totalPlayers;
+
+      if ((isNight || isThunder) && ((!this.netManager && p.sleepTimer >= 100) || (allSleeping && p.sleepTimer >= 60))) {
+        this.worldTime = (Math.floor(this.worldTime / 24000) + 1) * 24000;
+        if (this.netManager?.broadcast) {
+          this.netManager.broadcast({ t: 'time', worldTime: this.worldTime });
+          this.netManager.broadcast({ t: 'wake_all' });
+        }
+        this.wakeUp();
+      } else if (!isNight && !isThunder && p.sleepTimer >= 60) {
+        this.wakeUp();
+      }
+    }
 
     p.sneaking = !!this.isAction('sneak');
     const sprintKeyHold = this.isAction('sprint');
@@ -798,7 +1160,7 @@ export class GameEngine {
 
     // Jump cooldown (10 ticks)
     if (this.jumpTicks === undefined) this.jumpTicks = 0;
-    if (!p.isDead && this.isAction('jump') && p.onGround && this.jumpTicks === 0) {
+    if (!p.isDead && !p.sleeping && this.isAction('jump') && p.onGround && this.jumpTicks === 0) {
       p.vel.y = 0.42;
       this.jumpTicks = 10;
       if (p.sprinting) {
@@ -867,9 +1229,6 @@ export class GameEngine {
         this._walkDist = (this._walkDist || 0) + distMoved;
         this._lastWalkX = p.pos.x;
         this._lastWalkZ = p.pos.z;
-        if (p.sprinting && distMoved > 0.001) {
-          p.exhaustion = Math.min(40, (p.exhaustion || 0) + distMoved * 0.1);
-        }
         if (this._walkDist > 1.8) {
           this._walkDist = 0;
           const blockBelow = this.world.getBlock(Math.floor(p.pos.x), Math.floor(p.pos.y - 0.2), Math.floor(p.pos.z));
@@ -884,9 +1243,9 @@ export class GameEngine {
     if (this.breakCd > 0) this.breakCd--;
     if (this.placeCd > 0) this.placeCd--;
 
-    // Combate e ações (PRD 07 RF-001..034) — morto não ataca/interage
-    const attackActive = this.isAction('attack') && !this.paused && !this.chatOpen && !p.isDead;
-    const useActive = this.isAction('use') && !this.paused && !this.chatOpen && !p.isDead;
+    // Combate e ações (PRD 07 RF-001..034) — morto/dormindo não ataca/interage
+    const attackActive = this.isAction('attack') && !this.paused && !this.chatOpen && !p.isDead && !p.sleeping;
+    const useActive = this.isAction('use') && !this.paused && !this.chatOpen && !p.isDead && !p.sleeping;
     const attackPressed = attackActive && !this._prevAttack;
     const usePressed = useActive && !this._prevUse;
     const heldItem = this.getHeldItem();
@@ -938,6 +1297,8 @@ export class GameEngine {
         this.placeCd = 4;
       } else if (this.placeCd <= 0 && !heldItem?.id) {
         // mão vazia — nada
+      } else if (this.placeCd <= 0 && usePressed && this.useHeldItem(heldItem)) {
+        this.placeCd = 4; // balde, enxada, sementes, pederneira, farinha de osso
       } else if (this.placeCd <= 0) {
         this.placeBlock();
       }
@@ -1002,11 +1363,15 @@ export class GameEngine {
       if (p.flying) p.stats.distanceFlown += dist;
       else if (p.sprinting) {
         p.stats.distanceSprinted += dist;
-        p.exhaustion = Math.min(40, (p.exhaustion || 0) + dist * 0.1);
+        if (this.difficulty !== 'peaceful') {
+          p.exhaustion = Math.min(40, (p.exhaustion || 0) + dist * 0.1);
+        }
       } else if (dist > 0.01) p.stats.distanceWalked += dist;
       if (this.isAction('jump') && p.onGround) {
         p.stats.jumps++;
-        p.exhaustion = Math.min(40, (p.exhaustion || 0) + (p.sprinting ? 0.2 : 0.05));
+        if (this.difficulty !== 'peaceful') {
+          p.exhaustion = Math.min(40, (p.exhaustion || 0) + (p.sprinting ? 0.2 : 0.05));
+        }
       }
       this._lastPosX = p.pos.x;
       this._lastPosZ = p.pos.z;
@@ -1073,6 +1438,9 @@ export class GameEngine {
 
     perfMonitor.beginStage('sim');
     tickFluids(this.world, this.worldTime, this.player.pos);
+    if (this.worldTime % 4 === 0) {
+      tickNearbyFallingBlocks(this.world, p.pos.x, p.pos.y, p.pos.z, 14);
+    }
     if (this.worldTime % 2 === 0 && this.redstone) this.redstone.tick();
     this.tickTntEntities();
     if (this.worldTime % 20 === 0) this.randomTickAgriculture();
@@ -1093,13 +1461,15 @@ export class GameEngine {
         yaw: p.yaw,
         pitch: p.pitch,
         dead: !!p.isDead,
+        sleeping: !!p.sleeping,
         h: this.getHeldItem()?.id || 0,
       };
       if (this.netManager.broadcast) {
-        this.netManager.broadcast(posMsg);
+        this.netManager.broadcast(posMsg, undefined, false);
       } else if (this.netManager.conn) {
-        this.netManager.conn.send(posMsg);
+        this.netManager.conn.send(posMsg, false);
       }
+
     }
 
     // Partículas
@@ -1137,9 +1507,9 @@ export class GameEngine {
     perfMonitor.beginStage('tick');
     const dt = Math.min(now - this.lastTime, 500); this.lastTime = now;
     
-    // No online (multiplayer) o mundo não pausa; no singleplayer pausa
+    // No online (multiplayer) e durante o chat o mundo continua rodando (1.8.9)
     const isOnline = !!this.netManager;
-    const canTickWorld = isOnline || (!this.paused && !this.chatOpen);
+    const canTickWorld = isOnline || !this.paused || this.chatOpen;
 
     if (canTickWorld) {
       this.tickAcc += dt;
@@ -1202,7 +1572,7 @@ export class GameEngine {
       this.updateRemotePlayers();
       if (this.itemEntities) {
         const inv = this.inventory || this.player.inventory;
-        this.itemEntities.update(Math.min(dt, 100) / 1000, this.player, inv, this.world, this.worldTime, this._cameraFrustum);
+        this.itemEntities.update(Math.min(dt, 100) / 1000, this.player, inv, this.world, this.worldTime, this._cameraFrustum, this.camera);
       }
       if (this.mobs) this.mobs.renderUpdate(this.worldTime / 20, this.player.pos, this._cameraFrustum);
       if (this.particles) this.particles.renderUpdate();
@@ -1218,9 +1588,11 @@ export class GameEngine {
       this.fpsFrames = 0; this.fpsTime = now;
     }
     this.frame++;
+    if (this.titleTicks > 0) this.titleTicks--;
     // RF-050: HUD no máximo 10×/s
     perfMonitor.beginStage('hud');
-    if (this.frame % 6 === 0) this.emitHud();
+    // Com GUI/pausa aberta o HUD quase não muda: emitir 10×/s refazia a árvore React inteira (inventário com ~100 ícones) à toa
+    if (this.frame % (this.paused && !this.chatOpen ? 30 : 6) === 0) this.emitHud();
     perfMonitor.endStage('hud');
     const info = perfMonitor.info;
     if (world) {
@@ -1359,6 +1731,8 @@ export class GameEngine {
       this._deathRoll = Math.min(1, (this._deathRoll || 0) + 0.05);
       this.camera.position.set(eye.x, this.player.pos.y + 0.2, eye.z);
       this.camera.rotateZ(this._deathRoll * (Math.PI / 2));
+    } else if (this.player.sleeping) {
+      this.camera.position.set(eye.x, this.player.pos.y + 0.4, eye.z);
     } else {
       this._deathRoll = 0;
     }
@@ -1456,8 +1830,8 @@ export class GameEngine {
     if (this.fpsArm) {
       this.fpsArm.traverse(c => { if (c.material && c.material.color) c.material.color.setHex(hurtColor); });
     }
-    // Nametag acompanha a altura (abaixa se morto)
-    if (this.nametag) this.nametag.position.y = p.isDead ? 0.5 : 2.1;
+    // Nametag acompanha a altura (abaixa se morto, mas sem encostar no chão)
+    if (this.nametag) this.nametag.position.y = p.isDead ? 0.85 : 2.35;
   }
 
   // Capa remota: uma busca por nickname (guardada em cache; valor undefined = busca em voo)
@@ -1478,6 +1852,47 @@ export class GameEngine {
       .catch(() => { this._remoteCapeCache.set(name, null); });
   }
 
+  // Skin remota: busca pelo nickname do jogador (cacheada) e aplica textura normalizada ao modelo 3D
+  _ensureRemoteSkin(entry, name) {
+    if (!name || name === 'Player' || name === 'Steve') return;
+    if (!this._remoteSkinCache) this._remoteSkinCache = new Map();
+    if (this._remoteSkinCache.has(name)) {
+      const v = this._remoteSkinCache.get(name);
+      if (v && !entry._skinApplied) {
+        const player = entry.group?.userData?.playerObject;
+        if (player) {
+          player.setSkinTexture(v.tex);
+          player.modelType = v.slim ? 'slim' : 'default';
+          entry._skinApplied = true;
+        }
+      }
+      return;
+    }
+    this._remoteSkinCache.set(name, undefined);
+    fetchCraftheadSkin(name)
+      .then((res) => {
+        const img = new Image();
+        img.onload = () => {
+          const cv = document.createElement('canvas');
+          cv.width = 64; cv.height = 64;
+          cv.getContext('2d').drawImage(img, 0, 0);
+          const tex = new THREE.CanvasTexture(cv);
+          tex.magFilter = THREE.NearestFilter;
+          tex.minFilter = THREE.NearestFilter;
+          tex.needsUpdate = true;
+          this._remoteSkinCache.set(name, { tex, slim: res.slim });
+          const player = entry.group?.userData?.playerObject;
+          if (player) {
+            player.setSkinTexture(tex);
+            player.modelType = res.slim ? 'slim' : 'default';
+            entry._skinApplied = true;
+          }
+        };
+        img.src = res.png;
+      })
+      .catch(() => { this._remoteSkinCache.set(name, null); });
+  }
+
   updateRemotePlayers() {
     if (!this.netManager) return;
     if (!this._remoteMeshes) this._remoteMeshes = new Map();
@@ -1493,7 +1908,7 @@ export class GameEngine {
           const group = buildPlayerModel();
           group.visible = true; // buildPlayerModel esconde o modelo local em 1ª pessoa; o remoto precisa aparecer
           const tag = createNametag(rp.name || 'Player');
-          tag.position.y = 2.1;
+          tag.position.y = 2.35;
           group.add(tag);
           this.scene.add(group);
           entry = { group, tag };
@@ -1501,17 +1916,29 @@ export class GameEngine {
         }
 
         if (rp.targetX !== undefined) {
-          rp.x = (rp.x ?? rp.targetX) + (rp.targetX - (rp.x ?? rp.targetX)) * 0.3;
-          rp.y = (rp.y ?? rp.targetY) + (rp.targetY - (rp.y ?? rp.targetY)) * 0.3;
-          rp.z = (rp.z ?? rp.targetZ) + (rp.targetZ - (rp.z ?? rp.targetZ)) * 0.3;
-          rp.yaw = (rp.yaw ?? rp.targetYaw) + (rp.targetYaw - (rp.yaw ?? rp.targetYaw)) * 0.3;
+          const dx = rp.targetX - (rp.x ?? rp.targetX);
+          const dy = rp.targetY - (rp.y ?? rp.targetY);
+          const dz = rp.targetZ - (rp.z ?? rp.targetZ);
+          if (dx * dx + dy * dy + dz * dz > 16) {
+            rp.x = rp.targetX;
+            rp.y = rp.targetY;
+            rp.z = rp.targetZ;
+            rp.yaw = rp.targetYaw;
+          } else {
+            rp.x = (rp.x ?? rp.targetX) + dx * 0.55;
+            rp.y = (rp.y ?? rp.targetY) + dy * 0.55;
+            rp.z = (rp.z ?? rp.targetZ) + dz * 0.55;
+            rp.yaw = (rp.yaw ?? rp.targetYaw) + (rp.targetYaw - (rp.yaw ?? rp.targetYaw)) * 0.55;
+          }
         }
+
 
         placePlayerModel(entry.group, { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0 }, rp.yaw || 0);
         // Item que o jogador remoto está segurando (chegou junto com o move)
         setModelHeldItem(entry.group, rp.held);
-        // Capa do remoto: busca pelo nickname (cacheada) e balança com a velocidade
+        // Capa e skin do remoto: busca pelo nickname (cacheada)
         this._ensureRemoteCape(entry, rp.name);
+        this._ensureRemoteSkin(entry, rp.name);
         const now = performance.now();
         if (entry._prev) {
           const dt = Math.max(0.001, (now - entry._prev.t) / 1000);
@@ -1525,16 +1952,23 @@ export class GameEngine {
           }
         }
         entry._prev = { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0, t: now };
-        // Morto: tomba de lado, fica vermelho e treme (o 1.8.9 gira o corpo 90° em ~20 ticks)
-        rp.deathProgress = rp.isDead ? Math.min(1, (rp.deathProgress || 0) + 0.06) : 0;
-        entry.group.rotation.z = rp.deathProgress * Math.PI / 2;
-        entry.group.rotation.x = rp.isDead && rp.deathProgress < 1 ? Math.sin(performance.now() * 0.08) * 0.06 : 0;
-        const tint = rp.isDead ? 0xff5555 : 0xffffff;
-        if (entry.tint !== tint) {
-          entry.tint = tint;
-          entry.group.traverse(c => { if (c.material && c.material.color && !c.isSprite) c.material.color.setHex(tint); });
+        if (rp.sleeping) {
+          entry.group.rotation.x = -Math.PI / 2;
+          entry.group.rotation.z = 0;
+          entry.group.position.y = (rp.y || 0) + 0.2;
+          if (entry.tag) entry.tag.position.y = 0.9;
+        } else {
+          // Morto: tomba de lado, fica vermelho e treme (o 1.8.9 gira o corpo 90° em ~20 ticks)
+          rp.deathProgress = rp.isDead ? Math.min(1, (rp.deathProgress || 0) + 0.06) : 0;
+          entry.group.rotation.z = rp.deathProgress * Math.PI / 2;
+          entry.group.rotation.x = rp.isDead && rp.deathProgress < 1 ? Math.sin(performance.now() * 0.08) * 0.06 : 0;
+          const tint = rp.isDead ? 0xff5555 : 0xffffff;
+          if (entry.tint !== tint) {
+            entry.tint = tint;
+            entry.group.traverse(c => { if (c.material && c.material.color && !c.isSprite) c.material.color.setHex(tint); });
+          }
+          if (entry.tag) entry.tag.position.y = rp.isDead ? 0.85 : 2.35;
         }
-        if (entry.tag) entry.tag.position.y = rp.isDead ? 0.5 : 2.1;
 
         // Atualizar áudio posicional 3D para voz
         voiceChat.updateRemotePosition(id, { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0 });
@@ -1564,7 +1998,23 @@ export class GameEngine {
     const t = this.worldTime % 24000;
     const hours = Math.floor((t / 1000 + 6) % 24);
     const mins = Math.floor((t % 1000) / 1000 * 60);
+
+    const totalPlayers = 1 + (this.netManager?.remotePlayers ? this.netManager.remotePlayers.size : (this.remotePlayers ? Object.keys(this.remotePlayers).length : 0));
+    let sleepingCount = p.sleeping ? 1 : 0;
+    if (this.netManager?.remotePlayers) {
+      for (const rp of this.netManager.remotePlayers.values()) {
+        if (rp.sleeping) sleepingCount++;
+      }
+    } else if (this.remotePlayers) {
+      for (const rp of Object.values(this.remotePlayers)) {
+        if (rp.sleeping) sleepingCount++;
+      }
+    }
+
     const hud = {
+      sleeping: !!p.sleeping,
+      sleepFade: p.sleeping ? Math.min(1, (p.sleepTimer || 0) / 40) : 0,
+      sleepingStatus: (sleepingCount > 0) ? `${sleepingCount}/${totalPlayers} jogadores dormindo, durma para amanhecer` : null,
       fps: this.fps,
       tps: 20,
       xyz: `${p.pos.x.toFixed(3)} / ${p.pos.y.toFixed(3)} / ${p.pos.z.toFixed(3)}`,
@@ -1635,6 +2085,8 @@ export class GameEngine {
       showChunkBorders: this.showChunkBorders,
       realTextures: isRealTexturesLoaded(),
       build: 'PRD-21',
+      title: this.titleTicks > 0 ? this.titleText : null,
+      subtitle: this.titleTicks > 0 ? this.subtitleText : null,
       perf: perfMonitor.getStats(),
       gpuRenderer: perfMonitor.gpuRenderer,
       isSoftwareRenderer: perfMonitor.isSoftwareRenderer,
@@ -1706,18 +2158,29 @@ export class GameEngine {
       const rx = (Math.random() - 0.5) * 0.2;
       const rz = (Math.random() - 0.5) * 0.2;
       if (this.itemEntities) {
-        this.itemEntities.spawnItem(
-          item,
-          { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 },
-          { x: rx, y: 2.0, z: rz },
-          0
-        );
+        const dropPos = { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 };
+        const vel = { x: rx, y: 2.0, z: rz };
+        this.itemEntities.spawnItem(item, dropPos, vel, 0);
+        if (this.netManager) {
+          const pkt = { t: 'item_drop', item, pos: dropPos, vel, pickupDelay: 0 };
+          if (this.netManager.broadcast) this.netManager.broadcast(pkt);
+          else this.netManager.conn?.send(pkt);
+        }
       } else if (this.inventory) {
         addItem(this.inventory, item);
       }
     }
     const xpFn = ORE_XP[hit.id];
-    if (xpFn) addXP(this.player, xpFn());
+    if (xpFn) {
+      const amt = xpFn();
+      if (amt > 0) {
+        if (this.itemEntities?.spawnXpOrb) {
+          this.itemEntities.spawnXpOrb(amt, { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 });
+        } else {
+          addXP(this.player, amt);
+        }
+      }
+    }
     if (tool) {
       const dmg = getToolDamage(hit.id, tool);
       damageTool(tool, dmg);
@@ -1734,9 +2197,30 @@ export class GameEngine {
       checkStatAchievements(this.player.achievements, this.player.stats);
     }
     this.particles?.spawnBlockBreak(hit.x, hit.y, hit.z, hit.id);
+    const _brokenState = this.world.getBlock(hit.x, hit.y, hit.z);
     this.world.setBlock(hit.x, hit.y, hit.z, 0);
+    this.breakBedPartner(hit.x, hit.y, hit.z, _brokenState);
     this.onBlockChange?.(hit.x, hit.y, hit.z, 0);
     this.netManager?.sendBlockChange?.(hit.x, hit.y, hit.z, 0);
+
+    handleBlockBreakPhysics(this.world, hit.x, hit.y, hit.z, (dropItem, pos) => {
+      if (this.itemEntities) {
+        const vel = { x: (Math.random() - 0.5) * 0.2, y: 1.5, z: (Math.random() - 0.5) * 0.2 };
+        this.itemEntities.spawnItem(dropItem, pos, vel, 10);
+        if (this.netManager) {
+          const pkt = { t: 'item_drop', item: dropItem, pos, vel, pickupDelay: 10 };
+          if (this.netManager.broadcast) this.netManager.broadcast(pkt);
+          else this.netManager.conn?.send(pkt);
+        }
+      } else if (this.inventory) {
+        addItem(this.inventory, dropItem);
+      }
+      playPopSound(pos);
+      this.particles?.spawnBlockBreak(pos.x, pos.y, pos.z, dropItem.id);
+      this.onBlockChange?.(pos.x, pos.y, pos.z, 0);
+      this.netManager?.sendBlockChange?.(pos.x, pos.y, pos.z, 0);
+    });
+
   }
 
   dropHeldItem() {
@@ -1766,6 +2250,11 @@ export class GameEngine {
 
     this.itemEntities?.spawnItem(itemToDrop, spawnPos, vel, 20);
     playPopSound(spawnPos);
+    if (this.netManager) {
+      const pkt = { t: 'item_drop', item: itemToDrop, pos: spawnPos, vel, pickupDelay: 20 };
+      if (this.netManager.broadcast) this.netManager.broadcast(pkt);
+      else this.netManager.conn?.send(pkt);
+    }
     this.emitHud();
   }
 
@@ -1804,6 +2293,83 @@ export class GameEngine {
     if (this.player.eating) { this.player.eating = false; this.player.eatingTicks = 0; }
   }
 
+  // === Cama e Sono (Minecraft 1.8.9) ===
+  trySleep(bx, by, bz) {
+    const p = this.player;
+    if (p.isDead) return;
+    const can = canSleep(p, this.worldTime, this.weather?.isThundering?.(), this.mobs?.mobs);
+    if (!can.ok) {
+      if (this.onChatMessage) {
+        this.onChatMessage({ type: 'system', text: `§c${can.reason}`, timestamp: Date.now() });
+      }
+      return;
+    }
+    p.sleeping = true;
+    p.bedPos = { x: bx, y: by, z: bz };
+    // Dormir define o ponto de renascimento na cama (1.8.9); se a cama sumir, o renascer volta ao spawn do mundo
+    p.spawnX = bx; p.spawnY = by; p.spawnZ = bz; p.hasBedSpawn = true;
+    p.sleepTimer = 0;
+    p.spawnPos = { x: bx, y: by + 1, z: bz };
+    p.pos.x = bx + 0.5;
+    p.pos.y = by + 0.6875;
+    p.pos.z = bz + 0.5;
+    p.vel.x = 0;
+    p.vel.y = 0;
+    p.vel.z = 0;
+
+    if (this.netManager) {
+      const pkt = { t: 'sleep', sleeping: true, bedPos: { x: bx, y: by, z: bz } };
+      if (this.netManager.broadcast) this.netManager.broadcast(pkt);
+      else if (this.netManager.conn) this.netManager.conn.send(pkt);
+    }
+    this.emitHud();
+  }
+
+  wakeUp() {
+    const p = this.player;
+    if (!p.sleeping) return;
+    p.sleeping = false;
+    p.sleepTimer = 0;
+    if (!p.stats.survivedNight) p.stats.survivedNight = true;
+    if (p.bedPos) {
+      const out = this._bedExit(p.bedPos.x, p.bedPos.y, p.bedPos.z);
+      p.pos.x = out.x; p.pos.y = out.y; p.pos.z = out.z;
+    }
+    if (this.netManager) {
+      const pkt = { t: 'sleep', sleeping: false, bedPos: p.bedPos };
+      if (this.netManager.broadcast) this.netManager.broadcast(pkt);
+      else if (this.netManager.conn) this.netManager.conn.send(pkt);
+    }
+    this.emitHud();
+  }
+
+  checkAllSleeping() {
+    const p = this.player;
+    const isHost = this.netManager ? !!this.netManager.broadcast : true;
+    if (!isHost) return;
+
+    const totalPlayers = 1 + (this.netManager?.remotePlayers ? this.netManager.remotePlayers.size : (this.remotePlayers ? Object.keys(this.remotePlayers).length : 0));
+    let sleepingCount = p.sleeping ? 1 : 0;
+    if (this.netManager?.remotePlayers) {
+      for (const rp of this.netManager.remotePlayers.values()) {
+        if (rp.sleeping) sleepingCount++;
+      }
+    } else if (this.remotePlayers) {
+      for (const rp of Object.values(this.remotePlayers)) {
+        if (rp.sleeping) sleepingCount++;
+      }
+    }
+
+    if (sleepingCount >= totalPlayers && totalPlayers > 0) {
+      this.worldTime = (Math.floor(this.worldTime / 24000) + 1) * 24000;
+      if (this.netManager?.broadcast) {
+        this.netManager.broadcast({ t: 'time', worldTime: this.worldTime });
+        this.netManager.broadcast({ t: 'wake_all' });
+      }
+      this.wakeUp();
+    }
+  }
+
   // === Combate (PRD 07) ===
   _getDeathMessage() {
     const p = this.player;
@@ -1822,14 +2388,28 @@ export class GameEngine {
     const spill = (it) => {
       if (!it || !it.id || !(it.count > 0)) return;
       const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 2;
-      this.itemEntities?.spawnItem({ id: it.id, count: it.count, meta: it.meta || 0 },
-        { x: p.pos.x, y: p.pos.y + 0.5, z: p.pos.z }, { x: Math.cos(a) * sp, y: 3 + Math.random() * 2, z: Math.sin(a) * sp }, 40);
+      const itemData = { id: it.id, count: it.count, meta: it.meta || 0 };
+      const pos = { x: p.pos.x, y: p.pos.y + 0.5, z: p.pos.z };
+      const vel = { x: Math.cos(a) * sp, y: 3 + Math.random() * 2, z: Math.sin(a) * sp };
+      this.itemEntities?.spawnItem(itemData, pos, vel, 40);
+      if (this.netManager) {
+        const pkt = { t: 'item_drop', item: itemData, pos, vel, pickupDelay: 40 };
+        if (this.netManager.broadcast) this.netManager.broadcast(pkt);
+        else this.netManager.conn?.send(pkt);
+      }
     };
+
     for (const arr of [inv.hotbar, inv.main, inv.armor, inv.crafting]) {
       for (let i = 0; i < arr.length; i++) { spill(arr[i]); arr[i] = null; }
     }
     spill(inv.cursor); inv.cursor = null;
     inv.craftResult = null;
+    const droppedXp = getDroppedXP(p);
+    if (droppedXp > 0 && this.itemEntities?.spawnXpOrb) {
+      this.itemEntities.spawnXpOrb(droppedXp, { x: p.pos.x, y: p.pos.y + 0.5, z: p.pos.z });
+    }
+    p.xp = 0;
+    p.xpLevel = 0;
   }
 
   // Anuncia a morte uma vez: chat local, outros jogadores e estatística
@@ -2010,13 +2590,32 @@ export class GameEngine {
     }
   }
 
+  // Posição livre ao lado da cama (chão sólido e 2 blocos de ar); sem lado livre, em cima da cama
+  _bedExit(bx, by, bz) {
+    const free = (x, y, z) => {
+      const a = getBlock(stateId(this.world.getBlock(x, y, z))), b = getBlock(stateId(this.world.getBlock(x, y + 1, z)));
+      const floor = getBlock(stateId(this.world.getBlock(x, y - 1, z)));
+      return (!a || !a.solid) && (!b || !b.solid) && floor && floor.solid;
+    };
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+      if (free(bx + dx, by, bz + dz)) return { x: bx + dx + 0.5, y: by, z: bz + dz + 0.5 };
+    }
+    return { x: bx + 0.5, y: by + 0.6, z: bz + 0.5 };
+  }
+
   // === Morte e renascimento (PRD 05 RF-050..051) ===
   respawn() {
     const p = this.player;
     this._deathRoll = 0;
-    const spawn = p.hasBedSpawn
-      ? { x: p.spawnX + 0.5, y: p.spawnY, z: p.spawnZ + 0.5 }
-      : { x: this.spawn.x, y: this.spawn.y, z: this.spawn.z };
+    let spawn = { x: this.spawn.x, y: this.spawn.y, z: this.spawn.z };
+    if (p.hasBedSpawn) {
+      if (stateId(this.world.getBlock(p.spawnX, p.spawnY, p.spawnZ)) === 26) {
+        spawn = this._bedExit(p.spawnX, p.spawnY, p.spawnZ);
+      } else {
+        p.hasBedSpawn = false; // cama destruída: volta ao spawn do mundo (tile.bed.notValid)
+        this.onChatMessage?.({ type: 'system', text: '§cSua cama estava ausente ou obstruída', timestamp: Date.now() });
+      }
+    }
     respawnPlayer(p, spawn);
     unstickPlayer(this.world, p.pos);
     this._requestPointerLock();
@@ -2035,6 +2634,7 @@ export class GameEngine {
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
     this.scene.add(mesh);
+    playFuseSound({ x, y, z });
     this.tntEntities.push({ pos: { x, y, z }, vel: { x: (Math.random()-0.5)*0.1, y: 0.2, z: (Math.random()-0.5)*0.1 }, fuse: 80, mesh });
   }
 
@@ -2174,6 +2774,6 @@ export class GameEngine {
     if (this.sky) this.sky.dispose();
     if (this.weather) this.weather.dispose();
     if (this.world) this.world.dispose(this.scene);
-    if (this.renderer) this.renderer.dispose();
+    if (this.renderer) { this.renderer.dispose(); this.renderer.forceContextLoss?.(); }
   }
 }

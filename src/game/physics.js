@@ -3,7 +3,7 @@
 // ATENÇÃO: world.getBlock devolve o ESTADO (id << 4 | meta); a colisão sempre usa o id do estado.
 import { PLAYER } from './constants';
 import { BLOCKS } from './blocks';
-import { blockBoxes } from './shapes';
+import { blockBoxes, hasShape } from './shapes';
 
 const EPS = 1e-7;
 
@@ -47,9 +47,9 @@ function collect(world, minX, minY, minZ, maxX, maxY, maxZ) {
         const st = world.getBlock(x, y, z);
         if (st === 0) continue;
         const blk = BLOCKS[(st >> 4) & 0xfff];
-        if (blk && blk.solid && (blk.model === 'slab' || blk.model === 'stairs')) {
+        if (blk && blk.solid && hasShape(blk)) {
           // lajes e escadas: várias caixas, cada uma com sua altura
-          for (const bx of blockBoxes(st, getState(world), x, y, z)) {
+          for (const bx of blockBoxes(st, getState(world), x, y, z, 'collide')) {
             if (nBox >= 600) break;
             const o = nBox * 6;
             BOX[o] = x + bx[0]; BOX[o + 1] = y + bx[1]; BOX[o + 2] = z + bx[2];
@@ -124,7 +124,7 @@ export function moveEntity(pos, vel, world, dt, opts = {}) {
   const oldDx = dx, oldDy = dy, oldDz = dz;
 
   const bb = [pos.x - hw, pos.y, pos.z - hw, pos.x + hw, pos.y + h, pos.z + hw];
-  const step = PLAYER.stepHeight;
+  const step = opts.stepHeight !== undefined ? opts.stepHeight : PLAYER.stepHeight;
   collect(world,
     bb[0] + Math.min(0, dx) - 0.05, bb[1] + Math.min(0, dy) - 1.05, bb[2] + Math.min(0, dz) - 0.05,
     bb[3] + Math.max(0, dx) + 0.05, bb[4] + Math.max(0, dy) + step + 0.05, bb[5] + Math.max(0, dz) + 0.05);

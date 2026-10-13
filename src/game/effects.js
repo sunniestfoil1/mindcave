@@ -38,6 +38,8 @@ export const EFFECT_BY_NAME = {};
 for (const id in EFFECT_INFO) EFFECT_BY_NAME[EFFECT_INFO[id].cmd] = parseInt(id);
 
 export function addEffect(p, type, duration, amplifier = 0, ambient = false, particles = true) {
+  if (!p) return;
+  if (!Array.isArray(p.effects)) p.effects = [];
   const e = p.effects.find(e => e.type === type);
   if (e) {
     if (amplifier > e.amplifier) { e.amplifier = amplifier; e.duration = duration; }
@@ -49,45 +51,63 @@ export function addEffect(p, type, duration, amplifier = 0, ambient = false, par
 }
 
 function applyInstantOnAdd(p, type, amplifier) {
+  if (!p) return;
   if (type === Effect.INSTANT_HEALTH) {
-    p.health = Math.min(p.maxHealth, p.health + 4 * Math.pow(2, amplifier));
+    p.health = Math.min(p.maxHealth || 20, (p.health || 0) + 4 * Math.pow(2, amplifier));
   } else if (type === Effect.INSTANT_DAMAGE) {
-    p.health -= 6 * Math.pow(2, amplifier);
+    p.health = (p.health || 0) - 6 * Math.pow(2, amplifier);
   } else if (type === Effect.SATURATION) {
-    p.hunger = Math.min(20, p.hunger + amplifier + 1);
-    p.saturation = Math.min(p.hunger, p.saturation + amplifier + 1);
+    p.hunger = Math.min(20, (p.hunger || 0) + amplifier + 1);
+    p.saturation = Math.min(p.hunger, (p.saturation || 0) + amplifier + 1);
   } else if (type === Effect.HEALTH_BOOST) {
     const bonus = 4 * (amplifier + 1);
     p.maxHealth = 20 + bonus;
-    p.health += bonus;
+    p.health = (p.health || 0) + bonus;
   } else if (type === Effect.ABSORPTION) {
-    p.absorption += 4 * (amplifier + 1);
+    p.absorption = (p.absorption || 0) + 4 * (amplifier + 1);
   }
 }
 
 function revertPersistentEffect(p, type) {
+  if (!p) return;
   if (type === Effect.HEALTH_BOOST) {
     p.maxHealth = 20;
-    p.health = Math.min(p.health, p.maxHealth);
+    p.health = Math.min(p.health || 20, p.maxHealth);
   }
 }
 
 export function removeEffect(p, type) {
+  if (!p) return;
+  if (!Array.isArray(p.effects)) { p.effects = []; return; }
   revertPersistentEffect(p, type);
   p.effects = p.effects.filter(e => e.type !== type);
 }
 
 export function clearEffects(p) {
+  if (!p) return;
+  if (!Array.isArray(p.effects)) { p.effects = []; return; }
   for (const e of p.effects) revertPersistentEffect(p, e.type);
   p.effects = [];
 }
 
-export function hasEffect(p, type) { return p.effects.some(e => e.type === type); }
-export function getAmplifier(p, type) { const e = p.effects.find(e => e.type === type); return e ? e.amplifier : -1; }
+export function hasEffect(p, type) {
+  if (!p) return false;
+  const list = Array.isArray(p.effects) ? p.effects : (Array.isArray(p) ? p : []);
+  return list.some(e => e && e.type === type);
+}
+
+export function getAmplifier(p, type) {
+  if (!p) return -1;
+  const list = Array.isArray(p.effects) ? p.effects : (Array.isArray(p) ? p : []);
+  const e = list.find(e => e && e.type === type);
+  return e ? e.amplifier : -1;
+}
 
 export function tickEffects(p) {
+  if (!p || !Array.isArray(p.effects)) return;
   for (let i = p.effects.length - 1; i >= 0; i--) {
     const e = p.effects[i];
+    if (!e) continue;
     e._fresh = false;
     if (e.duration <= 0) {
       revertPersistentEffect(p, e.type);

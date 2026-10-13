@@ -18,7 +18,9 @@ const opposite = (d) => dirIndex(-DIRS[d][0], -DIRS[d][1]);
 
 export function isSlabBlock(block) { return !!block && block.model === 'slab'; }
 export function isStairsBlock(block) { return !!block && block.model === 'stairs'; }
-export function hasShape(block) { return !!block && (block.model === 'slab' || block.model === 'stairs'); }
+export const BED_HEIGHT = 0.5625; // 9/16
+const SHAPED_MODELS = new Set(['slab', 'stairs', 'bed', 'door', 'fence', 'gate']);
+export function hasShape(block) { return !!block && SHAPED_MODELS.has(block.model); }
 
 const stateIdOf = (s) => (s >> 4) & 0xfff;
 const stateMetaOf = (s) => s & 0xf;
@@ -81,17 +83,118 @@ export function stairBoxes(meta, shape = 'straight') {
   return boxes;
 }
 
+// Cama (1.8.9): meta & 3 = direção do pé para a cabeceira (0 sul +z, 1 oeste −x, 2 norte −z, 3 leste +x); meta & 8 = metade da cabeça.
+export const BED_DIRS = [[0, 1], [-1, 0], [0, -1], [1, 0]];
+export function bedPartner(x, z, meta) {
+  const [dx, dz] = BED_DIRS[meta & 3];
+  return (meta & 8) ? { x: x - dx, z: z - dz } : { x: x + dx, z: z + dz };
+}
+
 export function slabBox(meta) {
   return (meta & 8) ? [0, 0.5, 0, 1, 1, 1] : [0, 0, 0, 1, 0.5, 1];
 }
 
+// === Portas, cercas e portões (1.8.9) ===
+// Porta: 2 blocos. Metade de baixo: meta & 3 = direção do olhar de quem a colocou (0 oeste, 1 norte, 2 leste, 3 sul), meta & 4 = aberta.
+// Metade de cima: meta & 8, meta & 1 = dobradiça à direita. A placa fecha no lado perto de quem colocou (oposto ao olhar) e, aberta,
+// gira para a parede do lado da dobradiça. O estado (aberta/fechada) vive só na metade de baixo; a de cima lê dela.
+export const DOOR_FACES = [[-1, 0], [0, -1], [1, 0], [0, 1]];
+export const DOOR_T = 3 / 16;
+const dcw = (v) => [-v[1], v[0]];  // horário visto de cima
+const dccw = (v) => [v[1], -v[0]]; // anti-horário
+
+export function isDoorBlock(b) { return !!b && b.model === 'door'; }
+
+// Estado completo da porta a partir de qualquer uma das metades
+export function doorInfo(state, getState, x, y, z) {
+  const upper = (stateMetaOf(state) & 8) !== 0;
+  const lowerState = upper ? getState(x, y - 1, z) : state;
+  const upperState = upper ? state : getState(x, y + 1, z);
+  const lm = isDoorBlock(BLOCKS[stateIdOf(lowerState)]) ? stateMetaOf(lowerState) : 0;
+  const um = isDoorBlock(BLOCKS[stateIdOf(upperState)]) ? stateMetaOf(upperState) : 0;
+  return { upper, facing: lm & 3, open: (lm & 4) !== 0, hingeRight: (um & 1) !== 0 };
+}
+
+export function doorBoxes(info) {
+  const F = DOOR_FACES[info.facing];
+  const wall = info.open ? (info.hingeRight ? dcw(F) : dccw(F)) : [-F[0], -F[1]];
+  const [wx, wz] = wall;
+  const xr = wx < 0 ? [0, DOOR_T] : wx > 0 ? [1 - DOOR_T, 1] : [0, 1];
+  const zr = wz < 0 ? [0, DOOR_T] : wz > 0 ? [1 - DOOR_T, 1] : [0, 1];
+  return [[xr[0], 0, zr[0], xr[1], 1, zr[1]]];
+}
+
+// Cerca: conecta com cercas da mesma família, portões de lado e blocos cheios opacos (BlockFence.canConnectTo)
+export function isFenceBlock(b) { return !!b && b.model === 'fence'; }
+function fenceConnects(fenceId, n) {
+  const id = stateIdOf(n);
+  if (id === 0) return false;
+  const b = BLOCKS[id];
+  if (!b) return false;
+  if (b.model === 'fence') return id === fenceId;
+  if (b.model === 'gate') return fenceId === 85;
+  return !!(b.solid && b.opaque && b.model === 'cube');
+}
+// índices 0 oeste, 1 norte, 2 leste, 3 sul
+export function fenceConnections(fenceId, getState, x, y, z) {
+  return DOOR_FACES.map(([dx, dz], i) => {
+    const n = getState(x + dx, y, z + dz);
+    const nb = BLOCKS[stateIdOf(n)];
+    if (nb && nb.model === 'gate') {
+      const gf = DOOR_FACES[stateMetaOf(n) & 3];
+      return fenceId === 85 && (gf[0] !== 0) !== (dx !== 0); // portão de lado: o vão do portão tem de apontar para a cerca
+    }
+    return fenceConnects(fenceId, n);
+  });
+}
+
+export function fenceBoxes(conn, kind) {
+  const h = kind === 'collide' ? 1.5 : 1;
+  const boxes = [[0.375, 0, 0.375, 0.625, h, 0.625]];
+  const arm = (i, y0, y1, th) => {
+    const a = 0.5 - th, b = 0.5 + th;
+    return [[0, y0, a, 0.375, y1, b], [a, y0, 0, b, y1, 0.375], [0.625, y0, a, 1, y1, b], [a, y0, 0.625, b, y1, 1]][i];
+  };
+  conn.forEach((c, i) => {
+    if (!c) return;
+    if (kind === 'render') { boxes.push(arm(i, 0.375, 0.5625, 0.0625), arm(i, 0.75, 0.9375, 0.0625)); }
+    else boxes.push(arm(i, 0, h, 0.125));
+  });
+  return boxes;
+}
+
+// Portão: meta & 3 = direção do olhar (como a porta); as barras correm perpendiculares a ela. meta & 4 = aberto.
+export function gateBoxes(meta, kind) {
+  const F = DOOR_FACES[meta & 3], open = (meta & 4) !== 0;
+  const alongX = F[0] === 0; // barras ao longo de X quando o portão olha para norte/sul
+  const mk = (a0, a1, y0, y1, t0, t1) => (alongX ? [a0, y0, t0, a1, y1, t1] : [t0, y0, a0, t1, y1, a1]);
+  const posts = [mk(0, 0.125, 0.3125, 1, 0.375, 0.625), mk(0.875, 1, 0.3125, 1, 0.375, 0.625)];
+  if (kind === 'collide') return open ? [] : [mk(0, 1, 0, 1.5, 0.375, 0.625)];
+  if (kind === 'select') return open ? posts : [mk(0, 1, 0.3125, 1, 0.375, 0.625)];
+  if (!open) return [...posts, mk(0.125, 0.875, 0.375, 0.5625, 0.4375, 0.5625), mk(0.125, 0.875, 0.75, 0.9375, 0.4375, 0.5625), mk(0.4375, 0.5625, 0.5625, 0.75, 0.4375, 0.5625)];
+  // aberto: as barras giram 90° e ficam junto de cada poste, apontando para o lado do olhar
+  const sx = F[0], sz = F[1]; // lado para onde abre
+  const out = [...posts];
+  for (const a of [0, 0.875]) {
+    const lo = sx + sz > 0 ? 0.625 : 0, hi = sx + sz > 0 ? 1 : 0.375;
+    out.push(alongX ? [a, 0.375, lo, a + 0.125, 0.5625, hi] : [lo, 0.375, a, hi, 0.5625, a + 0.125]);
+    out.push(alongX ? [a, 0.75, lo, a + 0.125, 0.9375, hi] : [lo, 0.75, a, hi, 0.9375, a + 0.125]);
+  }
+  return out;
+}
+
 // Caixas do bloco em (x, y, z) no estado dado (relativas ao bloco). getState(x, y, z) devolve o estado do vizinho.
+// kind: 'collide' (física), 'select' (mira e contorno) ou 'render' (malha). Lajes, escadas e cama usam a mesma caixa nos três.
 // Para blocos sem forma própria devolve null (quem chama usa o cubo/caixa do registro).
-export function blockBoxes(state, getState, x, y, z) {
+export function blockBoxes(state, getState, x, y, z, kind = 'select') {
   const b = BLOCKS[stateIdOf(state)];
   if (!b) return null;
   if (b.model === 'slab') return [slabBox(stateMetaOf(state))];
+  if (b.model === 'bed') return [[0, 0, 0, 1, BED_HEIGHT, 1]];
   if (b.model === 'stairs') return stairBoxes(stateMetaOf(state), getState ? stairShape(getState, x, y, z) : 'straight');
+  if (b.model === 'door') return doorBoxes(doorInfo(state, getState || (() => 0), x, y, z));
+  if (b.model === 'fence') return fenceBoxes(getState ? fenceConnections(stateIdOf(state), getState, x, y, z) : [false, false, false, false], kind);
+  if (b.model === 'gate') return gateBoxes(stateMetaOf(state), kind);
   return null;
 }
 
@@ -122,10 +225,14 @@ export function rayBox(ox, oy, oz, dx, dy, dz, box, maxT) {
 //    de uma laje igual (ou colocar onde já há a outra metade) a transforma em laje dupla;
 //  · escada: sobe na direção em que o jogador olha (0 leste, 1 oeste, 2 sul, 3 norte), invertida se clicou na metade de cima.
 export function computePlacement(placing, slotMeta, hit, yaw, getState) {
-  if (!hasShape(placing)) return null;
+  if (!placing || !['slab', 'stairs', 'gate'].includes(placing.model)) return null;
   const px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
   const fracY = hit.hy !== undefined ? hit.hy - hit.y : 0.5;
   const upper = hit.ny === -1 || (hit.ny === 0 && fracY > 0.5);
+  if (placing.model === 'gate') {
+    const i = Math.floor(yaw * 2 / Math.PI + 0.5) & 3;
+    return { x: px, y: py, z: pz, id: placing.id, meta: [3, 0, 1, 2][i] }; // sul, oeste, norte, leste → ordem de DOOR_FACES
+  }
   if (placing.model === 'stairs') {
     const i = Math.floor(yaw * 2 / Math.PI + 0.5) & 3;
     return { x: px, y: py, z: pz, id: placing.id, meta: [2, 1, 3, 0][i] | (upper ? 4 : 0) };

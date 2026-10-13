@@ -143,6 +143,16 @@ class WanderGoal extends Goal {
   }
 }
 
+// Alvo válido: jogador vivo e que pode ser ferido (criativo e espectador são ignorados pelos mobs, como no 1.8.9)
+export const validTarget = (t) => !!t && !t.isDead && t.gameMode !== 'creative' && t.gameMode !== 'spectator';
+
+// O mob alcança o alvo para bater? Mesma altura (±1,3 blocos, pés com pés) e sem bloco no meio (olho do mob → peito do alvo).
+// Sem isto, um mob no andar de cima atacava o jogador pelo teto/piso, pois só a distância horizontal era conferida.
+export function canReachTarget(mob, t, world) {
+  if (Math.abs(t.pos.y - mob.pos.y) > 1.3) return false;
+  return hasLineOfSight(world, { x: mob.pos.x, y: mob.pos.y + mob.type.eyeHeight, z: mob.pos.z }, { x: t.pos.x, y: t.pos.y + 1.0, z: t.pos.z });
+}
+
 // === Alvo mais próximo ===
 class NearestTargetGoal extends Goal {
   canStart(mob, world, ctx) {
@@ -152,7 +162,7 @@ class NearestTargetGoal extends Goal {
     const interval = this.def.checkInterval || 40;
     if (mob.ticksAlive % interval !== 0) return false;
     const player = ctx.player;
-    if (!player || player.isDead) return false;
+    if (!validTarget(player)) return false;
     const dist = Math.hypot(player.pos.x - mob.pos.x, player.pos.z - mob.pos.z);
     if (dist > range) return false;
     // Aranha: neutra sob luz alta
@@ -169,7 +179,7 @@ class NearestTargetGoal extends Goal {
   canContinue(mob, world, ctx) {
     if (!mob.target) return false;
     const p = mob.target;
-    if (!p || p.isDead) { mob.target = null; return false; }
+    if (!validTarget(p)) { mob.target = null; return false; } // virou criativo/espectador/morreu: larga o alvo
     const dist = Math.hypot(p.pos.x - mob.pos.x, p.pos.z - mob.pos.z);
     return dist < (mob.type.followRange || 16) + 10;
   }
@@ -180,8 +190,8 @@ class NearestTargetGoal extends Goal {
 
 // === Atacar corpo a corpo ===
 class MeleeAttackGoal extends Goal {
-  canStart(mob, world, ctx) { return !!mob.target && !mob.target.isDead; }
-  canContinue(mob, world, ctx) { return !!mob.target && !mob.target.isDead; }
+  canStart(mob, world, ctx) { return validTarget(mob.target); }
+  canContinue(mob, world, ctx) { return validTarget(mob.target); }
   tick(mob, world, ctx) {
     const t = mob.target;
     if (!t) return;
@@ -190,7 +200,7 @@ class MeleeAttackGoal extends Goal {
     const reach = mob.type.width / 2 + 0.6 + 0.6;
     mob.yaw = Math.atan2(-dx, dz);
 
-    if (dist <= reach) {
+    if (dist <= reach && canReachTarget(mob, t, world)) {
       // Atacar
       if (mob.attackCooldown <= 0) {
         const dmg = typeof mob.type.attackDamage === 'object'
@@ -224,8 +234,8 @@ class MeleeAttackGoal extends Goal {
 
 // === Ataque à distância (esqueleto, bruxa) ===
 class RangedAttackGoal extends Goal {
-  canStart(mob, world, ctx) { return !!mob.target && !mob.target.isDead; }
-  canContinue(mob, world, ctx) { return !!mob.target && !mob.target.isDead; }
+  canStart(mob, world, ctx) { return validTarget(mob.target); }
+  canContinue(mob, world, ctx) { return validTarget(mob.target); }
   tick(mob, world, ctx) {
     const t = mob.target;
     if (!t) return;
@@ -250,7 +260,7 @@ class RangedAttackGoal extends Goal {
     } else {
       // No alcance, atira
       mob.vel.x *= 0.3; mob.vel.z *= 0.3;
-      if (mob.attackCooldown <= 0) {
+      if (mob.attackCooldown <= 0 && hasLineOfSight(world, { x: mob.pos.x, y: mob.pos.y + mob.type.eyeHeight, z: mob.pos.z }, { x: t.pos.x, y: t.pos.y + 1.0, z: t.pos.z })) {
         ctx.onShootArrow?.(mob, t);
         mob.attackCooldown = mob.type.rangedInterval || 40;
       }
@@ -322,22 +332,20 @@ class CreeperSwellGoal extends Goal {
   canStart(mob, world, ctx) {
     if (mob.typeId !== 'creeper') return false;
     const t = mob.target;
-    if (!t || t.isDead) return false;
-    const dist = Math.hypot(t.pos.x - mob.pos.x, t.pos.z - mob.pos.z);
-    return dist <= 3;
+    if (!validTarget(t)) return false;
+    return Math.hypot(t.pos.x - mob.pos.x, t.pos.y - mob.pos.y, t.pos.z - mob.pos.z) <= 3;
   }
   canContinue(mob, world, ctx) {
     const t = mob.target;
-    if (!t || t.isDead) return false;
-    const dist = Math.hypot(t.pos.x - mob.pos.x, t.pos.z - mob.pos.z);
-    return dist <= 7;
+    if (!validTarget(t)) return false;
+    return Math.hypot(t.pos.x - mob.pos.x, t.pos.y - mob.pos.y, t.pos.z - mob.pos.z) <= 7;
   }
   start(mob) { MobEntity.onSound?.(mob, 'primed'); }
   stop(mob) { mob.swelling = 0; mob.swellTicks = 0; }
   tick(mob, world, ctx) {
     // 1.8.9: infla (+1/tick) com o alvo a menos de 3 blocos, desinfla (−1/tick) entre 3 e 7; explode em 30
     const t = mob.target;
-    const near = t && Math.hypot(t.pos.x - mob.pos.x, t.pos.z - mob.pos.z) <= 3;
+    const near = t && Math.hypot(t.pos.x - mob.pos.x, t.pos.y - mob.pos.y, t.pos.z - mob.pos.z) <= 3; // 3D: não infla com o jogador no andar de cima
     mob.swellTicks = Math.max(0, mob.swellTicks + (near ? 1 : -1));
     mob.swelling = Math.min(1, mob.swellTicks / 30);
     mob.vel.x *= 0.6; mob.vel.z *= 0.6;

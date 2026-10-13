@@ -104,11 +104,30 @@ export class WebRTCConnection {
       this.pc.oniceconnectionstatechange = () => {
         const s = this.pc.iceConnectionState;
         if (s === 'connected' || s === 'completed') {
+          if (this._disconnectTimer) {
+            clearTimeout(this._disconnectTimer);
+            this._disconnectTimer = null;
+          }
           this._checkRoute();
-        } else if (s === 'failed' || s === 'disconnected' || s === 'closed') {
+        } else if (s === 'disconnected') {
+          // 'disconnected' é transitório (ex: host pausou o jogo ou trocou de aba).
+          // Aguarda até 10s para recuperação antes de considerar desconexão final.
+          if (!this._disconnectTimer) {
+            this._disconnectTimer = setTimeout(() => {
+              if (this.pc && (this.pc.iceConnectionState === 'disconnected' || this.pc.iceConnectionState === 'failed')) {
+                this.setState('closed');
+              }
+            }, 10000);
+          }
+        } else if (s === 'failed' || s === 'closed') {
+          if (this._disconnectTimer) {
+            clearTimeout(this._disconnectTimer);
+            this._disconnectTimer = null;
+          }
           this.setState(s === 'failed' ? 'failed' : 'closed');
         }
       };
+
 
       if (!this.isHost) {
         // Cliente cria os canais de dados

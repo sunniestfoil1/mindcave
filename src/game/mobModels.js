@@ -269,9 +269,9 @@ function bowMaterial() {
 function attachBow(arm) {
   const bow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), bowMaterial());
   bow.name = 'bow';
-  // Mão = ponta do braço (10 px abaixo do ombro); o arco fica de lado, na frente da mão, inclinado como o item na 3ª pessoa
-  bow.position.set(0, -10 / 16, 4 / 16);
-  bow.rotation.set(0, Math.PI / 2, -Math.PI / 4);
+  // Mão = ponta do braço (10 px abaixo do ombro); curva voltada para a frente (alvo) e corda para trás (corpo)
+  bow.position.set(0, -10 / 16, -2 / 16);
+  bow.rotation.set(0, -Math.PI / 2, Math.PI / 4);
   arm.add(bow);
 }
 

@@ -33,16 +33,17 @@ export default function FurnaceUI({ furnace, inv, onUpdate, onClose }) {
   const k = Math.ceil(flame * 13); // altura visível da chama, em px de GUI
 
   return (
-    <ContainerFrame texture="textures/gui/container/furnace.png" w={176} h={166} inv={inv} onClose={onClose}>
+    <ContainerFrame texture="textures/gui/container/furnace.png" w={176} h={166} inv={inv} onClose={onClose} onUpdate={refresh}>
       {({ S, slot, tex }) => (
         <>
           <Sprite url={tex} u={0} v={0} w={176} h={166} S={S} />
           <McText text="Fornalha" x={88} y={6} S={S} align="center" />
           {k > 0 && <Sprite url={tex} u={176} v={12 - k} w={14} h={k + 2} S={S} x={56} y={36 + 12 - k} />}
           {cook > 0 && <Sprite url={tex} u={176} v={14} w={Math.ceil(cook * 24)} h={17} S={S} x={79} y={34} />}
-          {slot('in', 56, 17, furnace.input, { onClick: () => furnaceClick('input', true), onRightClick: () => furnaceClick('input', false) })}
-          {slot('fuel', 56, 53, furnace.fuel, { onClick: () => furnaceClick('fuel', true), onRightClick: () => furnaceClick('fuel', false) })}
+          {slot('in', 56, 17, furnace.input, { slotRef: { arr: furnace, index: 'input' }, onClick: () => furnaceClick('input', true), onRightClick: () => furnaceClick('input', false) })}
+          {slot('fuel', 56, 53, furnace.fuel, { slotRef: { arr: furnace, index: 'fuel' }, onClick: () => furnaceClick('fuel', true), onRightClick: () => furnaceClick('fuel', false) })}
           {slot('out', 116, 35, furnace.output, { onClick: () => furnaceClick('output', true), onRightClick: () => furnaceClick('output', false) })}
+
           <PlayerSlots inv={inv} slot={slot} mainY={84} hotY={142}
             click={(a, i) => click(a, i, true)} rightClick={(a, i) => click(a, i, false)}
             shift={(section, index) => { shiftClick(inv, section, index); refresh(); }} />

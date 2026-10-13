@@ -12,7 +12,8 @@
     "typecheck": "node scripts/verify-codebase.js",
     "preview": "vite preview",
     "test:battery": "npx vite-node scripts/test-battery.js",
-    "ship": "node scripts/ship.js"
+    "ship": "node scripts/ship.js",
+    "test:e2e": "node scripts/e2e/run.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^17.0.0",

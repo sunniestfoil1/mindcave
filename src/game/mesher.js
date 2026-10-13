@@ -5,7 +5,7 @@
 //  · saída compacta: cores/luz/ao em Uint8 normalizado (menos memória e menos bytes para a GPU).
 import { stateId, chunkIndex } from './chunk';
 import { getBlock, isOpaque, tileForFace, getModelBox, WOOL_COLORS } from './blocks';
-import { blockBoxes } from './shapes';
+import { blockBoxes, BED_HEIGHT, BED_DIRS } from './shapes';
 
 const NB = [[0, 1, 0], [0, -1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
 
@@ -217,6 +217,43 @@ function emitBox(t, tTop, tBottom, tSide, tint, wx, wy, wz, box, l, getBlockAbs)
   }
 }
 
+// Cama: caixa de 9/16 com a textura de cada metade. A face voltada para a outra metade não é desenhada; a ponta (cabeceira ou pés)
+// usa o ladrilho "end", as laterais o "side". O topo gira conforme a direção para o travesseiro ficar na ponta da cabeceira.
+function emitBed(t, tiles, wx, wy, wz, meta, l, getBlockAbs) {
+  const head = (meta & 8) !== 0;
+  const dir = BED_DIRS[meta & 3];
+  const own = head ? 'head' : 'feet';
+  const tTop = tiles['bed_' + own + '_top'] || tiles.error, tSide = tiles['bed_' + own + '_side'] || tiles.error;
+  const tEnd = tiles['bed_' + own + '_end'] || tiles.error, tBottom = tiles.planks || tiles.error;
+  const toward = head ? [-dir[0], -dir[1]] : [dir[0], dir[1]]; // direção da outra metade
+  for (let fi = 0; fi < 6; fi++) {
+    const f = FACES[fi];
+    const d = f.dir;
+    if (d[1] === 0 && d[0] === toward[0] && d[2] === toward[1]) continue; // face encostada na outra metade
+    if (d[1] === -1 && opaqueAt(getBlockAbs, wx, wy - 1, wz)) continue;
+    const isEnd = d[1] === 0 && (d[0] !== 0 ? dir[0] !== 0 : dir[1] !== 0);
+    const tile = d[1] === 1 ? tTop : d[1] === -1 ? tBottom : isEnd ? tEnd : tSide;
+    const base = t.pos.length / 3;
+    for (let i = 0; i < 4; i++) {
+      const c = f.c[i];
+      const px = c[0], py = c[1] * BED_HEIGHT, pz = c[2];
+      let u, v;
+      if (d[1] !== 0) {
+        // eixo "ao longo da cama" (do pé para a cabeceira) vira o v da textura; o outro, o u
+        const along = dir[0] !== 0 ? px * dir[0] : pz * dir[1];       // 0..1 se a direção é positiva, 0..−1 se negativa
+        const a = (dir[0] + dir[1]) > 0 ? along : 1 + along;
+        const across = dir[0] !== 0 ? pz : px;
+        u = d[1] === 1 ? across : across; v = a;
+      } else if (d[2] === -1) { u = px; v = c[1] * BED_HEIGHT; }
+      else if (d[2] === 1) { u = 1 - px; v = c[1] * BED_HEIGHT; }
+      else if (d[0] === -1) { u = 1 - pz; v = c[1] * BED_HEIGHT; }
+      else { u = pz; v = c[1] * BED_HEIGHT; }
+      pushVert(t, wx + px, wy + py, wz + pz, u, v, tile, 1, 1, 1, l.block / 15, l.sky / 15, f.sh);
+    }
+    t.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+}
+
 const clamp8 = (v) => (v <= 0 ? 0 : v >= 1 ? 255 : Math.round(v * 255));
 
 function toGeo(b) {
@@ -316,6 +353,14 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
             }
             target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
           }
+        } else if (model === 'door' || model === 'fence' || model === 'gate') {
+          const l = getLightAbs(wx, wy, wz);
+          const boxes = blockBoxes(s, getBlockAbs, wx, wy, wz, 'render');
+          const key = model === 'door' ? block.doorTiles[(meta & 8) ? 1 : 0] : tileForFace(block, 'side', meta);
+          const tile = tiles[key] || tiles.error;
+          for (const box of boxes) emitBox(target, tile, tile, tile, null, wx, wy, wz, box, l, getBlockAbs);
+        } else if (model === 'bed') {
+          emitBed(target, tiles, wx, wy, wz, meta, getLightAbs(wx, wy, wz), getBlockAbs);
         } else if (model === 'slab' || model === 'stairs') {
           // Brilho vindo dos vizinhos (o próprio bloco barra a luz, como "useNeighborBrightness" da 1.8)
           // (getLightAbs devolve um objeto reutilizado: copiar os números a cada leitura)

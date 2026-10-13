@@ -22,8 +22,10 @@ function Content({ onClose, onSaved }) {
   const pick = (kind) => { const c = kind === 'custom' ? choice : { kind }; setError(''); setChoice(c); setSkinChoice(c); };
   const applyFile = async (file) => {
     try {
-      const png = await readSkinFile(file);
-      const c = { kind: 'custom', png };
+      const res = await readSkinFile(file);
+      const png = typeof res === 'string' ? res : res.png;
+      const slim = typeof res === 'object' ? !!res.slim : false;
+      const c = { kind: 'custom', png, slim };
       setChoice(c); setSkinChoice(c); setError('');
     } catch (err) { setError(err.message); }
   };

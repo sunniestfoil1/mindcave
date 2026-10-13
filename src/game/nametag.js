@@ -21,7 +21,7 @@ export function createNametag(text) {
     font: 'bold 36px sans-serif',
     margin: [4, 8, 4, 8],
     textStyle: 'white',
-    backgroundStyle: 'rgba(0,0,0,.35)',
+    backgroundStyle: 'rgba(0,0,0,0.22)',
     height: 0.3,
   };
 

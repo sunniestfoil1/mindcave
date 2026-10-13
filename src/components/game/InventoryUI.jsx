@@ -1,6 +1,5 @@
-// Inventário de sobrevivência com a textura oficial (container/inventory.png, 176×166).
-// Os slots são uma malha invisível sobre os quadrados da textura; as coordenadas são as do GuiInventory da 1.8.9.
-import React, { useState, useEffect } from "react";
+import { settingsStore } from "@/game/settingsStore";
+import { useEffect, useRef, useState } from "react";
 import ItemSlot from "./ItemSlot";
 import ItemTooltip from "./ItemTooltip";
 import PlayerPreview from "./PlayerPreview";
@@ -12,13 +11,14 @@ import { playClickSound } from "@/game/sounds";
 
 const WIN = { w: 176, h: 166 };
 
-export default function InventoryUI({ inv, onUpdate, onClose, hud }) {
+export default function InventoryUI({ inv, onUpdate, onClose, hud, onCraft }) {
   const S = useGuiScaleValue();
   const tex = usePackTexture('textures/gui/container/inventory.png');
   const [, forceUpdate] = useState(0);
   const refresh = () => { forceUpdate(n => n + 1); onUpdate?.(); };
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [hovered, setHovered] = useState(null);
+  const hoveredSlotRef = useRef(null);
 
   useEffect(() => {
     let rafId = 0;
@@ -40,25 +40,44 @@ export default function InventoryUI({ inv, onUpdate, onClose, hud }) {
     };
   }, []);
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
-      if (e.key === 'Escape' || e.key === 'e' || e.key === 'E' || e.code === 'KeyE') {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation?.();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [onClose]);
-
   // Atualiza resultado do crafting 2x2
   const updateCraftResult = () => {
     const recipe = matchRecipe(inv.crafting, 2);
     inv.craftResult = recipe ? createResult(recipe) : null;
   };
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
+      const invKey = settingsStore.get('user.keys.inventory') || 'KeyE';
+      if (e.key === 'Escape' || e.code === invKey || (invKey.startsWith('Key') && e.key.toLowerCase() === invKey.slice(3).toLowerCase())) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        onClose();
+        return;
+      }
+      // Atalhos numéricos 1-9 para trocar item com a hotbar
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= 9 && hoveredSlotRef.current) {
+        const targetHotbarIdx = num - 1;
+        const target = hoveredSlotRef.current;
+        if (target && target.arr && target.index !== undefined && inv?.hotbar) {
+          e.preventDefault();
+          e.stopPropagation();
+          const temp = target.arr[target.index];
+          target.arr[target.index] = inv.hotbar[targetHotbarIdx];
+          inv.hotbar[targetHotbarIdx] = temp;
+          playClickSound();
+          updateCraftResult();
+          refresh();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [onClose, inv]);
+
 
   const slotClick = (arr, i, isLeft) => {
     playClickSound();
@@ -87,13 +106,19 @@ export default function InventoryUI({ inv, onUpdate, onClose, hud }) {
       inv.cursor.count += recipe.result.count;
       consumeIngredients(inv.crafting);
     }
+    onCraft?.();
     updateCraftResult();
     refresh();
   };
 
   // Slot de 16×16 px de GUI no ponto (x, y) da janela (a textura desenha a moldura de 18×18 ao redor)
   const slot = (key, x, y, item, props) => (
-    <div key={key} style={{ position: 'absolute', left: x * S, top: y * S, width: 16 * S, height: 16 * S }}>
+    <div
+      key={key}
+      style={{ position: 'absolute', left: x * S, top: y * S, width: 16 * S, height: 16 * S }}
+      onMouseEnter={() => { if (props?.slotRef) hoveredSlotRef.current = props.slotRef; }}
+      onMouseLeave={() => { if (hoveredSlotRef.current === props?.slotRef) hoveredSlotRef.current = null; }}
+    >
       <ItemSlot item={item} size={16 * S} transparent fill guiScale={S} onHover={(it) => setHovered(it)} {...props} />
     </div>
   );
@@ -119,12 +144,14 @@ export default function InventoryUI({ inv, onUpdate, onClose, hud }) {
         <McText text="Criação" x={86} y={16} S={S} />
 
         {inv.armor.map((item, i) => slot('a' + i, 8, 8 + i * 18, item, {
+          slotRef: { arr: inv.armor, index: i },
           onClick: () => slotClick(inv.armor, i, true),
           onRightClick: () => slotClick(inv.armor, i, false),
           onShiftClick: () => handleShift('armor', i),
         }))}
 
         {inv.crafting.map((item, i) => slot('c' + i, 88 + (i % 2) * 18, 26 + Math.floor(i / 2) * 18, item, {
+          slotRef: { arr: inv.crafting, index: i },
           onClick: () => slotClick(inv.crafting, i, true),
           onRightClick: () => slotClick(inv.crafting, i, false),
           onShiftClick: () => handleShift('crafting', i),
@@ -132,16 +159,19 @@ export default function InventoryUI({ inv, onUpdate, onClose, hud }) {
         {slot('result', 144, 36, inv.craftResult, { onClick: takeResult, onRightClick: takeResult, onShiftClick: takeResult })}
 
         {inv.main.map((item, i) => slot('m' + i, 8 + (i % 9) * 18, 84 + Math.floor(i / 9) * 18, item, {
+          slotRef: { arr: inv.main, index: i },
           onClick: () => slotClick(inv.main, i, true),
           onRightClick: () => slotClick(inv.main, i, false),
           onShiftClick: () => handleShift('main', i),
         }))}
 
         {inv.hotbar.map((item, i) => slot('h' + i, 8 + i * 18, 142, item, {
+          slotRef: { arr: inv.hotbar, index: i },
           onClick: () => slotClick(inv.hotbar, i, true),
           onRightClick: () => slotClick(inv.hotbar, i, false),
           onShiftClick: () => handleShift('hotbar', i),
         }))}
+
 
         {/* Efeitos ativos à esquerda da janela, com o fundo da textura (0,166 · 120×32) */}
         {hud?.effects?.map((e, i) => {

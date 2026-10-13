@@ -79,10 +79,16 @@ export default function FeedbackModal({ onClose, user }) {
   return (
     <div
       className="fixed inset-0 z-[150] flex items-center justify-center bg-black/75 backdrop-blur-xs select-none"
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Escape') onClose();
+      }}
+      onKeyUp={(e) => e.stopPropagation()}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
+
       <div className="relative w-full max-w-2xl max-h-[85vh] bg-[#2b2b2b] border-2 border-[#1e1e1e] rounded shadow-2xl flex flex-col font-minecraft text-white overflow-hidden">
         {/* Header */}
         <div className="bg-[#1f1f1f] border-b-2 border-[#121212] px-4 py-3 flex items-center justify-between">

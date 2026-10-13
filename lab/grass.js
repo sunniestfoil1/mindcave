@@ -50,6 +50,12 @@ export async function setup(scene, camera, renderer, api) {
     put(11, 9, 156, 3); put(11, 8, 156, 1);                       // quartzo: canto externo (frente sobe p/ oeste)
     put(13, 12, 109, 3); put(13, 13, 109, 1);                     // tijolo de pedra: canto interno
     put(11, 12, 134, 0); put(12, 12, 134, 0); put(13, 14, 180, 2); put(1, 13, 128, 2); put(2, 13, 114, 2); put(3, 13, 108, 2);
+    // camas nas 4 direções (pé + cabeceira com o bit 8)
+    put(12, 1, 26, 0); put(12, 2, 26, 8); put(14, 1, 26, 2); put(14, 0, 26, 10); put(11, 4, 26, 3); put(12, 4, 26, 11); put(15, 6, 26, 1); put(14, 6, 26, 9);
+    // cercas (com cantos e ligadas a bloco), portões fechado/aberto, portas fechada/aberta/dobradiça direita
+    put(1, 0, 85); put(2, 0, 85); put(3, 0, 85); put(3, 1, 85); put(4, 0, 107, 1); put(5, 0, 85); put(5, 1, 1);
+    put(6, 0, 107, 1 | 4); put(8, 0, 113); put(9, 0, 113);
+    put(7, 1, 64, 1); put(7, 1, 64, 8, 62); put(10, 1, 64, 1 | 4); put(10, 1, 64, 8, 62); put(12, 1, 71, 2); put(12, 1, 71, 8 | 1, 62);
     put(5, 14, 53, 0); put(6, 14, 53, 0, 61); put(6, 14, 53, 0, 62); // degraus empilhados
   }
   const tint = new Uint8Array(256 * 9);

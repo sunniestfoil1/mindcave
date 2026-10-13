@@ -4,7 +4,7 @@ import { useSettings } from "@/game/settingsStore";
 import { useT } from "@/game/i18n";
 import PlayerPreview from "@/components/game/PlayerPreview";
 import { getSkinChoice, setSkinChoice, readSkinFile, getCapeChoice, setCapeChoice } from "@/game/skinStore";
-import { fetchCraftheadSkin, fetchCraftheadCape } from "@/game/crafthead";
+import { fetchCraftheadSkin, fetchCraftheadCape, fetchSkinFromUrl } from "@/game/crafthead";
 import { useSkinDrop } from "@/components/useSkinDrop";
 
 const PREVIEW = { box: { x: 0, y: 0, w: 52, h: 70 }, feet: { x: 26, y: 67 }, unit: 30, refUp: 50 };
@@ -29,7 +29,12 @@ function SkinContent({ onBack }) {
   const fileRef = useRef(null);
   const pick = (c) => { setChoice(c); setSkinChoice(c); setError(''); setRev((r) => r + 1); };
   const applyFile = async (file) => {
-    try { pick({ kind: 'custom', png: await readSkinFile(file) }); } catch (err) { setError(err.message); }
+    try {
+      const res = await readSkinFile(file);
+      const png = typeof res === 'string' ? res : res.png;
+      const slim = typeof res === 'object' ? !!res.slim : false;
+      pick({ kind: 'custom', png, slim });
+    } catch (err) { setError(err.message); }
   };
   useSkinDrop(applyFile);
   const onFile = (e) => {
@@ -47,8 +52,16 @@ function SkinContent({ onBack }) {
   const searchSkin = async () => {
     setBusy('skin'); resetMsgs();
     try {
-      pick({ kind: 'custom', png: (await fetchCraftheadSkin(nick)).png });
-      setNickStatus(`Skin de ${nick.trim()} aplicada.`);
+      const trimmed = nick.trim();
+      let res;
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        res = await fetchSkinFromUrl(trimmed);
+        setNickStatus('Skin da URL aplicada.');
+      } else {
+        res = await fetchCraftheadSkin(trimmed);
+        setNickStatus(`Skin de ${res.user} aplicada.`);
+      }
+      pick({ kind: 'custom', png: res.png, slim: !!res.slim });
     } catch (err) { setNickError(err.message); }
     finally { setBusy(''); }
   };
@@ -102,24 +115,34 @@ function SkinContent({ onBack }) {
             <JavaButton label="Steve" onClick={() => pick({ kind: 'steve' })} width={150} />
             <JavaButton label="Alex (braço fino)" onClick={() => pick({ kind: 'alex' })} width={150} />
             <JavaButton label="Enviar skin (PNG)" onClick={() => fileRef.current?.click()} width={150} />
+            {choice.kind === 'custom' && (
+              <JavaButton
+                label={choice.slim ? "Braços: Finos (3px)" : "Braços: Clássicos (4px)"}
+                onClick={() => pick({ ...choice, slim: !choice.slim })}
+                width={150}
+              />
+            )}
             <input ref={fileRef} type="file" accept="image/png" onChange={onFile} style={{ display: 'none' }} />
             <div style={{ textAlign: 'center', marginTop: 2 * scale }}>
-              <GuiText text={choice.kind === 'custom' ? 'Skin: personalizada' : `Skin: ${choice.kind}`} color="#A0A0A0" shadow scale={scale} />
+              <GuiText
+                text={choice.kind === 'custom' ? `Skin: personalizada (${choice.slim ? 'braço fino' : 'clássico'})` : `Skin: ${choice.kind}`}
+                color="#A0A0A0" shadow scale={scale}
+              />
             </div>
           </div>
         </div>
         <Msg text={error} color="#FF5555" />
 
-        <Section>Crafthead (nickname)</Section>
+        <Section>Buscar skin (nickname ou URL)</Section>
         <div style={{ display: 'flex', gap: 4 * scale, justifyContent: 'center', marginBottom: 3 * scale }}>
           <input
             value={nick}
             onChange={(e) => setNick(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && nick && !busy) searchSkin(); }}
-            placeholder="Nickname do Minecraft"
-            maxLength={16}
+            placeholder="Nickname ou URL da skin"
+            maxLength={256}
             style={{
-              width: 150 * scale, height: 20 * scale,
+              width: 170 * scale, height: 20 * scale,
               background: '#000000', border: `${scale}px solid #A0A0A0`,
               color: '#E0E0E0', caretColor: '#E0E0E0',
               fontSize: `${8 * scale}px`, fontFamily: 'monospace',
@@ -129,7 +152,7 @@ function SkinContent({ onBack }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: `${150 * scale}px ${150 * scale}px`, gap: `${2 * scale}px`, justifyContent: 'center', marginBottom: 3 * scale }}>
           <JavaButton label={busy === 'skin' ? 'Buscando…' : 'Buscar skin'} onClick={searchSkin} disabled={!!busy || !nick} width={150} />
-          <JavaButton label={busy === 'cape' ? 'Buscando…' : 'Buscar capa'} onClick={searchCape} disabled={!!busy || !nick} width={150} />
+          <JavaButton label={busy === 'cape' ? 'Buscando…' : 'Buscar capa'} onClick={searchCape} disabled={!!busy || !nick || nick.startsWith('http')} width={150} />
           {cape && <JavaButton label="Remover capa" onClick={removeCape} width={150} />}
         </div>
         <Msg text={cape ? `Capa atual: ${cape.user}` : 'Sem capa'} color="#A0A0A0" />
