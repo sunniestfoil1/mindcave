@@ -1,6 +1,4 @@
-// Gerenciador de conexão WebRTC — PRD 15 MC15-RF-060..064
-// Sinalização via entity Signal, canais confiável + não confiável, detecção de rota.
-import { mindcaveApi } from '@/api/supabaseClient';
+import { supabase, mindcaveApi } from '@/api/supabaseClient';
 import { voiceChat } from './voiceChat';
 
 const DEFAULT_ICE_SERVERS = [
@@ -12,6 +10,31 @@ const DEFAULT_ICE_SERVERS = [
   { urls: 'stun:global.stun.twilio.com:3478' },
   { urls: 'stun:stun.services.mozilla.com' },
 ];
+
+let _cachedIceServers = null;
+let _iceFetchPromise = null;
+
+async function getOptimalIceServers() {
+  if (_cachedIceServers) return _cachedIceServers;
+  if (_iceFetchPromise) return _iceFetchPromise;
+
+  _iceFetchPromise = (async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('webrtc-turn', {
+        body: {},
+      });
+      if (!error && data && Array.isArray(data.iceServers) && data.iceServers.length > 0) {
+        _cachedIceServers = data.iceServers;
+        return _cachedIceServers;
+      }
+    } catch {
+      // Fallback sem interrupção
+    }
+    return DEFAULT_ICE_SERVERS;
+  })();
+
+  return _iceFetchPromise;
+}
 
 // Limpa sinais antigos (>60s) marcados como consumidos
 async function cleanupSignals(roomId) {
@@ -57,7 +80,7 @@ export class WebRTCConnection {
   }
 
   async connect(iceServers) {
-    const servers = iceServers?.length ? iceServers : DEFAULT_ICE_SERVERS;
+    const servers = iceServers?.length ? iceServers : await getOptimalIceServers();
     const Configuration = { iceServers: servers };
 
     this.setState('connecting');
@@ -189,55 +212,93 @@ export class WebRTCConnection {
   }
 
   async _handleSignal(signal) {
+    if (!signal || !this.pc || this._closed) return;
     if (this._consumedSignals.has(signal.id)) return;
     this._consumedSignals.add(signal.id);
     try { await mindcaveApi.entities.Signal.update(signal.id, { consumed: true }); } catch {}
 
     if (signal.type === 'offer' && this.isHost) {
-      await this.pc.setRemoteDescription({ type: 'offer', sdp: signal.data });
-      await this._processPendingCandidates();
-      const answer = await this.pc.createAnswer();
-      await this.pc.setLocalDescription(answer);
-      await this._sendSignal(signal.fromUserId, 'answer', answer.sdp);
+      if (this.pc.signalingState !== 'stable') {
+        console.warn(`[WebRTC] Offer recebido em estado não-estável '${this.pc.signalingState}'. Ignorando com segurança.`);
+        return;
+      }
+      try {
+        await this.pc.setRemoteDescription({ type: 'offer', sdp: signal.data });
+        await this._processPendingCandidates();
+        const answer = await this.pc.createAnswer();
+        await this.pc.setLocalDescription(answer);
+        await this._sendSignal(signal.fromUserId, 'answer', answer.sdp);
+      } catch (err) {
+        console.warn('[WebRTC] Falha ao processar offer:', err);
+      }
     } else if (signal.type === 'answer' && !this.isHost) {
-      await this.pc.setRemoteDescription({ type: 'answer', sdp: signal.data });
-      await this._processPendingCandidates();
+      // Evita o erro 'Failed to set remote answer sdp: Called in wrong state: stable'
+      if (this.pc.signalingState !== 'have-local-offer') {
+        console.warn(`[WebRTC] Answer recebido quando estado atual é '${this.pc.signalingState}' (esperado 'have-local-offer'). Ignorando para evitar InvalidStateError.`);
+        return;
+      }
+      try {
+        await this.pc.setRemoteDescription({ type: 'answer', sdp: signal.data });
+        await this._processPendingCandidates();
+      } catch (err) {
+        console.warn('[WebRTC] Falha ao aplicar remote answer:', err);
+      }
     } else if (signal.type === 'candidate') {
       try {
-        const cand = JSON.parse(signal.data);
-        if (this.pc && this.pc.remoteDescription) {
+        const cand = typeof signal.data === 'string' ? JSON.parse(signal.data) : signal.data;
+        if (this.pc && this.pc.remoteDescription && this.pc.remoteDescription.type) {
           await this.pc.addIceCandidate(cand);
         } else {
           this._pendingCandidates.push(cand);
         }
-      } catch {}
+      } catch (err) {
+        console.warn('[WebRTC] Erro ao adicionar ICE candidate:', err);
+      }
+    } else if (signal.type === 'join-reject') {
+      console.warn('[WebRTC] Conexão rejeitada pelo host:', signal.data);
+      this.setState('rejected');
+      this.close();
     }
   }
 
   async _createOffer() {
+    if (!this.pc || this._closed) return;
     this.pc.onicecandidate = (e) => {
       if (e.candidate) {
         this._sendSignal(this.peerUserId, 'candidate', JSON.stringify(e.candidate.toJSON()));
       }
     };
-    const offer = await this.pc.createOffer();
-    await this.pc.setLocalDescription(offer);
-    await this._sendSignal(this.peerUserId, 'offer', offer.sdp);
+    try {
+      const offer = await this.pc.createOffer();
+      await this.pc.setLocalDescription(offer);
+      await this._sendSignal(this.peerUserId, 'offer', offer.sdp);
+    } catch (err) {
+      console.error('[WebRTC] Erro ao criar offer:', err);
+      this.setState('failed');
+    }
   }
 
   async handleOffer(fromUserId, offerSdp) {
     this.peerUserId = fromUserId;
-    if (!this.pc) return;
+    if (!this.pc || this._closed) return;
+    if (this.pc.signalingState !== 'stable') {
+      console.warn(`[WebRTC] handleOffer ignorado: estado atual é '${this.pc.signalingState}' (esperado: 'stable')`);
+      return;
+    }
     this.pc.onicecandidate = (e) => {
       if (e.candidate) {
         this._sendSignal(fromUserId, 'candidate', JSON.stringify(e.candidate.toJSON()));
       }
     };
-    await this.pc.setRemoteDescription({ type: 'offer', sdp: offerSdp });
-    await this._processPendingCandidates();
-    const answer = await this.pc.createAnswer();
-    await this.pc.setLocalDescription(answer);
-    await this._sendSignal(fromUserId, 'answer', answer.sdp);
+    try {
+      await this.pc.setRemoteDescription({ type: 'offer', sdp: offerSdp });
+      await this._processPendingCandidates();
+      const answer = await this.pc.createAnswer();
+      await this.pc.setLocalDescription(answer);
+      await this._sendSignal(fromUserId, 'answer', answer.sdp);
+    } catch (err) {
+      console.warn('[WebRTC] Falha ao processar offer recebida:', err);
+    }
   }
 
   async _sendSignal(toUserId, type, data) {
