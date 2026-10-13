@@ -56,6 +56,10 @@ export async function setup(scene, camera, renderer, api) {
     put(1, 0, 85); put(2, 0, 85); put(3, 0, 85); put(3, 1, 85); put(4, 0, 107, 1); put(5, 0, 85); put(5, 1, 1);
     put(6, 0, 107, 1 | 4); put(8, 0, 113); put(9, 0, 113);
     put(7, 1, 64, 1); put(7, 1, 64, 8, 62); put(10, 1, 64, 1 | 4); put(10, 1, 64, 8, 62); put(12, 1, 71, 2); put(12, 1, 71, 8 | 1, 62);
+    // plantações (estágios 0..7), abóbora/melancia, circuitos, funil, lâmpada, alavanca, terra arada
+    for (let i = 0; i < 8; i++) { put(1 + i, 15, 60, i === 7 ? 7 : 0, 60); put(1 + i, 15, 59, i); }
+    put(1, 13, 86, 3); put(2, 13, 86, 1); put(3, 13, 103); put(4, 13, 123); put(5, 13, 124); put(6, 13, 154); put(7, 13, 61, 3);
+    put(9, 13, 93); put(10, 13, 149); put(11, 13, 151); put(12, 13, 69); put(13, 13, 115, 2); put(14, 13, 141, 7);
     put(5, 14, 53, 0); put(6, 14, 53, 0, 61); put(6, 14, 53, 0, 62); // degraus empilhados
   }
   const tint = new Uint8Array(256 * 9);

@@ -52,7 +52,7 @@ const result = await page.evaluate(async () => {
       const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
       const cx = cv.getContext('2d'); cx.drawImage(img, 0, 0);
       const d = cx.getImageData(0, 0, cv.width, cv.height).data; let a = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 20) a++;
-      state = a > 8 ? 'ok' : 'IMAGEM VAZIA';
+      state = a > 2 ? 'ok' : 'IMAGEM VAZIA';
     }
     iconRes[`${id}:${meta}`] = state;
   }

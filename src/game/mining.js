@@ -37,6 +37,8 @@ export const HARVEST = {
   175: { tool: 'pickaxe', level: 0 }, // tijolos musgosos
   24: { tool: 'pickaxe', level: 0 },  // arenito
   176: { tool: 'pickaxe', level: 0 }, // arenito vermelho
+  153: { tool: 'pickaxe', level: 0 },  // minério de quartzo
+  87: { tool: 'pickaxe', level: 0 }, 88: { tool: 'shovel', level: 0 }, // netherrack (exige picareta), areia das almas
   // lajes e escadas: de pedra exigem picareta; de madeira o machado é só o mais rápido
   44: { tool: 'pickaxe', level: 0 }, 43: { tool: 'pickaxe', level: 0 }, 182: { tool: 'pickaxe', level: 0 }, 181: { tool: 'pickaxe', level: 0 },
   67: { tool: 'pickaxe', level: 0 }, 108: { tool: 'pickaxe', level: 0 }, 109: { tool: 'pickaxe', level: 0 }, 114: { tool: 'pickaxe', level: 0 },
@@ -84,6 +86,7 @@ export const DROP_TABLE = {
   21: (tool) => canHarvest(21, tool) ? [{ id: 351, count: 4 + Math.floor(Math.random() * 5), meta: 4 }] : [], // lápis
   56: (tool) => canHarvest(56, tool) ? [{ id: 264, count: 1 }] : [],   // diamante
   73: (tool) => canHarvest(73, tool) ? [{ id: 331, count: 4 + Math.floor(Math.random() * 2) }] : [], // redstone
+  153: (tool) => canHarvest(153, tool) ? [{ id: 406, count: 1 }] : [], // quartzo
   129: (tool) => canHarvest(129, tool) ? [{ id: 388, count: 1 }] : [],  // esmeralda
   89: () => [{ id: 348, count: 2 + Math.floor(Math.random() * 3) }],   // glowstone → pó
   13: () => Math.random() < 0.1 ? [{ id: 318, count: 1 }] : [{ id: 13, count: 1 }], // cascalho → 10% sílex

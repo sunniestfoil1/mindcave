@@ -376,6 +376,18 @@ const MC_TEXTURE_MAP = {
   'bed_head_end': 'bed_head_end', 'bed_feet_end': 'bed_feet_end',
 };
 
+// Ladrilhos extras (texturas oficiais do pacote 1.8.9): estágios de plantação, abóbora/melancia, circuitos, lâmpada, funil, terra arada...
+const EXTRA_TILES = { sapling_oak: 'sapling_oak' };
+for (let i = 0; i < 8; i++) EXTRA_TILES['wheat_stage_' + i] = 'wheat_stage_' + i;
+for (let i = 0; i < 4; i++) { EXTRA_TILES['carrots_stage_' + i] = 'carrots_stage_' + i; EXTRA_TILES['potatoes_stage_' + i] = 'potatoes_stage_' + i; }
+for (let i = 0; i < 3; i++) EXTRA_TILES['nether_wart_stage_' + i] = 'nether_wart_stage_' + i;
+for (const n of ['pumpkin_top', 'pumpkin_side', 'pumpkin_face_off', 'pumpkin_face_on', 'melon_top', 'melon_side', 'redstone_lamp_off', 'redstone_lamp_on',
+  'hopper_top', 'hopper_outside', 'lever', 'pumpkin_stem_disconnected', 'melon_stem_disconnected', 'farmland_dry', 'farmland_wet',
+  'repeater_off', 'repeater_on', 'comparator_off', 'comparator_on', 'daylight_detector_top', 'daylight_detector_side',
+  'portal', 'quartz_ore']) EXTRA_TILES[n] = n;
+for (const t of Object.keys(EXTRA_TILES)) if (!TILE_ORDER.includes(t)) TILE_ORDER.push(t);
+Object.assign(MC_TEXTURE_MAP, EXTRA_TILES);
+
 let _realLoaded = false;
 let _loadingPromise = null;
 let _atlasVersion = 0;

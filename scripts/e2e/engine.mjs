@@ -356,6 +356,42 @@ const result = await page.evaluate(async () => {
       if (!(pState.hunger > 8 && left === 1)) notEaten.push(`${fid} (fome ${pState.hunger}, restam ${left})`);
     }
     ok(notEaten.length === 0, `as ${foodIds.length} comidas podem ser comidas pelo botão direito: aumentam a fome e gastam 1${notEaten.length ? ' — FALHARAM: ' + notEaten.join(', ') : ''}`);
+
+    // ======== NETHER: moldura de obsidiana, pederneira, travessia ida e volta ========
+    reset(); pState.gameMode = 'survival'; pState.pos = { x: 8.5, y: B0 + 1, z: 1.5 }; tickN(2);
+    const FX = 6, FZ = 12;                                   // moldura 4×5 no plano X, base em y=B0+1
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 5; j++) {
+      if (i === 0 || i === 3 || j === 0 || j === 4) cw.setBlock(FX + i, B0 + 1 + j, FZ, packState(49, 0));
+    }
+    pState.hotbar[0] = { id: 259, count: 1, meta: 0 }; pState.selectedSlot = 0;
+    pState.pos = { x: FX + 1.5, y: B0 + 1, z: FZ - 2.5 }; tickN(2); aimTop(FX + 1, B0 + 1, FZ);
+    const lit = engine.useHeldItem(pState.hotbar[0]);
+    ok(stateId(cw.getBlock(FX + 1, B0 + 2, FZ)) === 90 && stateId(cw.getBlock(FX + 2, B0 + 4, FZ)) === 90, `pederneira na obsidiana acende o portal 2×3 (retorno ${lit})`);
+    pState.pos = { x: FX + 1.5, y: B0 + 2, z: FZ + 0.5 }; pState.gameMode = 'creative'; pState.vel = { x: 0, y: 0, z: 0 };
+    tickN(5);
+    ok(engine.dimension === 'nether', `entrar no portal leva ao Nether (dimensão: ${engine.dimension})`);
+    const nw = engine.world;
+    ok(nw !== cw && nw.generatorOpts.generatorId === 'nether', 'o mundo ativo passa a ser o do Nether');
+    const feetId = stateId(nw.getBlock(Math.floor(pState.pos.x), Math.floor(pState.pos.y), Math.floor(pState.pos.z)));
+    ok(feetId === 90 || feetId === 0, `jogador chega dentro/ao lado do portal do Nether (bloco ${feetId})`);
+    let net = 0; for (let x = -16; x < 16; x++) for (let y = 1; y < 127; y += 3) if (stateId(nw.getBlock(Math.floor(pState.pos.x) + x, y, Math.floor(pState.pos.z))) === 87) net++;
+    ok(net > 10, `o Nether tem netherrack em volta (${net} amostras)`);
+    ok(engine.sky.dome ? engine.sky.dome.visible === false : true, 'céu escondido no Nether');
+    tickN(80);
+    pState.pos.x += 3; tickN(70);                              // sai do portal e espera o cooldown
+    const ppos = pState.pos;
+    const inside = stateId(engine.world.getBlock(Math.floor(ppos.x), Math.floor(ppos.y), Math.floor(ppos.z)));
+    ok(engine.dimension === 'nether' && inside !== 90, 'sair do portal não volta sozinho');
+    // volta: entra no portal de chegada
+    let pp = null; for (let x = -6; x <= 6 && !pp; x++) for (let z = -6; z <= 6 && !pp; z++) for (let y = 1; y < 127; y++) if (stateId(nw.getBlock(Math.floor(ppos.x) + x, y, Math.floor(ppos.z) + z)) === 90) { pp = { x: Math.floor(ppos.x) + x, y, z: Math.floor(ppos.z) + z }; break; }
+    ok(!!pp, 'o portal de chegada existe no Nether');
+    if (pp) { pState.pos = { x: pp.x + 0.5, y: pp.y, z: pp.z + 0.5 }; tickN(5); }
+    ok(engine.dimension === 'overworld' && engine.world === cw, 'voltar pelo portal retorna ao mundo normal');
+    ok(engine.sky.dome ? engine.sky.dome.visible === true : true, 'céu volta no mundo normal');
+    // quebrar obsidiana apaga o portal
+    reset(); pState.gameMode = 'survival';
+    engine.breakBedPartner(FX, B0 + 3, FZ, packState(49, 0)); cw.setBlock(FX, B0 + 3, FZ, 0); engine.breakBedPartner(FX, B0 + 3, FZ, packState(49, 0));
+    ok(stateId(cw.getBlock(FX + 1, B0 + 2, FZ)) !== 90, 'quebrar a moldura apaga o portal');
     engine.stop?.();
   } catch (e) { out.push('ERRO ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')); }
   return out;

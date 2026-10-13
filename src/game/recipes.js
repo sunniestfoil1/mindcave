@@ -5,6 +5,7 @@
 // Receita shapeless: { type:'shapeless', ingredients:[{id:339},{id:339},{id:339},{id:334}], result:{id:339,count:1} }
 
 import { canStack, stack } from './inventory';
+import REAL_RECIPES from './recipesReal.json';
 
 const R = (pattern, keys, result) => ({ type: 'shaped', pattern, keys, result });
 const S = (ingredients, result) => ({ type: 'shapeless', ingredients, result });
@@ -71,7 +72,8 @@ function armorRecipes(ids, material) {
   ];
 }
 
-export const RECIPES = [
+// Receitas escritas à mão (inclui as armas custom). As receitas reais do 1.8.9 vêm de recipesReal.json (scripts/gen-recipes.mjs).
+export const BASE_RECIPES = [
   // Essenciais (Apêndice B)
   R(['L'], { L: { any: [17, 162] } }, { id: 5, count: 4 }),           // tronco → 4 tábuas
   R(['P', 'P'], { P: { id: 5 } }, { id: 280, count: 4 }),            // 2 tábuas → 4 gravetos
@@ -255,6 +257,25 @@ export const RECIPES = [
   // Carregador estendido: 3 ferros + 1 mola
   { ...R(['I I','ISI','I I'], { I: IRON_INGOT, S: SPRING }, { id: 468, count: 1 }), station: 'gunsmith' },
 ];
+
+// Receitas reais importadas (data/mc-1.8.9, MIT): { s: forma, r: [id, qtd, meta] } ou { l: ingredientes, r: [...] }; ingrediente = [id, meta] (meta −1 = qualquer)
+function fromReal(r) {
+  const [id, count, meta] = r.r;
+  const result = { id, count, ...(meta ? { meta } : {}) };
+  const ing = ([i, m]) => (m >= 0 ? { id: i, meta: m } : { id: i });
+  if (r.s) {
+    const keys = {}, letters = new Map();
+    const pattern = r.s.map(row => row.map(c => {
+      if (!c) return ' ';
+      const k = c[0] + ':' + c[1];
+      if (!letters.has(k)) { const L = String.fromCharCode(65 + letters.size); letters.set(k, L); keys[L] = ing(c); }
+      return letters.get(k);
+    }).join(''));
+    return R(pattern, keys, result);
+  }
+  return S(r.l.map(ing), result);
+}
+export const RECIPES = [...BASE_RECIPES, ...REAL_RECIPES.map(fromReal)];
 
 // Verifica se um ingrediente corresponde a um item do grid
 function matchesIngredient(ingredient, item) {

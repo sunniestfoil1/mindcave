@@ -439,6 +439,8 @@ export class ProjectileManager {
     if (idx >= 0) this.projectiles.splice(idx, 1);
   }
 
+  clearAll() { for (const p of [...this.projectiles]) this.remove(p); this.projectiles.length = 0; }
+
   dispose() {
     for (const p of [...this.projectiles]) this.remove(p);
     this._arrowGeo.dispose();

@@ -250,6 +250,10 @@ export function rayBox(ox, oy, oz, dx, dy, dz, box, maxT) {
 //    de uma laje igual (ou colocar onde já há a outra metade) a transforma em laje dupla;
 //  · escada: sobe na direção em que o jogador olha (0 leste, 1 oeste, 2 sul, 3 norte), invertida se clicou na metade de cima.
 export function computePlacement(placing, slotMeta, hit, yaw, getState) {
+  if (placing && placing.orient) { // bloco cheio orientado (abóbora, fornalha...): a frente olha para o jogador
+    const li = [3, 0, 1, 2][Math.floor(yaw * 2 / Math.PI + 0.5) & 3];
+    return { x: hit.x + hit.nx, y: hit.y + hit.ny, z: hit.z + hit.nz, id: placing.id, meta: (li + 2) & 3 };
+  }
   if (!placing || !['slab', 'stairs', 'gate', 'chest', 'ladder', 'trapdoor'].includes(placing.model)) return null;
   const px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
   const fracY = hit.hy !== undefined ? hit.hy - hit.y : 0.5;

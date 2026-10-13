@@ -33,7 +33,7 @@ const ITEM_FILE = {
 const ITEM_AS_BLOCK_TILE = {
   farmland: 'farmland', lever: 'lever', stone_pressure_plate: 'stone', wooden_pressure_plate: 'planks',
   redstone_torch: 'redstone_torch', stone_button: 'stone', cactus: 'cactus_side', redstone_lamp: 'redstone_lamp',
-  daylight_sensor: 'daylight_sensor',
+  daylight_sensor: 'daylight_sensor', wheat_crop: 'wheat_stage_7',
 };
 
 export function itemIconFile(name) { return ITEM_FILE[name] || name; }

@@ -533,6 +533,11 @@ export class ClientWorld {
     return out;
   }
 
+  // Troca de dimensão: tira as malhas desta dimensão da cena e marca tudo como sujo, para recriá-las quando o jogador voltar
+  unloadMeshes() {
+    for (const c of this.chunks.values()) { this._disposeChunkMeshes(c); this.markAllSectionsDirty(c); }
+  }
+
   dispose() {
     for (const c of this.chunks.values()) this._disposeChunkMeshes(c);
     this.chunks.clear();

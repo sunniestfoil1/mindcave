@@ -216,4 +216,10 @@ export class MobManager {
     for (const m of this.mobs) m.removeModel(this.scene);
     this.mobs = [];
   }
+
+  // Troca de dimensão: os mobs do outro mundo ficam para trás
+  clearAll() {
+    for (const m of this.mobs) m.removeModel(this.scene);
+    this.mobs.length = 0;
+  }
 }

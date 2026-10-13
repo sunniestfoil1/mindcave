@@ -83,7 +83,7 @@ export const BLOCKS = {
   89: B(89, 'glowstone', 'Glowstone', { hardness: 0.3, faces: { all: 'glowstone' }, drop: 89, lightEmission: 15 }),
   58: B(58, 'crafting_table', 'Bancada', { hardness: 2.5, faces: { top: 'crafting_top', bottom: 'planks', side: 'crafting_side' }, drop: 58, soundCategory: 'wood' }),
   26: B(26, 'bed', 'Cama', { hardness: 0.2, faces: { top: 'bed_head_top', side: 'bed_head_side', bottom: 'planks' }, drop: 355, model: 'bed', solid: true, opaque: false, lightOpacity: 0, render: 'opaque', soundCategory: 'wood' }),
-  61: B(61, 'furnace', 'Fornalha', { hardness: 3.5, faces: { top: 'furnace_top', bottom: 'furnace_top', side: 'furnace_side', front: 'furnace_front' }, drop: 61 }),
+  61: B(61, 'furnace', 'Fornalha', { hardness: 3.5, faces: { top: 'furnace_top', bottom: 'furnace_top', side: 'furnace_side', front: 'furnace_front' }, drop: 61, orient: true }),
   95: B(95, 'stained_glass', 'Vidro Tingido', { hardness: 0.3, faces: { all: 'glass' }, drop: null, render: 'translucent', opaque: false, lightOpacity: 0, metaColors: true }),
   24: B(24, 'sandstone', 'Arenito', { hardness: 0.8, faces: { top: 'sandstone_top', bottom: 'sandstone_bottom', side: 'sandstone_side' }, drop: 24 }),
 
@@ -103,6 +103,7 @@ export const BLOCKS = {
   // Plantas (cruz)
   31: B(31, 'tallgrass', 'Grama Alta', { hardness: 0, faces: { all: 'grass_plant' }, drop: null, render: 'cutout', lightOpacity: 0, model: 'cross', tint: 'grass', solid: false, replaceable: true, soundCategory: 'grass' }),
   37: B(37, 'flower', 'Dente-de-leão', { hardness: 0, faces: { all: 'flower_dandelion' }, drop: 37, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
+  6: B(6, 'sapling', 'Muda de carvalho', { hardness: 0, faces: { all: 'sapling_oak' }, drop: 6, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
   38: B(38, 'rose', 'Papoula', { hardness: 0, faces: { all: 'flower_rose' }, drop: 38, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
   39: B(39, 'brown_mushroom', 'Cogumelo Marrom', { hardness: 0, faces: { all: 'mushroom_brown' }, drop: 39, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, lightEmission: 1 }),
   40: B(40, 'red_mushroom', 'Cogumelo Vermelho', { hardness: 0, faces: { all: 'mushroom_red' }, drop: 40, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true }),
@@ -123,12 +124,12 @@ export const BLOCKS = {
   // Plantas e especiais (PRD 04)
   106: B(106, 'vine', 'Trepadeira', { hardness: 0.2, faces: { all: 'vine' }, tint: 'foliage', drop: 106, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
   81: B(81, 'cactus', 'Cacto', { hardness: 0.4, faces: { top: 'cactus_top', bottom: 'cactus_bottom', side: 'cactus_side' }, drop: 81, render: 'cutout', lightOpacity: 0, model: 'box', box: [0.0625, 0, 0.0625, 0.9375, 1, 0.9375], solid: true, opaque: false }),
-  141: B(141, 'carrots', 'Cenouras', { hardness: 0, faces: { all: 'grass_plant' }, drop: 391, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
-  142: B(142, 'potatoes', 'Batatas', { hardness: 0, faces: { all: 'grass_plant' }, drop: 392, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
+  141: B(141, 'carrots', 'Cenouras', { hardness: 0, faces: { all: 'carrots_stage_0' }, drop: 391, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' , variants: [{ all: 'carrots_stage_0' }, { all: 'carrots_stage_0' }, { all: 'carrots_stage_1' }, { all: 'carrots_stage_1' }, { all: 'carrots_stage_2' }, { all: 'carrots_stage_2' }, { all: 'carrots_stage_2' }, { all: 'carrots_stage_3' }]}),
+  142: B(142, 'potatoes', 'Batatas', { hardness: 0, faces: { all: 'potatoes_stage_0' }, drop: 392, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' , variants: [{ all: 'potatoes_stage_0' }, { all: 'potatoes_stage_0' }, { all: 'potatoes_stage_1' }, { all: 'potatoes_stage_1' }, { all: 'potatoes_stage_2' }, { all: 'potatoes_stage_2' }, { all: 'potatoes_stage_2' }, { all: 'potatoes_stage_3' }]}),
   143: B(143, 'dead_bush', 'Arbusto Morto', { hardness: 0, faces: { all: 'dead_bush' }, drop: 143, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
   174: B(174, 'packed_ice', 'Gelo Compactado', { hardness: 0.5, faces: { all: 'ice' }, drop: null, render: 'translucent', opaque: false, lightOpacity: 3, slipperiness: 0.98 }),
-  86: B(86, 'pumpkin', 'Abóbora', { hardness: 1.0, faces: { all: 'sandstone_side' }, drop: 86 }),
-  103: B(103, 'melon_block', 'Melância', { hardness: 1.0, faces: { all: 'glowstone' }, drop: 103 }),
+  86: B(86, 'pumpkin', 'Abóbora', { hardness: 1.0, faces: { top: 'pumpkin_top', bottom: 'pumpkin_top', side: 'pumpkin_side', front: 'pumpkin_face_off' }, drop: 86 , orient: true}),
+  103: B(103, 'melon_block', 'Melância', { hardness: 1.0, faces: { top: 'melon_top', bottom: 'melon_top', side: 'melon_side' }, drop: 103 }),
   175: B(175, 'mossy_stone_bricks', 'Tijolos de Pedra Musgosos', { hardness: 2.0, faces: { all: 'mossy_cobble' }, drop: 175 }),
   176: B(176, 'red_sandstone', 'Arenito Vermelho', { hardness: 0.8, faces: { top: 'sandstone_top', bottom: 'sandstone_bottom', side: 'sandstone_side' }, drop: 176 }),
 
@@ -137,27 +138,27 @@ export const BLOCKS = {
 
   // PRD 11: Redstone
   55: B(55, 'redstone_wire', 'Fio de Redstone', { hardness: 0, faces: { all: 'redstone_block' }, drop: 331, render: 'cutout', lightOpacity: 0, model: 'carpet', solid: false, replaceable: true, soundCategory: 'stone' }),
-  69: B(69, 'lever', 'Alavanca', { hardness: 0.5, faces: { all: 'cobblestone' }, drop: 69, render: 'cutout', lightOpacity: 0, model: 'torch', solid: false, replaceable: true, soundCategory: 'wood' }),
+  69: B(69, 'lever', 'Alavanca', { hardness: 0.5, faces: { all: 'lever' }, drop: 69, render: 'cutout', lightOpacity: 0, model: 'torch', solid: false, replaceable: true, soundCategory: 'wood' }),
   70: B(70, 'stone_pressure_plate', 'Placa de Pressão de Pedra', { hardness: 0.5, faces: { all: 'stone' }, drop: 70, render: 'cutout', lightOpacity: 0, model: 'carpet', solid: false, replaceable: true, soundCategory: 'stone' }),
   72: B(72, 'wooden_pressure_plate', 'Placa de Pressão de Madeira', { hardness: 0.5, faces: { all: 'planks' }, drop: 72, render: 'cutout', lightOpacity: 0, model: 'carpet', solid: false, replaceable: true, soundCategory: 'wood' }),
   75: B(75, 'unlit_redstone_torch', 'Tocha de Redstone Apagada', { hardness: 0, faces: { all: 'redstone_block' }, drop: 76, render: 'cutout', lightOpacity: 0, model: 'torch', solid: false, replaceable: true, soundCategory: 'wood' }),
   76: B(76, 'redstone_torch', 'Tocha de Redstone', { hardness: 0, faces: { all: 'redstone_block' }, drop: 76, render: 'cutout', lightOpacity: 0, model: 'torch', solid: false, replaceable: true, lightEmission: 7, soundCategory: 'wood' }),
   77: B(77, 'stone_button', 'Botão de Pedra', { hardness: 0.5, faces: { all: 'stone' }, drop: 77, render: 'cutout', lightOpacity: 0, model: 'torch', solid: false, replaceable: true, soundCategory: 'stone' }),
-  93: B(93, 'unpowered_repeater', 'Repetidor Desligado', { hardness: 0, faces: { all: 'stone' }, drop: 356, render: 'cutout', lightOpacity: 0, model: 'carpet', solid: false, replaceable: true, soundCategory: 'stone' }),
-  94: B(94, 'powered_repeater', 'Repetidor Ligado', { hardness: 0, faces: { all: 'stone' }, drop: 356, render: 'cutout', lightOpacity: 0, model: 'carpet', solid: false, replaceable: true, soundCategory: 'stone' }),
-  123: B(123, 'redstone_lamp', 'Lâmpada de Redstone', { hardness: 0.3, faces: { all: 'glowstone' }, drop: 123 }),
-  124: B(124, 'lit_redstone_lamp', 'Lâmpada Acesa', { hardness: 0.3, faces: { all: 'glowstone' }, drop: 123, lightEmission: 15 }),
-  149: B(149, 'unpowered_comparator', 'Comparador Desligado', { hardness: 0, faces: { all: 'stone' }, drop: 404, render: 'cutout', lightOpacity: 0, model: 'carpet', solid: false, replaceable: true, soundCategory: 'stone' }),
-  150: B(150, 'powered_comparator', 'Comparador Ligado', { hardness: 0, faces: { all: 'stone' }, drop: 404, render: 'cutout', lightOpacity: 0, model: 'carpet', solid: false, replaceable: true, soundCategory: 'stone' }),
-  151: B(151, 'daylight_sensor', 'Sensor de Luz', { hardness: 0.2, faces: { all: 'stone' }, drop: 151, render: 'cutout', lightOpacity: 0, model: 'carpet', solid: false, replaceable: true, soundCategory: 'wood' }),
-  154: B(154, 'hopper', 'Funil', { hardness: 3.0, faces: { all: 'iron_block' }, drop: 154, soundCategory: 'metal' }),
+  93: B(93, 'unpowered_repeater', 'Repetidor Desligado', { hardness: 0, faces: { top: 'repeater_off', bottom: 'stone_slab_top', side: 'stone_slab_side' }, drop: 356, render: 'cutout', lightOpacity: 0, model: 'box', box: [0, 0, 0, 1, 0.125, 1], solid: false, replaceable: true, soundCategory: 'stone' }),
+  94: B(94, 'powered_repeater', 'Repetidor Ligado', { hardness: 0, faces: { top: 'repeater_on', bottom: 'stone_slab_top', side: 'stone_slab_side' }, drop: 356, render: 'cutout', lightOpacity: 0, model: 'box', box: [0, 0, 0, 1, 0.125, 1], solid: false, replaceable: true, soundCategory: 'stone' }),
+  123: B(123, 'redstone_lamp', 'Lâmpada de Redstone', { hardness: 0.3, faces: { all: 'redstone_lamp_off' }, drop: 123 }),
+  124: B(124, 'lit_redstone_lamp', 'Lâmpada Acesa', { hardness: 0.3, faces: { all: 'redstone_lamp_on' }, drop: 123, lightEmission: 15 }),
+  149: B(149, 'unpowered_comparator', 'Comparador Desligado', { hardness: 0, faces: { top: 'comparator_off', bottom: 'stone_slab_top', side: 'stone_slab_side' }, drop: 404, render: 'cutout', lightOpacity: 0, model: 'box', box: [0, 0, 0, 1, 0.125, 1], solid: false, replaceable: true, soundCategory: 'stone' }),
+  150: B(150, 'powered_comparator', 'Comparador Ligado', { hardness: 0, faces: { top: 'comparator_on', bottom: 'stone_slab_top', side: 'stone_slab_side' }, drop: 404, render: 'cutout', lightOpacity: 0, model: 'box', box: [0, 0, 0, 1, 0.125, 1], solid: false, replaceable: true, soundCategory: 'stone' }),
+  151: B(151, 'daylight_sensor', 'Sensor de Luz', { hardness: 0.2, faces: { top: 'daylight_detector_top', bottom: 'stone_slab_top', side: 'daylight_detector_side' }, drop: 151, render: 'cutout', lightOpacity: 0, model: 'box', box: [0, 0, 0, 1, 0.375, 1], solid: false, replaceable: true, soundCategory: 'stone' }),
+  154: B(154, 'hopper', 'Funil', { hardness: 3.0, faces: { top: 'hopper_top', bottom: 'hopper_outside', side: 'hopper_outside' }, drop: 154, soundCategory: 'metal' }),
 
   // PRD 11: Agricultura
-  59: B(59, 'wheat', 'Trigo', { hardness: 0, faces: { all: 'grass_plant' }, drop: 296, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
-  60: B(60, 'farmland', 'Terra Arada', { hardness: 0.6, faces: { top: 'dirt', bottom: 'dirt', side: 'dirt' }, drop: 3, collH: 0.9375 }),
-  104: B(104, 'pumpkin_stem', 'Caule de Abóbora', { hardness: 0, faces: { all: 'grass_plant' }, drop: 361, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
-  105: B(105, 'melon_stem', 'Caule de Melancia', { hardness: 0, faces: { all: 'grass_plant' }, drop: 362, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
-  115: B(115, 'nether_wart', 'Verruga do Nether', { hardness: 0, faces: { all: 'mushroom_red' }, drop: 372, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'plant' }),
+  59: B(59, 'wheat_crop', 'Plantação de trigo', { hardness: 0, faces: { all: 'wheat_stage_7' }, drop: 296, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' , variants: [{ all: 'wheat_stage_0' }, { all: 'wheat_stage_1' }, { all: 'wheat_stage_2' }, { all: 'wheat_stage_3' }, { all: 'wheat_stage_4' }, { all: 'wheat_stage_5' }, { all: 'wheat_stage_6' }, { all: 'wheat_stage_7' }]}),
+  60: B(60, 'farmland', 'Terra Arada', { hardness: 0.6, faces: { top: 'farmland_dry', bottom: 'dirt', side: 'dirt' }, variants: [{ top: 'farmland_dry', bottom: 'dirt', side: 'dirt' }, { top: 'farmland_dry', bottom: 'dirt', side: 'dirt' }, { top: 'farmland_dry', bottom: 'dirt', side: 'dirt' }, { top: 'farmland_dry', bottom: 'dirt', side: 'dirt' }, { top: 'farmland_dry', bottom: 'dirt', side: 'dirt' }, { top: 'farmland_dry', bottom: 'dirt', side: 'dirt' }, { top: 'farmland_dry', bottom: 'dirt', side: 'dirt' }, { top: 'farmland_wet', bottom: 'dirt', side: 'dirt' }], drop: 3, model: 'box', box: [0, 0, 0, 1, 0.9375, 1], solid: true, opaque: false, lightOpacity: 15 }),
+  104: B(104, 'pumpkin_stem', 'Caule de Abóbora', { hardness: 0, faces: { all: 'pumpkin_stem_disconnected' }, drop: 361, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' , tint: 'foliage'}),
+  105: B(105, 'melon_stem', 'Caule de Melancia', { hardness: 0, faces: { all: 'melon_stem_disconnected' }, drop: 362, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' , tint: 'foliage'}),
+  115: B(115, 'nether_wart', 'Verruga do Nether', { hardness: 0, faces: { all: 'nether_wart_stage_0' }, drop: 372, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'plant' , variants: [{ all: 'nether_wart_stage_0' }, { all: 'nether_wart_stage_1' }, { all: 'nether_wart_stage_1' }, { all: 'nether_wart_stage_2' }, { all: 'nether_wart_stage_2' }, { all: 'nether_wart_stage_2' }, { all: 'nether_wart_stage_2' }, { all: 'nether_wart_stage_2' }]}),
 };
 
 // Plantações usam a textura de grama (cinza no pacote) → recebem a tinta de grama do bioma
@@ -174,8 +175,12 @@ export function isReplaceable(id) { const b = BLOCKS[id]; return !!(b && b.repla
 export function lightOpacity(id) { const b = BLOCKS[id]; return b ? (b.lightOpacity ?? 15) : 15; }
 export function lightEmission(id) { const b = BLOCKS[id]; return b ? (b.lightEmission ?? 0) : 0; }
 
-export function tileForFace(block, face, meta) {
+// Direções horizontais (0 oeste, 1 norte, 2 leste, 3 sul): a meta & 3 de blocos orientados é o lado da frente (abóbora, fornalha...)
+export const HFACES = [[-1, 0], [0, -1], [1, 0], [0, 1]];
+
+export function tileForFace(block, face, meta, dir) {
   const f = (block.variants && block.variants[(meta || 0) & 7]) || block.faces || {};
+  if (block.orient && dir && f.front && dir[1] === 0 && dir[0] === HFACES[(meta || 0) & 3][0] && dir[2] === HFACES[(meta || 0) & 3][1]) return f.front;
   if (f.all) return f.all;
   if (face === 'front' && f.front) return f.front;
   return f[face] || f.side || f.top || f.all;
@@ -213,6 +218,7 @@ export function getSelectionBox(id, meta = 0) {
     case 'bed': return [0, 0, 0, 1, 0.5625, 1];
     case 'fence': case 'gate': return [0.375, 0, 0.375, 0.625, 1, 0.625];
     case 'chest': return [0.0625, 0, 0.0625, 0.9375, 0.875, 0.9375];
+    case 'portal': return (meta & 3) === 2 ? [0.375, 0, 0, 0.625, 1, 1] : [0, 0, 0.375, 1, 1, 0.625];
     case 'door': return [0, 0, 0, 1, 1, 1];
     default: return FULL_BOX;
   }
@@ -283,6 +289,9 @@ BLOCKS[71] = shaped(71, 'iron_door', 'Porta de Ferro', { model: 'door', hardness
 BLOCKS[85] = shaped(85, 'fence', 'Cerca de Carvalho', { model: 'fence', hardness: 2.0, faces: { all: 'planks' }, drop: 85, lightOpacity: 0, soundCategory: 'wood' });
 BLOCKS[113] = shaped(113, 'nether_brick_fence', 'Cerca de Tijolos do Nether', { model: 'fence', hardness: 2.0, faces: { all: 'nether_brick' }, drop: 113, lightOpacity: 0 });
 BLOCKS[107] = shaped(107, 'fence_gate', 'Portão de Carvalho', { model: 'gate', hardness: 2.0, faces: { all: 'planks' }, drop: 107, lightOpacity: 0, soundCategory: 'wood' });
+// Portal do Nether: plano fino de 4/16 no eixo X (meta 1) ou Z (meta 2), translúcido e atravessável; entrar leva ao outro mundo
+BLOCKS[90] = B(90, 'portal', 'Portal do Nether', { model: 'portal', hardness: -1, faces: { all: 'portal' }, drop: null, solid: false, opaque: false, render: 'translucent', lightOpacity: 0, lightEmission: 11, replaceable: false, soundCategory: 'glass' });
+BLOCKS[153] = B(153, 'quartz_ore', 'Minério de Quartzo', { hardness: 3.0, faces: { all: 'quartz_ore' }, drop: 406 });
 BLOCKS[54] = shaped(54, 'chest', 'Baú', { model: 'chest', hardness: 2.5, faces: { top: 'chest_top', bottom: 'planks', side: 'chest_side', front: 'chest_front' }, drop: 54, lightOpacity: 0, soundCategory: 'wood' });
 BLOCKS[65] = shaped(65, 'ladder', 'Escada de Mão', { model: 'ladder', hardness: 0.4, faces: { all: 'ladder' }, drop: 65, render: 'cutout', lightOpacity: 0, soundCategory: 'wood', climbable: true });
 BLOCKS[96] = shaped(96, 'trapdoor', 'Alçapão', { model: 'trapdoor', hardness: 3.0, faces: { all: 'trapdoor' }, drop: 96, render: 'cutout', lightOpacity: 0, soundCategory: 'wood' });

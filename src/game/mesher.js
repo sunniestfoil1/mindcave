@@ -380,6 +380,11 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
           const key = model === 'door' ? block.doorTiles[(meta & 8) ? 1 : 0] : tileForFace(block, 'side', meta);
           const tile = tiles[key] || tiles.error;
           for (const box of boxes) emitBox(target, tile, tile, tile, null, wx, wy, wz, box, l, getBlockAbs);
+        } else if (model === 'portal') {
+          const l = getLightAbs(wx, wy, wz);
+          const tile = tiles.portal || tiles.error;
+          // translúcido: vai para o buffer da água; só desenha as faces maiores (o plano fino não precisa das bordas)
+          emitBox(wa, tile, tile, tile, null, wx, wy, wz, getModelBox(block, meta), l, getBlockAbs);
         } else if (model === 'ladder' || model === 'trapdoor') {
           const l = getLightAbs(wx, wy, wz);
           const tile = tiles[tileForFace(block, 'side', meta)] || tiles.error;
@@ -467,7 +472,7 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
         const block = getBlock(id);
         const isWaterBlk = id === 8 || id === 9;
         const target = isWaterBlk ? wa : op;
-        const t = tiles[tileForFace(block, f.face, meta)] || tiles.error;
+        const t = tiles[tileForFace(block, f.face, meta, f.dir)] || tiles.error;
         const sh = f.sh;
 
         const aoVals = [0, 0, 0, 0];

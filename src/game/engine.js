@@ -22,6 +22,9 @@ import { createAnimationState, tickAnimation, startSwing, applyThirdPersonPose }
 import { buildHandRig, poseHand } from './firstPersonHand';
 import { attackEntity, isSword, isBow, isThrowable, computeBowCharge, createCpsTracker, recordClick, getCps, ATTACK_REACH } from './combat';
 import { MobManager } from './mobManager';
+import { ClientWorld } from './world';
+import { tryCreatePortal, checkPortalIntegrity, findNearbyPortal, buildPortal } from './portal';
+import { findNetherFloor } from './netherGen';
 import { MobEntity } from './mobEntity';
 import { GunController } from './guns/shooting';
 import { NoiseSystem } from './guns/noiseSystem';
@@ -86,6 +89,11 @@ export class GameEngine {
   constructor(canvas, opts) {
     this.canvas = canvas;
     this.world = opts.world;
+    this.dimension = 'overworld';
+    this.worlds = { overworld: this.world, nether: null };
+    this._netherDeltas = opts.netherDeltas || new Map();
+    this._portalTicks = 0;
+    this._portalCooldown = 0;
     this.player = opts.player;
     this.spawn = opts.spawn;
     this.onHud = opts.onHud || (() => {});
@@ -873,6 +881,15 @@ export class GameEngine {
     }
     // Pederneira e aço: acende TNT ou põe fogo no espaço à frente
     if (id === 259) {
+      if (hit.id === 49) {
+        // Obsidiana: tenta acender um portal do Nether na célula à frente
+        const fx0 = hit.x + hit.nx, fy0 = hit.y + hit.ny, fz0 = hit.z + hit.nz;
+        if (tryCreatePortal(this.world, fx0, fy0, fz0, (a, b, c, st) => this._setBlockSync(a, b, c, st))) {
+          playEvent('fire.ignite', { pos });
+          this._wearHeld(slot);
+          return true;
+        }
+      }
       if (hit.id === 46) {
         this._setBlockSync(hit.x, hit.y, hit.z, 0);
         this.spawnTNT(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
@@ -1001,8 +1018,80 @@ export class GameEngine {
   }
 
   // Ao quebrar uma metade da cama ou da porta, a outra some junto (sem drop extra)
+  // ===== Dimensões (Nether) =====
+  _worldFor(dim) {
+    if (this.worlds[dim]) return this.worlds[dim];
+    const w = new ClientWorld(this.worlds.overworld.seed, this._netherDeltas, { generatorId: 'nether' });
+    w.name = this.worlds.overworld.name;
+    this.worlds[dim] = w;
+    return w;
+  }
+
+  _attachWorld(w) {
+    const old = this.world;
+    if (old && old !== w) { old.unloadMeshes(); old.onBlockChange = null; }
+    this.world = w;
+    w.onBlockChange = (x, y, z) => { this.redstone?.markDirty(x, y, z); };
+    if (this.mobs) { this.mobs.clearAll(); this.mobs.world = w; }
+    if (this.projectiles) { this.projectiles.clearAll(); this.projectiles.world = w; }
+    if (this.redstone) this.redstone.world = w;
+  }
+
+  // Carrega (de forma síncrona) a área ao redor de (x, z) para poder achar/colocar o portal de chegada
+  _ensureArea(w, x, z, r) {
+    const cx = Math.floor(x / 16), cz = Math.floor(z / 16);
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) w.ensureChunk(cx + dx, cz + dz);
+  }
+
+  // Atravessa o portal: escala 1:8, procura (ou constrói) o portal no outro mundo e põe o jogador nele
+  switchDimension(target) {
+    if (target === this.dimension) return false;
+    const p = this.player.pos;
+    const toNether = target === 'nether';
+    const dest = this._worldFor(target);
+    const tx = Math.floor(toNether ? p.x / 8 : p.x * 8), tz = Math.floor(toNether ? p.z / 8 : p.z * 8);
+    this._ensureArea(dest, tx, tz, 2);
+    let portal = findNearbyPortal(dest, tx, toNether ? 64 : 64, tz, toNether ? 16 : 32);
+    if (!portal) {
+      let by = toNether ? 70 : -1;
+      if (toNether) {
+        const f = findNetherFloor((a, b, c) => stateId(dest.getBlock(a, b, c)), tx, tz, 120);
+        by = f > 0 ? f : 70;
+      } else {
+        by = 64;
+        for (let y = 120; y > 1; y--) { if (stateId(dest.getBlock(tx, y, tz)) !== 0) { by = y + 1; break; } }
+      }
+      buildPortal(dest, tx, by, tz, () => {});
+      portal = { x: tx, y: by, z: tz, meta: 1 };
+    }
+    this._attachWorld(dest);
+    this.dimension = target;
+    p.x = portal.x + 0.5; p.y = portal.y; p.z = portal.z + 0.5 + (portal.meta === 1 ? 1.2 : 0);
+    if (this.player.vel) { this.player.vel.x = this.player.vel.y = this.player.vel.z = 0; }
+    unstickPlayer(this.world, p);
+    this.sky?.setVisible(target !== 'nether');
+    this._portalTicks = 0;
+    this._portalCooldown = 60;
+    this.weather?.setEnabled?.(target !== 'nether');
+    this.emitHud();
+    return true;
+  }
+
+  tickPortal() {
+    if (this._portalCooldown > 0) this._portalCooldown--;
+    const p = this.player.pos;
+    const inPortal = stateId(this.world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) === 90
+      || stateId(this.world.getBlock(Math.floor(p.x), Math.floor(p.y + 1), Math.floor(p.z))) === 90;
+    if (!inPortal) { this._portalTicks = 0; return; }
+    if (this._portalCooldown > 0) { this._portalCooldown = 60; return; }  // só reativa depois de sair do portal
+    this._portalTicks++;
+    const need = this.player.gameMode === 'creative' || this.player.creative ? 1 : 80;
+    if (this._portalTicks >= need) this.switchDimension(this.dimension === 'nether' ? 'overworld' : 'nether');
+  }
+
   breakBedPartner(x, y, z, state) {
     this.spillContainer(x, y, z, state);
+    if (stateId(state) === 49) checkPortalIntegrity(this.world, x, y, z, (a, b, c, st) => this._setBlockSync(a, b, c, st));
     const id = stateId(state);
     if (id === 26) {
       const pt = bedPartner(x, z, stateMeta(state));
@@ -1388,7 +1477,8 @@ export class GameEngine {
     }
 
     // Clima (PRD 05)
-    if (this.weather) {
+    this.tickPortal();
+    if (this.weather && this.dimension !== 'nether') {
       this.weather.tick(this.worldTime, p, this.world, this.gameRules);
       this.weather.extinguishExposed(this.world, p);
     }
@@ -1659,6 +1749,7 @@ export class GameEngine {
   updateSkyAndLighting() {
     const time = this.worldTime;
     this.sky.update(time, this.camera);
+    if (this.dimension === 'nether') { this._updateNetherLook(); return; }
 
     const sb = skyBrightnessFactor(time);
     const ss = sunsetFactor(time);
@@ -1708,6 +1799,20 @@ export class GameEngine {
 
     // Partículas de chuva/neve
     if (this.weather) this.weather.updateVisuals(this.camera, this.world);
+  }
+
+  // Nether: sem céu, névoa avermelhada curta, luz ambiente fixa
+  _updateNetherLook() {
+    const u = this.world.uniforms;
+    u.uSkyColor.value.setRGB(0.42, 0.3, 0.3);
+    u.uSunBright.value = 1;
+    u.uBrightness.value = (settingsStore.get('device.brightness') || 0) / 100;
+    if (!this._netherFog) this._netherFog = new THREE.Color(0.2, 0.03, 0.03);
+    u.uFogColor.value.copy(this._netherFog);
+    const fogDist = Math.max(2, this.renderDistance) * 16;
+    u.uFogNear.value = Math.min(fogDist * 0.2, 24);
+    u.uFogFar.value = Math.min(fogDist, 96);
+    this.scene.background = this._netherFog;
   }
 
   updateCamera() {
@@ -2141,6 +2246,8 @@ export class GameEngine {
       isSoftwareRenderer: perfMonitor.isSoftwareRenderer,
       loadingRadius: this.loadingRadius,
       targetRadius: this.targetRadius,
+      dimension: this.dimension,
+      portalProgress: this._portalTicks > 0 ? Math.min(1, this._portalTicks / 80) : 0,
       playerListOpen: !!this.playerListOpen,
       pings: this.netManager?.getAllPings() || [{ name: p.nomeJogador || 'Jogador', pingMs: 0, isHost: true, id: 'local', rank: 'owner' }],
       selfName: p.nomeJogador || null,
@@ -2676,6 +2783,9 @@ export class GameEngine {
         this.onChatMessage?.({ type: 'system', text: '§cSua cama estava ausente ou obstruída', timestamp: Date.now() });
       }
     }
+    if (this.dimension !== 'overworld') {
+      this._attachWorld(this.worlds.overworld); this.dimension = 'overworld'; this.sky?.setVisible(true); this._portalTicks = 0;
+    }
     respawnPlayer(p, spawn);
     unstickPlayer(this.world, p.pos);
     this._requestPointerLock();
@@ -2833,6 +2943,7 @@ export class GameEngine {
     this.pendingTnt = [];
     if (this.sky) this.sky.dispose();
     if (this.weather) this.weather.dispose();
+    for (const w of Object.values(this.worlds)) if (w && w !== this.world) w.dispose(this.scene);
     if (this.world) this.world.dispose(this.scene);
     if (this.renderer) { this.renderer.dispose(); this.renderer.forceContextLoss?.(); }
   }

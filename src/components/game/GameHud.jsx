@@ -34,6 +34,7 @@ export default function GameHud({ hud, onPause }) {
   const hideInGameHud = hud.hasGuiOpen || hud.paused;
   return (
     <div className="pointer-events-none fixed inset-0 select-none font-mono text-white">
+      {hud.portalProgress > 0 && <div className="absolute inset-0" style={{ background: 'rgba(110,40,180,0.55)', opacity: hud.portalProgress }} />}
       {/* Camada do HUD de jogo: Transição suave de opacidade (100% jogando, 0% ao abrir GUI) */}
       <div className={`transition-opacity duration-150 ${hideInGameHud ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <SurvivalHud hud={hud} />

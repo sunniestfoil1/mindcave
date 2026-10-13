@@ -205,6 +205,12 @@ export function createSkyBoxGeometry(radius, segments = 8) {
 
 // Camadas de Céu Personalizado (OptiFine / MCPatcher - CEU.zip)
 export class Sky {
+  // No Nether não há céu: esconde a cúpula, o sol, a lua, as estrelas e as nuvens (e volta a mostrar no mundo normal)
+  setVisible(v) {
+    this._hidden = !v;
+    for (const o of [this.dome, this.sun, this.moon, this.stars, this.clouds]) if (o) o.visible = v;
+  }
+
   constructor(scene, seed) {
     this.scene = scene;
     this.seed = seed >>> 0;
