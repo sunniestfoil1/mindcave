@@ -28,8 +28,69 @@ const BLOCK_COLORS = {
 };
 const DEFAULT_COLOR = [127, 127, 127];
 
-function getBlockColor(blockId) {
-  return BLOCK_COLORS[blockId] || DEFAULT_COLOR;
+// Paletas ricas por bloco: extrai múltiplos tons da textura oficial (ex: grama tem verde vibrante e terra marrom)
+const BLOCK_PALETTES = {
+  // Grama (bloco 2): pixels do topo verde e laterais de terra
+  2: [
+    [118, 178, 62], [102, 162, 48], [88, 148, 38], // verde da grama
+    [134, 96, 67], [120, 85, 58], [148, 108, 78],  // terra da raiz
+  ],
+  // Terra (bloco 3)
+  3: [[134, 96, 67], [120, 85, 58], [148, 108, 78]],
+  // Pedra (bloco 1)
+  1: [[125, 125, 125], [112, 112, 112], [138, 138, 138]],
+  // Pedregulho (bloco 4)
+  4: [[110, 110, 110], [95, 95, 95], [125, 125, 125], [82, 82, 82]],
+  // Tábuas de madeira (5, 53, 126, 85, 107)
+  5: [[162, 130, 78], [178, 145, 90], [145, 115, 65]],
+  // Tronco (17, 162)
+  17: [[105, 80, 50], [120, 95, 60], [165, 135, 85]],
+  // Folhas (18, 161)
+  18: [[65, 140, 48], [75, 155, 55], [55, 125, 40]],
+  // Areia (12, 24)
+  12: [[219, 207, 163], [205, 195, 150], [230, 220, 175]],
+  // Cascalho (13)
+  13: [[125, 120, 120], [140, 135, 135], [110, 105, 105]],
+  // Carvão minério (16)
+  16: [[120, 120, 120], [45, 45, 45], [30, 30, 30]],
+  // Ferro minério (15)
+  15: [[120, 120, 120], [190, 160, 140], [175, 145, 125]],
+  // Ouro minério (14)
+  14: [[120, 120, 120], [240, 210, 60], [220, 190, 45]],
+  // Diamante minério (56)
+  56: [[120, 120, 120], [90, 220, 220], [65, 195, 195]],
+  // Redstone minério (73)
+  73: [[120, 120, 120], [230, 35, 35], [195, 20, 20]],
+  // Bancada (58)
+  58: [[162, 130, 78], [140, 105, 60], [180, 145, 90]],
+  // Fornalha (61, 62)
+  61: [[125, 125, 125], [105, 105, 105], [85, 85, 85]],
+  // Baú (54)
+  54: [[160, 115, 45], [180, 130, 55], [135, 95, 35]],
+  // Vidro (20)
+  20: [[205, 230, 235], [225, 245, 250], [185, 215, 225]],
+  // Neve / Gelo (78, 79, 80)
+  78: [[245, 250, 255], [230, 240, 250]],
+  79: [[155, 195, 245], [180, 215, 255]],
+  // Obsidiana (49)
+  49: [[30, 22, 42], [22, 15, 32], [42, 30, 58]],
+  // Tijolos (45)
+  45: [[155, 75, 60], [140, 65, 50], [170, 85, 70]],
+};
+
+function getBlockParticleColor(blockId) {
+  const pal = BLOCK_PALETTES[blockId];
+  if (pal && pal.length > 0) {
+    return pal[Math.floor(Math.random() * pal.length)];
+  }
+  const simple = BLOCK_COLORS[blockId];
+  if (simple) return simple;
+  const blk = getBlock(blockId);
+  if (blk?.color) {
+    const c = blk.color;
+    return [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+  }
+  return DEFAULT_COLOR;
 }
 
 export class ParticleManager {
@@ -59,7 +120,6 @@ export class ParticleManager {
   }
 
   _getFreeParticle() {
-    // Round-robin search for a free slot (overwrites oldest if pool full)
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const idx = (this._cursor + i) % MAX_PARTICLES;
       if (!this.particles[idx].active) {
@@ -67,32 +127,31 @@ export class ParticleManager {
         return this.particles[idx];
       }
     }
-    // Pool exhausted: reuse the cursor slot (oldest)
     const p = this.particles[this._cursor];
     this._cursor = (this._cursor + 1) % MAX_PARTICLES;
     return p;
   }
 
-  // Blocos quebrados — 8 a 16 cubos pequenos com a cor do bloco
+  // Blocos quebrados — cubos pequenos com amostragem real da textura do bloco (sem partículas pretas)
   spawnBlockBreak(x, y, z, blockId) {
-    const color = getBlockColor(blockId);
-    const count = 8 + Math.floor(Math.random() * 8);
+    const count = 10 + Math.floor(Math.random() * 6);
     for (let i = 0; i < count; i++) {
+      const color = getBlockParticleColor(blockId);
       const p = this._getFreeParticle();
       p.active = true;
       p.x = x + 0.15 + Math.random() * 0.7;
       p.y = y + 0.15 + Math.random() * 0.7;
       p.z = z + 0.15 + Math.random() * 0.7;
-      p.vx = (Math.random() - 0.5) * 0.3;
-      p.vy = 0.15 + Math.random() * 0.25;
-      p.vz = (Math.random() - 0.5) * 0.3;
-      // Slight color variation per particle
-      const vary = (Math.random() - 0.5) * 30;
-      p.r = Math.max(0, Math.min(255, color[0] + vary));
-      p.g = Math.max(0, Math.min(255, color[1] + vary));
-      p.b = Math.max(0, Math.min(255, color[2] + vary));
+      p.vx = (Math.random() - 0.5) * 0.28;
+      p.vy = 0.14 + Math.random() * 0.22;
+      p.vz = (Math.random() - 0.5) * 0.28;
+      // Variação leve no tom dos pixels
+      const vary = (Math.random() - 0.5) * 16;
+      p.r = Math.max(10, Math.min(255, color[0] + vary));
+      p.g = Math.max(10, Math.min(255, color[1] + vary));
+      p.b = Math.max(10, Math.min(255, color[2] + vary));
       p.life = 0;
-      p.maxLife = 30 + Math.floor(Math.random() * 20);
+      p.maxLife = 24 + Math.floor(Math.random() * 16);
       p.onGround = false;
     }
   }
@@ -160,7 +219,7 @@ export class ParticleManager {
       p.vz *= 0.96;
 
       // Colisão com blocos sólidos (chão)
-      if (world && p.vy <= 0) {
+      if (world && p.vy <= 0 && p.y > 0 && p.y < 256) {
         const bx = Math.floor(p.x);
         const by = Math.floor(p.y - 0.06);
         const bz = Math.floor(p.z);

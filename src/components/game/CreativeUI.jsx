@@ -244,8 +244,8 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
 
   const winTex = tab === 'search' ? texSearch : tab === 'survival' ? texInventory : texItems;
   const currentTabName = [...TOP_TABS, ...BOTTOM_TABS].find(t => t.id === tab)?.name || 'Itens';
-  const left = Math.floor((window.innerWidth - WIN.w * S) / 2);
-  const top = Math.floor((window.innerHeight - WIN.h * S) / 2);
+  const left = Math.max(0, Math.floor((window.innerWidth - WIN.w * S) / 2));
+  const top = Math.max(0, Math.floor((window.innerHeight - WIN.h * S) / 2));
 
   // Slot de 16×16 px de GUI no ponto (x, y) da janela
   const slot = (key, x, y, item, props) => (
@@ -273,11 +273,18 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
   return (
     <div
       className="fixed inset-0 z-50 select-none pointer-events-auto"
-      style={{ background: 'rgba(0,0,0,0.65)', imageRendering: 'pixelated' }}
+      style={{ background: 'rgba(0,0,0,0.65)', imageRendering: 'pixelated', userSelect: 'none' }}
+      draggable={false}
+      onDragStart={(e) => e.preventDefault()}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       onWheel={handleWheel}
     >
-      <div ref={rootRef} style={{ position: 'absolute', left, top, width: WIN.w * S, height: WIN.h * S }}>
+      <div
+        ref={rootRef}
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+        style={{ position: 'absolute', left, top, width: WIN.w * S, height: WIN.h * S, userSelect: 'none' }}
+      >
         {/* Abas inativas atrás da janela, ativa por cima */}
         {TOP_TABS.map((t, i) => renderTab(t, i, true))}
         {BOTTOM_TABS.map((t, i) => renderTab(t, i, false))}

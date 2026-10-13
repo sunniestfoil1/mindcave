@@ -51,9 +51,9 @@ function toolRecipes(prefix, ids, material) {
   // ids = [pickaxe, axe, shovel, hoe, sword]
   return [
     R(['MMM', ' S ', ' S '], { M: { id: material }, S: STICK }, { id: ids[0], count: 1 }), // picareta
-    R(['MM ', 'MS ', ' S '], { M: { id: material }, S: STICK }, { id: ids[1], count: 1 }), // machado
+    R(['MM', 'MS', ' S'], { M: { id: material }, S: STICK }, { id: ids[1], count: 1 }),    // machado (resolvido bug de coluna extra)
     R(['M', 'S', 'S'], { M: { id: material }, S: STICK }, { id: ids[2], count: 1 }),       // pá
-    R(['MM ', ' S ', ' S '], { M: { id: material }, S: STICK }, { id: ids[3], count: 1 }), // enxada MC 1.8.9 (2 materiais + 2 gravetos)
+    R(['MM', ' S', ' S'], { M: { id: material }, S: STICK }, { id: ids[3], count: 1 }),    // enxada
     R(['M', 'M', 'S'], { M: { id: material }, S: STICK }, { id: ids[4], count: 1 }),       // espada
   ];
 }
@@ -158,11 +158,23 @@ export const RECIPES = [
   R(['III', 'III', 'III'], { I: { id: 263 } }, { id: 173, count: 1 }), // carvão → bloco
 
   // Bloco → itens (9x)
-  R(['III', 'III', 'III'], { I: { id: 42 } }, { id: 265, count: 9 }),
-  R(['III', 'III', 'III'], { I: { id: 41 } }, { id: 266, count: 9 }),
-  R(['III', 'III', 'III'], { I: { id: 57 } }, { id: 264, count: 9 }),
-  R(['III', 'III', 'III'], { I: { id: 133 } }, { id: 388, count: 9 }),
-  R(['III', 'III', 'III'], { I: { id: 173 } }, { id: 263, count: 9 }),
+  R(['I'], { I: { id: 42 } }, { id: 265, count: 9 }),  // 1 bloco ferro → 9 lingotes
+  R(['I'], { I: { id: 41 } }, { id: 266, count: 9 }),  // 1 bloco ouro → 9 lingotes
+  R(['I'], { I: { id: 57 } }, { id: 264, count: 9 }),  // 1 bloco diamante → 9 diamantes
+  R(['I'], { I: { id: 133 } }, { id: 388, count: 9 }), // 1 bloco esmeralda → 9 esmeraldas
+  R(['I'], { I: { id: 173 } }, { id: 263, count: 9 }), // 1 bloco carvão → 9 carvões
+  R(['I'], { I: { id: 152 } }, { id: 331, count: 9 }), // 1 bloco redstone → 9 redstones
+
+  // Vara de pescar (3 gravetos + 2 linhas)
+  R(['  S', ' SL', 'S L'], { S: STICK, L: STRING }, { id: 346, count: 1 }),
+  // Porta de ferro
+  R(['II', 'II', 'II'], { I: IRON_INGOT }, { id: 330, count: 3 }),
+  // Alçapão de madeira
+  R(['PPP', 'PPP'], { P: { id: 5 } }, { id: 96, count: 2 }),
+  // Cerca de madeira
+  R(['PSP', 'PSP'], { P: { id: 5 }, S: STICK }, { id: 85, count: 3 }),
+  // Portão de cerca
+  R(['SPS', 'SPS'], { P: { id: 5 }, S: STICK }, { id: 107, count: 1 }),
 
   // Estante
   R(['PPP', 'BBB', 'PPP'], { P: { id: 5 }, B: BOOK }, { id: 47, count: 1 }),
@@ -276,9 +288,23 @@ function normalizeGrid(grid, size) {
   return result;
 }
 
-// Converte padrão de receita em matriz
+// Converte padrão de receita em matriz normalizada (sem margens vazias)
 function patternToGrid(recipe) {
-  return recipe.pattern.map(row => row.split('').map(c => c === ' ' ? null : c));
+  const raw = recipe.pattern.map(row => row.split('').map(c => c === ' ' ? null : c));
+  let minY = 0, maxY = raw.length - 1;
+  while (minY <= maxY && raw[minY].every(c => !c)) minY++;
+  while (maxY >= minY && raw[maxY].every(c => !c)) maxY--;
+  if (minY > maxY) return raw;
+  const maxW = Math.max(...raw.map(r => r.length));
+  let minX = 0, maxX = maxW - 1;
+  while (minX <= maxX && raw.every(r => !r[minX])) minX++;
+  while (maxX >= minX && raw.every(r => !r[maxX])) maxX--;
+  if (minX > maxX) return raw;
+  const result = [];
+  for (let y = minY; y <= maxY; y++) {
+    result.push(raw[y].slice(minX, maxX + 1));
+  }
+  return result;
 }
 
 // Verifica se uma grade normalizada corresponde a um padrão

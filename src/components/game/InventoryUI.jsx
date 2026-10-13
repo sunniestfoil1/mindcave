@@ -98,12 +98,22 @@ export default function InventoryUI({ inv, onUpdate, onClose, hud }) {
     </div>
   );
 
-  const left = Math.floor((window.innerWidth - WIN.w * S) / 2);
-  const top = Math.floor((window.innerHeight - WIN.h * S) / 2);
+  const left = Math.max(0, Math.floor((window.innerWidth - WIN.w * S) / 2));
+  const top = Math.max(0, Math.floor((window.innerHeight - WIN.h * S) / 2));
 
   return (
-    <div className="fixed inset-0 z-50 select-none pointer-events-auto" style={{ background: 'rgba(0,0,0,0.6)', imageRendering: 'pixelated' }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ position: 'absolute', left, top, width: WIN.w * S, height: WIN.h * S }}>
+    <div
+      className="fixed inset-0 z-50 select-none pointer-events-auto"
+      style={{ background: 'rgba(0,0,0,0.6)', imageRendering: 'pixelated', userSelect: 'none' }}
+      draggable={false}
+      onDragStart={(e) => e.preventDefault()}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+        style={{ position: 'absolute', left, top, width: WIN.w * S, height: WIN.h * S, userSelect: 'none' }}
+      >
         <Sprite url={tex} u={0} v={0} w={WIN.w} h={WIN.h} S={S} />
         <PlayerPreview S={S} />
         <McText text="Criação" x={86} y={16} S={S} />

@@ -31,9 +31,10 @@ function PauseMenuContent({ hud, onPause }) {
 
 export default function GameHud({ hud, onPause }) {
   if (!hud || hud.hideHud) return null;
+  const hideInGameHud = hud.hasGuiOpen || hud.paused;
   return (
     <div className="pointer-events-none fixed inset-0 select-none font-mono text-white">
-      <SurvivalHud hud={hud} />
+      {!hideInGameHud && <SurvivalHud hud={hud} />}
       {/* Overlay de fluido */}
       {hud.inFluid === 'water' && (
         <div className="absolute inset-0 bg-blue-600/20" />
@@ -43,7 +44,7 @@ export default function GameHud({ hud, onPause }) {
       )}
 
       {/* Mira */}
-      {!hud.paused && !hud.chatOpen && (
+      {!hud.paused && !hud.chatOpen && !hud.hasGuiOpen && (
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           <div className="relative w-4 h-4">
             <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[2px] h-4 bg-white/90 shadow-[0_0_2px_rgba(0,0,0,0.9)]" />
@@ -65,8 +66,8 @@ export default function GameHud({ hud, onPause }) {
         </div>
       )}
 
-      {/* Hotbar, vida, fome, armadura e XP com a textura oficial */}
-      <HudBars hud={hud} />
+      {/* Hotbar, vida, fome, armadura e XP com a textura oficial — oculta quando qualquer GUI está aberta */}
+      {!hideInGameHud && <HudBars hud={hud} />}
 
       {/* Status da Trilha Sonora C418 & Voice Chat */}
       <div className="absolute top-2 left-2 flex items-center gap-2 pointer-events-auto z-30">

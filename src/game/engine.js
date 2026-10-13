@@ -907,14 +907,16 @@ export class GameEngine {
       }
     }
     if (attackActive) {
+      // 1.8.9: segurar o botão esquerdo repete continuamente a animação de bater (no ar ou no bloco)
+      if (!this.anim.isSwinging) {
+        startSwing(this.anim);
+      }
       // Mineração contínua — só se não há entidade no caminho
       if (!this.raycastEntity()) {
         if (p.gameMode === 'creative' || p.gameMode === 'spectator') {
-          if (this.breakCd <= 0) { this.breakBlock(); this.breakCd = 5; startSwing(this.anim); }
+          if (this.breakCd <= 0) { this.breakBlock(); this.breakCd = 5; }
         } else {
           this.tickMining(p);
-          // 1.8.9: o balanço repete enquanto segura o botão sobre um bloco
-          if (this.miningTarget && !this.anim.isSwinging) startSwing(this.anim);
         }
       }
     } else {
@@ -1439,8 +1441,9 @@ export class GameEngine {
   updatePlayerModel() {
     const p = this.player;
     const m = this.playerModel;
+    const partialTick = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));
     placePlayerModel(m, p.pos, p.yaw);
-    applyThirdPersonPose(m, this.anim, p, this.worldTime);
+    applyThirdPersonPose(m, this.anim, p, this.worldTime, partialTick);
     // Item na mão visível no F5 (o mesh de 1ª pessoa só renderiza em perspective === 0)
     setModelHeldItem(m, this.getHeldItem()?.id);
     // Capa: segue a opção "modelPart_cape" da customização de skin
@@ -1996,8 +1999,9 @@ export class GameEngine {
     }
 
     this.fpsCamera.rotation.z = this._hurtRollValue || 0; // a mão também balança com o dano
-    // Pose da mão (RF-051): braço vazio como na 1.8.9; com item, só o item
-    poseHand(this.handRig, this.anim, p, heldItem ? getItem(heldItem.id) : null, !!(heldItem && heldItem.id), this.worldTime / 20);
+    // Pose da mão (RF-051): braço com micro-interpolação sub-tick fluida
+    const partialTick = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));
+    poseHand(this.handRig, this.anim, p, heldItem ? getItem(heldItem.id) : null, !!(heldItem && heldItem.id), this.worldTime / 20, partialTick);
 
     // Renderizar a mão por cima do mundo (RF-050)
     if ((this.perspective === 0) && !this.paused) {

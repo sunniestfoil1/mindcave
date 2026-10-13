@@ -33,16 +33,22 @@ export default function ContainerFrame({ texture, w, h, inv, onClose, children }
     </div>
   );
 
-  const left = Math.floor((window.innerWidth - w * S) / 2);
-  const top = Math.floor((window.innerHeight - h * S) / 2);
+  const left = Math.max(0, Math.floor((window.innerWidth - w * S) / 2));
+  const top = Math.max(0, Math.floor((window.innerHeight - h * S) / 2));
 
   return (
     <div
       className="fixed inset-0 z-50 select-none pointer-events-auto"
-      style={{ background: 'rgba(0,0,0,0.6)', imageRendering: 'pixelated' }}
+      style={{ background: 'rgba(0,0,0,0.6)', imageRendering: 'pixelated', userSelect: 'none' }}
+      draggable={false}
+      onDragStart={(e) => e.preventDefault()}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ position: 'absolute', left, top, width: w * S, height: h * S }}>
+      <div
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+        style={{ position: 'absolute', left, top, width: w * S, height: h * S, userSelect: 'none' }}
+      >
         {children({ S, slot, tex })}
       </div>
       {hovered && !inv.cursor && <ItemTooltip item={hovered} mousePos={mouse} />}

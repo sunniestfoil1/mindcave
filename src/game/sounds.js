@@ -6,6 +6,12 @@ let audioCtx = null;
 const soundBufferCache = new Map();
 let masterGain = null;
 let sfxGain = null;
+let blocksGain = null;
+let hostileGain = null;
+let neutralGain = null;
+let playersGain = null;
+let weatherGain = null;
+let uiGain = null;
 let ambientGain = null;
 let musicGain = null;
 let voiceGain = null;
@@ -53,6 +59,30 @@ export function initAudio() {
       sfxGain.gain.value = 1.0;
       sfxGain.connect(masterGain);
 
+      blocksGain = audioCtx.createGain();
+      blocksGain.gain.value = 1.0;
+      blocksGain.connect(masterGain);
+
+      hostileGain = audioCtx.createGain();
+      hostileGain.gain.value = 1.0;
+      hostileGain.connect(masterGain);
+
+      neutralGain = audioCtx.createGain();
+      neutralGain.gain.value = 1.0;
+      neutralGain.connect(masterGain);
+
+      playersGain = audioCtx.createGain();
+      playersGain.gain.value = 1.0;
+      playersGain.connect(masterGain);
+
+      weatherGain = audioCtx.createGain();
+      weatherGain.gain.value = 1.0;
+      weatherGain.connect(masterGain);
+
+      uiGain = audioCtx.createGain();
+      uiGain.gain.value = 1.0;
+      uiGain.connect(masterGain);
+
       ambientGain = audioCtx.createGain();
       ambientGain.gain.value = 0.6;
       ambientGain.connect(masterGain);
@@ -67,7 +97,6 @@ export function initAudio() {
       voiceGain.connect(masterGain);
 
       // Técnica de Pré-aquecimento / Continuous Keep-Alive Audio Stream (Zero Latency)
-      // Mantém o canal de áudio do sistema/navegador continuamente ativo com 0.00001% de ganho inaudível
       try {
         const keepAliveGain = audioCtx.createGain();
         keepAliveGain.gain.value = 0.00001; // Praticamente 0, porém impede suspensão de hardware
@@ -104,12 +133,23 @@ export function updateAudioVolumes() {
   const masterVol = (settingsStore.get('user.volumeMaster') ?? 100) / 100;
   const musicVol = (settingsStore.get('user.volumeMusic') ?? 100) / 100;
   const blocksVol = (settingsStore.get('user.volumeBlocks') ?? 100) / 100;
+  const hostileVol = (settingsStore.get('user.volumeHostile') ?? 100) / 100;
+  const neutralVol = (settingsStore.get('user.volumeNeutral') ?? 100) / 100;
+  const playersVol = (settingsStore.get('user.volumePlayers') ?? 100) / 100;
+  const weatherVol = (settingsStore.get('user.volumeWeather') ?? 100) / 100;
+  const uiVol = (settingsStore.get('user.volumeUi') ?? 100) / 100;
   const ambientVol = (settingsStore.get('user.volumeAmbient') ?? 100) / 100;
 
   if (masterGain) masterGain.gain.value = masterVol;
   if (musicGain) musicGain.gain.value = musicVol;
-  if (sfxGain) sfxGain.gain.value = blocksVol;
+  if (blocksGain) blocksGain.gain.value = blocksVol;
+  if (hostileGain) hostileGain.gain.value = hostileVol;
+  if (neutralGain) neutralGain.gain.value = neutralVol;
+  if (playersGain) playersGain.gain.value = playersVol;
+  if (weatherGain) weatherGain.gain.value = weatherVol;
+  if (uiGain) uiGain.gain.value = uiVol;
   if (ambientGain) ambientGain.gain.value = ambientVol * 0.6;
+  if (sfxGain) sfxGain.gain.value = 1.0;
 }
 
 settingsStore.subscribe(() => {
@@ -210,7 +250,38 @@ export async function playSound(relPath, opts = {}) {
     const volume = (opts.volume !== undefined ? opts.volume : 1.0);
     gainNode.gain.value = volume;
 
-    let targetNode = opts.ambient ? (ambientGain || masterGain) : (sfxGain || masterGain);
+    const resolveChannelNode = (path, options) => {
+      if (options.ambient) return ambientGain || masterGain;
+      if (options.category === 'blocks' || options.blocks) return blocksGain || sfxGain || masterGain;
+      if (options.category === 'hostile') return hostileGain || sfxGain || masterGain;
+      if (options.category === 'neutral') return neutralGain || sfxGain || masterGain;
+      if (options.category === 'player' || options.category === 'players') return playersGain || sfxGain || masterGain;
+      if (options.category === 'ui') return uiGain || sfxGain || masterGain;
+      if (options.category === 'weather') return weatherGain || ambientGain || masterGain;
+
+      const p = String(path).toLowerCase();
+      if (p.startsWith('dig/') || p.startsWith('step/') || p.includes('/step') || p.includes('/dig') || p.includes('chest') || p.includes('door') || p.includes('piston')) {
+        return blocksGain || sfxGain || masterGain;
+      }
+      if (p.includes('zombie') || p.includes('creeper') || p.includes('skeleton') || p.includes('spider') || p.includes('enderman') || p.includes('ghast') || p.includes('blaze') || p.includes('slime')) {
+        return hostileGain || sfxGain || masterGain;
+      }
+      if (p.includes('cow') || p.includes('sheep') || p.includes('pig') || p.includes('chicken') || p.includes('villager') || p.includes('horse') || p.includes('wolf')) {
+        return neutralGain || sfxGain || masterGain;
+      }
+      if (p.includes('player') || p.includes('damage') || p.includes('fall') || p.includes('eat') || p.includes('burp')) {
+        return playersGain || sfxGain || masterGain;
+      }
+      if (p.includes('ui/') || p.includes('click') || p.includes('pop') || p.includes('levelup')) {
+        return uiGain || sfxGain || masterGain;
+      }
+      if (p.includes('rain') || p.includes('thunder')) {
+        return weatherGain || ambientGain || masterGain;
+      }
+      return sfxGain || masterGain;
+    };
+
+    let targetNode = resolveChannelNode(relPath, opts);
 
     // Se o som está muito próximo da cabeça do jogador (<= 3 blocos), toca direto sem atenuação excessiva
     let dist = 999;

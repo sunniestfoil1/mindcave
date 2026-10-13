@@ -44,15 +44,19 @@ export function buildHandRig() {
   return { arm, itemRoot, itemGroup };
 }
 
-// Matriz do braço vazio (espaço da câmera de 1ª pessoa)
-export function armMatrix(anim) {
-  const s = anim.isSwinging ? anim.swingProgress : 0;
+// Matriz do braço vazio (espaço da câmera de 1ª pessoa) com micro-interpolação sub-tick
+export function armMatrix(anim, partialTick = 0) {
+  const pt = Math.min(1, Math.max(0, partialTick));
+  const s = anim.isSwinging
+    ? Math.min(1, Math.max(0, (anim.prevSwingProgress ?? anim.swingProgress) + (anim.swingProgress - (anim.prevSwingProgress ?? anim.swingProgress)) * pt))
+    : 0;
   const sq = Math.sqrt(s);
   M.identity();
   // translação do golpe
   M.multiply(T(-0.3 * fastSin(sq * Math.PI), 0.4 * fastSin(sq * Math.PI * 2), -0.4 * fastSin(s * Math.PI)));
-  // posição base + equipar/desequipar
-  M.multiply(T(0.64, -0.6 + (anim.equipProgress - 1) * 0.6, -0.72));
+  // posição base + equipar/desequipar interpolado
+  const ep = Math.min(1, Math.max(0, (anim.prevEquipProgress ?? anim.equipProgress) + (anim.equipProgress - (anim.prevEquipProgress ?? anim.equipProgress)) * pt));
+  M.multiply(T(0.64, -0.6 + (ep - 1) * 0.6, -0.72));
   M.multiply(TMP.makeRotationY(45 * DEG));
   // balanço do golpe
   const f6 = fastSin(s * s * Math.PI);
@@ -64,7 +68,8 @@ export function armMatrix(anim) {
   M.multiply(TMP.makeRotationX(anim.handRotX * 0.2));
   // caminhada
   if (anim.speed > 0.05) {
-    const k = Math.min(1, anim.speed / 5), p = anim.walkPhase;
+    const k = Math.min(1, anim.speed / 5);
+    const p = (anim.prevWalkPhase ?? anim.walkPhase) + (anim.walkPhase - (anim.prevWalkPhase ?? anim.walkPhase)) * pt;
     M.multiply(T(-fastSin(p) * 0.05 * k, Math.abs(fastCos(p * 2)) * 0.05 * k, 0));
     M.multiply(TMP.makeRotationZ(fastSin(p) * 5 * DEG * k));
   }
@@ -74,22 +79,21 @@ export function armMatrix(anim) {
   M.multiply(TMP.makeRotationX(200 * DEG));
   M.multiply(TMP.makeRotationY(-135 * DEG));
   M.multiply(T(5.6, 0, 0));
-  // geometria em px/16 tem o ponto de rotação em (-5, 2, 0)/16 do quadro cru: já incluso no bake da caixa
   return M;
 }
 
-export function poseHand(rig, anim, player, heldDef, hasItem, time) {
+export function poseHand(rig, anim, player, heldDef, hasItem, time, partialTick = 0) {
   if (hasItem) {
     // Braço visível atrás do item ("mão segurando o bloco", pedido do jogador)
     rig.arm.visible = true;
-    rig.arm.matrix.copy(armMatrix(anim));
-    const tf = getFirstPersonTransform(anim, player, heldDef, time);
+    rig.arm.matrix.copy(armMatrix(anim, partialTick));
+    const tf = getFirstPersonTransform(anim, player, heldDef, time, partialTick);
     rig.itemRoot.position.set(tf.x, tf.y, tf.z);
     rig.itemRoot.rotation.set(tf.rotX, tf.rotY, tf.rotZ);
     rig.itemRoot.visible = true;
   } else {
     rig.itemRoot.visible = false;
     rig.arm.visible = true;
-    rig.arm.matrix.copy(armMatrix(anim));
+    rig.arm.matrix.copy(armMatrix(anim, partialTick));
   }
 }

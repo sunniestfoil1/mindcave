@@ -10,7 +10,7 @@ import { addItem } from './inventory';
 import { playPopSound } from './sounds';
 import { stateId } from './chunk';
 import { MC, getPackUrl } from './pack';
-import { itemIconFile } from './gui/iconNames';
+import { itemIconFile, itemBlockTile } from './gui/iconNames';
 import { fastSin } from './fastMath';
 
 const GRAVITY = 18.0;
@@ -84,23 +84,32 @@ function iconTexture(id) {
   if (cached !== undefined) return cached;
   const def = getItem(id);
   if (!def) { iconTexCache.set(id, null); return null; }
-  const url = getPackUrl(MC + 'textures/items/' + itemIconFile(def.name) + '.png');
-  if (!url) { iconTexCache.set(id, null); return null; }
   iconTexCache.set(id, null); // marcado como carregando (vira textura quando pronta)
-  new THREE.TextureLoader().load(url, (tex) => {
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    iconTexCache.set(id, tex);
-    // Atualiza os planos já criados com este item
-    for (const e of pendingIconMeshes) {
-      if (e.itemId !== id || !e.material) continue;
-      e.material.map = tex;
-      e.material.color.set(0xffffff);
-      e.material.transparent = true;
-      e.material.needsUpdate = true;
-      pendingIconMeshes.delete(e);
-    }
-  }, undefined, () => { iconTexCache.set(id, null); });
+
+  const iconName = itemIconFile(def.name);
+  const blockTile = itemBlockTile(def.name);
+  const path = blockTile
+    ? MC + 'textures/blocks/' + blockTile + '.png'
+    : MC + 'textures/items/' + iconName + '.png';
+
+  getPackUrl(path).then((url) => {
+    if (!url) return;
+    new THREE.TextureLoader().load(url, (tex) => {
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      iconTexCache.set(id, tex);
+      // Atualiza os planos já criados com este item
+      for (const e of pendingIconMeshes) {
+        if (e.itemId !== id || !e.material) continue;
+        e.material.map = tex;
+        e.material.color.set(0xffffff);
+        e.material.transparent = true;
+        e.material.needsUpdate = true;
+        pendingIconMeshes.delete(e);
+      }
+    });
+  }).catch(() => {});
+
   return null;
 }
 const pendingIconMeshes = new Set();

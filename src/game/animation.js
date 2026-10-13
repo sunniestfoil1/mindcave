@@ -9,12 +9,15 @@ export function createAnimationState() {
   return {
     // Locomoção
     walkPhase: 0,
+    prevWalkPhase: 0,
     speed: 0,
     // Ação
     swingProgress: 0,       // 0..1, dura 6 ticks
+    prevSwingProgress: 0,
     swingDirection: 1,
     isSwinging: false,
     equipProgress: 0,       // 0..1, item subindo ao equipar
+    prevEquipProgress: 0,
     prevSlot: -1,
     targetEquip: 1,
     // Estados de uso
@@ -34,6 +37,10 @@ export function createAnimationState() {
 
 // === Atualiza o estado de animação a cada tick ===
 export function tickAnimation(anim, player, time) {
+  anim.prevWalkPhase = anim.walkPhase;
+  anim.prevSwingProgress = anim.swingProgress;
+  anim.prevEquipProgress = anim.equipProgress;
+
   // Locomoção
   const spd = Math.hypot(player.vel.x, player.vel.z);
   anim.speed = spd;
@@ -49,6 +56,7 @@ export function tickAnimation(anim, player, time) {
     anim.swingProgress += 1 / 6;
     if (anim.swingProgress >= 1) {
       anim.swingProgress = 0;
+      anim.prevSwingProgress = 0;
       anim.isSwinging = false;
     }
   }
@@ -107,11 +115,12 @@ export function startSwing(anim) {
 // - RunningAnimation: cos(t*15+PI/2)*1.3 pernas, cos(t)*1.5 braços
 // - IdleAnimation: cos(t*2)*0.03 + PI*0.02 para braço Z
 // - CrouchAnimation: body.rotation.x = 0.4538 * |sin(pr*PI/2)|, body.position ajustado
-export function applyThirdPersonPose(model, anim, player, time) {
+export function applyThirdPersonPose(model, anim, player, time, partialTick = 0) {
   if (!model || !model.userData) return;
   const u = model.userData;
   const spd = anim.speed;
-  const t = anim.walkPhase;
+  const pt = Math.min(1, Math.max(0, partialTick));
+  const t = (anim.prevWalkPhase ?? anim.walkPhase) + (anim.walkPhase - (anim.prevWalkPhase ?? anim.walkPhase)) * pt;
 
   // Morte: tomba para o lado (RF-060)
   if (player.isDead) {
@@ -186,7 +195,7 @@ export function applyThirdPersonPose(model, anim, player, time) {
     const bob = fastSin(time * 1.5) * 0.1;
     u.armR.rotation.x = -Math.PI / 2 + bob;
   } else if (anim.isSwinging) {
-    const sp = anim.swingProgress;
+    const sp = Math.min(1, Math.max(0, (anim.prevSwingProgress ?? anim.swingProgress) + (anim.swingProgress - (anim.prevSwingProgress ?? anim.swingProgress)) * pt));
     const swingAngle = fastSin(sp * Math.PI) * 1.5;
     u.armR.rotation.x = -swingAngle;
     u.armR.rotation.z = 0;
@@ -212,8 +221,9 @@ export function applyThirdPersonPose(model, anim, player, time) {
 const _tfCached = { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0, scale: 1 };
 
 // === Calcula transformação da mão em 1ª pessoa (Minecraft 1.8.9 ItemRenderer) ===
-export function getFirstPersonTransform(anim, player, itemDef, time) {
+export function getFirstPersonTransform(anim, player, itemDef, time, partialTick = 0) {
   const DEG = Math.PI / 180;
+  const pt = Math.min(1, Math.max(0, partialTick));
 
   // 1. Vetores Base de Translação (ItemRenderer 1.8.9)
   let x = 0.56, y = -0.52, z = -0.60;
@@ -223,14 +233,14 @@ export function getFirstPersonTransform(anim, player, itemDef, time) {
   let scale = 1;
 
   // 4. Progresso de Equipar/Desequipar (Equip Progress e: 0..1)
-  const ep = anim.equipProgress;
+  const ep = Math.min(1, Math.max(0, (anim.prevEquipProgress ?? anim.equipProgress) + (anim.equipProgress - (anim.prevEquipProgress ?? anim.equipProgress)) * pt));
   y -= (1.0 - ep) * 0.6;
 
   // Bobbing da caminhada (ItemRenderer transformFirstPersonItem 1.8.9)
   const spd = anim.speed;
   if (spd > 0.05) {
     const fSpd = Math.min(1, spd / 5);
-    const p = anim.walkPhase;
+    const p = (anim.prevWalkPhase ?? anim.walkPhase) + (anim.walkPhase - (anim.prevWalkPhase ?? anim.walkPhase)) * pt;
     x += -fastSin(p) * 0.05 * fSpd;
     y += Math.abs(fastCos(p * 2)) * 0.05 * fSpd;
     rotZ += fastSin(p) * (5.0 * DEG) * fSpd;
@@ -244,7 +254,7 @@ export function getFirstPersonTransform(anim, player, itemDef, time) {
 
   // 3. Fórmulas de Onda do Golpe (Swing Math - ItemRenderer 1.8.9)
   if (anim.isSwinging) {
-    const s = anim.swingProgress;
+    const s = Math.min(1, Math.max(0, (anim.prevSwingProgress ?? anim.swingProgress) + (anim.swingProgress - (anim.prevSwingProgress ?? anim.swingProgress)) * pt));
     const sqrtS = Math.sqrt(s);
     const f4 = fastSin(s * Math.PI);
     const f5 = fastSin(sqrtS * Math.PI);
