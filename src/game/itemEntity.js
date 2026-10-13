@@ -11,6 +11,7 @@ import { playPopSound } from './sounds';
 import { stateId } from './chunk';
 import { MC, getPackUrl } from './pack';
 import { itemIconFile } from './gui/iconNames';
+import { fastSin } from './fastMath';
 
 const GRAVITY = 18.0;
 
@@ -228,7 +229,7 @@ export class ItemEntityManager {
     return entity;
   }
 
-  update(dt, player, inventory, world, time) {
+  update(dt, player, inventory, world, time, frustum = null) {
     if (!this.items.length) return;
     this.world = world;
 
@@ -332,11 +333,16 @@ export class ItemEntityManager {
         }
       }
 
-      // Animação 3D: Rotação contínua + Flutuação (bobbing)
+      // Animação 3D: Rotação contínua + Flutuação (bobbing) com Culling (Sodium / Lithium)
       if (e.mesh) {
-        const bob = Math.sin(time * 0.1 + e.pos.x) * 0.05 + 0.15;
-        e.mesh.position.set(e.pos.x, e.pos.y + bob, e.pos.z);
-        e.mesh.rotation.y += 2.5 * dt; // Rotação 3D em torno do eixo Y
+        if (frustum && !frustum.containsPoint(e.pos)) {
+          e.mesh.visible = false;
+        } else {
+          e.mesh.visible = true;
+          const bob = fastSin(time * 0.1 + e.pos.x) * 0.05 + 0.15;
+          e.mesh.position.set(e.pos.x, e.pos.y + bob, e.pos.z);
+          e.mesh.rotation.y += 2.5 * dt; // Rotação 3D em torno do eixo Y
+        }
       }
 
       // Atração e Coleta pelo Jogador

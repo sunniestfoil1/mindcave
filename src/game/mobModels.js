@@ -2,6 +2,7 @@
 // Referências: net.minecraft.client.model (ModelBiped, ModelZombie, ModelSkeleton, ModelCreeper, ModelSpider, ModelQuadruped)
 import * as THREE from 'three';
 import { getPackCanvas, MC } from './pack';
+import { fastSin, fastCos } from './fastMath';
 
 // === UV Mapping MCP — Mapeia texturas desmontadas nas faces do BoxGeometry ===
 function setBoxUVs(geo, u, v, w, h, d, texW = 64, texH = 32, mirror = false) {
@@ -475,7 +476,7 @@ export function animateMobModel(model, mob, time) {
   const age = (mob.ticksAlive || 0) + (time % 1);
   const headYaw = mob.headYaw || 0;      // convenção do jogo; raw() converte
   const headPitch = mob.headPitch || 0;
-  const c1 = Math.cos(ls * 0.6662), c2 = Math.cos(ls * 0.6662 + Math.PI);
+  const c1 = fastCos(ls * 0.6662), c2 = fastCos(ls * 0.6662 + Math.PI);
   const clamp = (v, m) => Math.max(-m, Math.min(m, v));
   const attacking = !!mob.target;
 
@@ -488,8 +489,8 @@ export function animateMobModel(model, mob, time) {
     if (u.isZombie) {
       // ModelZombie: braços à frente (80°; 120° ao atacar) com a oscilação de respiração
       const lift = -Math.PI / (attacking ? 1.5 : 2.25);
-      raw(u.armR, lift + Math.sin(age * 0.067) * 0.05, -0.1, Math.cos(age * 0.09) * 0.05 + 0.05);
-      raw(u.armL, lift - Math.sin(age * 0.067) * 0.05, 0.1, -(Math.cos(age * 0.09) * 0.05 + 0.05));
+      raw(u.armR, lift + fastSin(age * 0.067) * 0.05, -0.1, fastCos(age * 0.09) * 0.05 + 0.05);
+      raw(u.armL, lift - fastSin(age * 0.067) * 0.05, 0.1, -(fastCos(age * 0.09) * 0.05 + 0.05));
     } else if (u.isSkeleton && attacking) {
       // ModelSkeleton mirando o arco
       raw(u.armR, -Math.PI / 2 + headPitch, -0.1 + headYaw, 0);
@@ -499,8 +500,8 @@ export function animateMobModel(model, mob, time) {
       raw(u.armR, c2 * 2.0 * amt * 0.25 - 0.314, 0, 0.05);
       raw(u.armL, c1 * 2.0 * amt * 0.5, 0, -0.05);
     } else {
-      raw(u.armR, c2 * 2.0 * amt * 0.5, 0, Math.cos(age * 0.09) * 0.05 + 0.05);
-      raw(u.armL, c1 * 2.0 * amt * 0.5, 0, -(Math.cos(age * 0.09) * 0.05 + 0.05));
+      raw(u.armR, c2 * 2.0 * amt * 0.5, 0, fastCos(age * 0.09) * 0.05 + 0.05);
+      raw(u.armL, c1 * 2.0 * amt * 0.5, 0, -(fastCos(age * 0.09) * 0.05 + 0.05));
     }
   } else if (u.type === 'creeper') {
     look();
@@ -510,7 +511,7 @@ export function animateMobModel(model, mob, time) {
     raw(u.leg4, c1 * 1.4 * amt, 0, 0);
     // Inchaço (RenderCreeper.preRenderCallback): f⁴ estica XZ em até 40%, Y em 10%, com o tremor sen(f·100)
     const sw = Math.max(0, Math.min(1, mob.swelling || 0));
-    const shake = 1 + Math.sin(sw * 100) * sw * 0.01;
+    const shake = 1 + fastSin(sw * 100) * sw * 0.01;
     const f4 = Math.pow(sw, 4);
     model.scale.set((1 + f4 * 0.4) * shake, (1 + f4 * 0.1) / shake, (1 + f4 * 0.4) * shake);
   } else if (u.type === 'quadruped') {
@@ -525,16 +526,16 @@ export function animateMobModel(model, mob, time) {
     raw(u.legR, c1 * 1.4 * amt, 0, 0);
     raw(u.legL, c2 * 1.4 * amt, 0, 0);
     const flap = mob.onGround === false ? age * 1.4 : 0; // bate as asas no ar
-    raw(u.wingR, 0, 0, Math.abs(Math.sin(flap)) * 0.9);
-    raw(u.wingL, 0, 0, -Math.abs(Math.sin(flap)) * 0.9);
+    raw(u.wingR, 0, 0, Math.abs(fastSin(flap)) * 0.9);
+    raw(u.wingL, 0, 0, -Math.abs(fastSin(flap)) * 0.9);
   } else if (u.type === 'spider') {
     look();
     // ModelSpider: repouso (π/4 em Z; π/4 e π/8 em Y) somado ao balanço das pernas
     const f = Math.PI / 4, f1 = Math.PI / 8;
     const restY = [f, -f, f1, -f1, -f1, f1, -f, f];
     const restZ = [-f, f, -f * 0.74, f * 0.74, -f * 0.74, f * 0.74, -f, f];
-    const sw = (ph) => -(Math.cos(ls * 0.6662 * 2 + ph) * 0.4) * amt;
-    const lift = (ph) => Math.abs(Math.sin(ls * 0.6662 + ph) * 0.4) * amt;
+    const sw = (ph) => -(fastCos(ls * 0.6662 * 2 + ph) * 0.4) * amt;
+    const lift = (ph) => Math.abs(fastSin(ls * 0.6662 + ph) * 0.4) * amt;
     const dy = [sw(0), -sw(0), sw(Math.PI), -sw(Math.PI), sw(Math.PI / 2), -sw(Math.PI / 2), sw(Math.PI * 1.5), -sw(Math.PI * 1.5)];
     const dz = [lift(0), -lift(0), lift(Math.PI), -lift(Math.PI), lift(Math.PI / 2), -lift(Math.PI / 2), lift(Math.PI * 1.5), -lift(Math.PI * 1.5)];
     u.legs.forEach((leg, i) => raw(leg, 0, restY[i] + dy[i], restZ[i] + dz[i]));

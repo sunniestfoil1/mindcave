@@ -195,6 +195,13 @@ export class GameEngine {
     this.itemEntities = new ItemEntityManager(this.scene, this.world);
     this._wasInWater = false;
 
+    // Frustum Culling e Otimizações de Renderização (Sodium / Patcher)
+    this._projScreenMatrix = new THREE.Matrix4();
+    this._cameraFrustum = new THREE.Frustum();
+    this._cachedRaycast = null;
+    this._cachedRaycastFrame = -1;
+    this._cachedRaycastPosKey = '';
+
     // Redstone (PRD 11)
     this.redstone = new RedstoneSystem(this.world);
     this.redstone.onTNTActivate = (x, y, z) => this.spawnTNT(x, y, z);
@@ -501,7 +508,15 @@ export class GameEngine {
     return lookDirFromAngles(this.player.yaw, this.player.pitch);
   }
 
-  raycast() {
+  raycast(force = false) {
+    const p = this.player;
+    if (!force && this._cachedRaycastFrame === this.frame && p) {
+      const posKey = `${p.yaw.toFixed(3)}_${p.pitch.toFixed(3)}_${p.pos.x.toFixed(2)}_${p.pos.y.toFixed(2)}_${p.pos.z.toFixed(2)}`;
+      if (this._cachedRaycastPosKey === posKey) {
+        return this._cachedRaycast;
+      }
+    }
+
     const eye = this.eyePos();
     const dir = this.lookDir();
     const reach = this.player.gameMode === 'creative' ? PLAYER.reachCreative : PLAYER.reach;
@@ -516,6 +531,8 @@ export class GameEngine {
     let nx = 0, ny = 0, nz = 0;
     let tEnter = 0; // distância em que o raio entra na célula atual
     const getState = (a, b, c) => this.world.getBlock(a, b, c);
+    let result = null;
+
     for (let i = 0; i < 80; i++) {
       const s = this.world.getBlock(x, y, z);
       const id = stateId(s);
@@ -529,12 +546,14 @@ export class GameEngine {
             if (r && (!best || r.t < best.t)) best = r;
           }
           if (best) {
-            return { x, y, z, nx: best.nx, ny: best.ny, nz: best.nz, id, meta: stateMeta(s),
+            result = { x, y, z, nx: best.nx, ny: best.ny, nz: best.nz, id, meta: stateMeta(s),
               hx: eye.x + dir.x * best.t, hy: eye.y + dir.y * best.t, hz: eye.z + dir.z * best.t };
+            break;
           }
         } else {
-          return { x, y, z, nx, ny, nz, id, meta: stateMeta(s),
+          result = { x, y, z, nx, ny, nz, id, meta: stateMeta(s),
             hx: eye.x + dir.x * tEnter, hy: eye.y + dir.y * tEnter, hz: eye.z + dir.z * tEnter };
+          break;
         }
       }
       if (tmx < tmy && tmx < tmz) {
@@ -548,7 +567,13 @@ export class GameEngine {
         tEnter = tmz; z += sz; nx = 0; ny = 0; nz = -sz; tmz += tdz;
       }
     }
-    return null;
+
+    if (p) {
+      this._cachedRaycastFrame = this.frame;
+      this._cachedRaycastPosKey = `${p.yaw.toFixed(3)}_${p.pitch.toFixed(3)}_${p.pos.x.toFixed(2)}_${p.pos.y.toFixed(2)}_${p.pos.z.toFixed(2)}`;
+      this._cachedRaycast = result;
+    }
+    return result;
   }
 
   breakBlock() {
@@ -559,6 +584,7 @@ export class GameEngine {
     this.particles?.spawnBlockBreak(hit.x, hit.y, hit.z, hit.id);
     playBlockBreakSound(hit.id, { x: hit.x, y: hit.y, z: hit.z });
     this.world.setBlock(hit.x, hit.y, hit.z, 0);
+    this._cachedRaycastFrame = -1;
     this.onBlockChange?.(hit.x, hit.y, hit.z, 0);
     this.netManager?.sendBlockChange?.(hit.x, hit.y, hit.z, 0);
     this.breakCd = 5;
@@ -609,6 +635,7 @@ export class GameEngine {
     const newState = packState(placeId, meta);
     playBlockPlaceSound(placeId, { x: px, y: py, z: pz });
     this.world.setBlock(px, py, pz, newState);
+    this._cachedRaycastFrame = -1;
     this.onBlockChange?.(px, py, pz, newState);
     this.netManager?.sendBlockChange?.(px, py, pz, newState);
     if (this.player.gameMode === 'survival' || this.player.gameMode === 'adventure') {
@@ -1162,15 +1189,19 @@ export class GameEngine {
       perfMonitor.beginStage('entities');
       this.updateSkyAndLighting();
       this.updateCamera();
+      // Atualiza Frustum da câmera para culling de entidades e itens (Sodium / Patcher)
+      this._projScreenMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+      this._cameraFrustum.setFromProjectionMatrix(this._projScreenMatrix);
+
       this.updateOutline();
       this.updateDestroyOverlay();
       this.updatePlayerModel();
       this.updateRemotePlayers();
       if (this.itemEntities) {
         const inv = this.inventory || this.player.inventory;
-        this.itemEntities.update(Math.min(dt, 100) / 1000, this.player, inv, this.world, this.worldTime);
+        this.itemEntities.update(Math.min(dt, 100) / 1000, this.player, inv, this.world, this.worldTime, this._cameraFrustum);
       }
-      if (this.mobs) this.mobs.renderUpdate(this.worldTime / 20, this.player.pos);
+      if (this.mobs) this.mobs.renderUpdate(this.worldTime / 20, this.player.pos, this._cameraFrustum);
       if (this.particles) this.particles.renderUpdate();
       perfMonitor.endStage('entities');
       perfMonitor.beginStage('render');

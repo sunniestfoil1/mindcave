@@ -2,6 +2,7 @@
 // Camadas: locomoção (corpo), ação (braços/tronco), aditivos (respiração, cabeça, dano)
 // Procedural por padrão; GLB no PRD 10. As variáveis são replicadas para multiplayer.
 import * as THREE from 'three';
+import { fastSin, fastCos } from './fastMath';
 
 // === Estado de animação do jogador ===
 export function createAnimationState() {
@@ -136,24 +137,24 @@ export function applyThirdPersonPose(model, anim, player, time) {
   if (sprinting) {
     // Correr — cos com amplitude maior (skinview3d RunningAnimation)
     const rt = t * 1.5 + Math.PI * 0.5;
-    u.legL.rotation.x = Math.cos(rt + Math.PI) * 1.3;
-    u.legR.rotation.x = Math.cos(rt) * 1.3;
-    u.armL.rotation.x = Math.cos(rt) * 1.5;
-    u.armR.rotation.x = Math.cos(rt + Math.PI) * 1.5;
+    u.legL.rotation.x = fastCos(rt + Math.PI) * 1.3;
+    u.legR.rotation.x = fastCos(rt) * 1.3;
+    u.armL.rotation.x = fastCos(rt) * 1.5;
+    u.armR.rotation.x = fastCos(rt + Math.PI) * 1.5;
     const runArmZ = Math.PI * 0.1;
-    u.armL.rotation.z = Math.cos(rt) * 0.1 + runArmZ;
-    u.armR.rotation.z = Math.cos(rt + Math.PI) * 0.1 - runArmZ;
+    u.armL.rotation.z = fastCos(rt) * 0.1 + runArmZ;
+    u.armR.rotation.z = fastCos(rt + Math.PI) * 0.1 - runArmZ;
     // Inclinação leve ao correr
-    model.rotation.z = Math.cos(rt + Math.PI) * 0.01;
+    model.rotation.z = fastCos(rt + Math.PI) * 0.01;
   } else if (walking) {
     // Andar — sin com amplitude 0.5 (skinview3d WalkingAnimation)
     const amp = Math.min(1, spd / 5);
-    u.legL.rotation.x = Math.sin(t) * 0.5 * amp;
-    u.legR.rotation.x = Math.sin(t + Math.PI) * 0.5 * amp;
-    u.armR.rotation.x = Math.sin(t) * 0.5 * amp;
-    u.armL.rotation.x = Math.sin(t + Math.PI) * 0.5 * amp;
-    u.armL.rotation.z = Math.cos(t) * 0.03 + basicArmRotationZ;
-    u.armR.rotation.z = Math.cos(t + Math.PI) * 0.03 - basicArmRotationZ;
+    u.legL.rotation.x = fastSin(t) * 0.5 * amp;
+    u.legR.rotation.x = fastSin(t + Math.PI) * 0.5 * amp;
+    u.armR.rotation.x = fastSin(t) * 0.5 * amp;
+    u.armL.rotation.x = fastSin(t + Math.PI) * 0.5 * amp;
+    u.armL.rotation.z = fastCos(t) * 0.03 + basicArmRotationZ;
+    u.armR.rotation.z = fastCos(t + Math.PI) * 0.03 - basicArmRotationZ;
     model.rotation.z = 0;
   } else {
     // Parado — respiração (skinview3d IdleAnimation)
@@ -161,14 +162,14 @@ export function applyThirdPersonPose(model, anim, player, time) {
     u.legR.rotation.x = 0;
     u.armL.rotation.x = 0;
     u.armR.rotation.x = 0;
-    u.armL.rotation.z = Math.cos(t) * 0.03 + basicArmRotationZ;
-    u.armR.rotation.z = Math.cos(t + Math.PI) * 0.03 - basicArmRotationZ;
+    u.armL.rotation.z = fastCos(t) * 0.03 + basicArmRotationZ;
+    u.armR.rotation.z = fastCos(t + Math.PI) * 0.03 - basicArmRotationZ;
     model.rotation.z = 0;
   }
 
   // === Agachar (skinview3d CrouchAnimation) ===
   if (sneaking && u.body) {
-    u.body.rotation.x = 0.4538 * Math.abs(Math.sin((t * 0.5 * Math.PI) / 2));
+    u.body.rotation.x = 0.4538 * Math.abs(fastSin((t * 0.5 * Math.PI) / 2));
   } else if (u.body) {
     u.body.rotation.x = 0;
   }
@@ -182,11 +183,11 @@ export function applyThirdPersonPose(model, anim, player, time) {
     u.armL.rotation.x = -Math.PI / 2 - anim.bowCharge * 0.3;
     u.armR.rotation.z = 0; u.armL.rotation.z = 0;
   } else if (anim.eating) {
-    const bob = Math.sin(time * 1.5) * 0.1;
+    const bob = fastSin(time * 1.5) * 0.1;
     u.armR.rotation.x = -Math.PI / 2 + bob;
   } else if (anim.isSwinging) {
     const sp = anim.swingProgress;
-    const swingAngle = Math.sin(sp * Math.PI) * 1.5;
+    const swingAngle = fastSin(sp * Math.PI) * 1.5;
     u.armR.rotation.x = -swingAngle;
     u.armR.rotation.z = 0;
   }
@@ -203,12 +204,10 @@ export function applyThirdPersonPose(model, anim, player, time) {
 
   // === Cabeça: segue pitch + head bobbing ao andar (skinview3d) ===
   if (u.head) {
-    u.head.rotation.y = walking ? Math.sin(t / 4) * 0.2 : 0;
-    u.head.rotation.x = player.pitch + (walking ? Math.sin(t / 5) * 0.1 : 0);
+    u.head.rotation.y = walking ? fastSin(t / 4) * 0.2 : 0;
+    u.head.rotation.x = player.pitch + (walking ? fastSin(t / 5) * 0.1 : 0);
   }
 }
-
-import { fastSin, fastCos } from './fastMath';
 
 const _tfCached = { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0, scale: 1 };
 

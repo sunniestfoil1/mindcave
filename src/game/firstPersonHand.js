@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { buildFirstPersonArm } from './playerModel';
 import { getFirstPersonTransform } from './animation';
+import { fastSin, fastCos } from './fastMath';
 
 const DEG = Math.PI / 180;
 const M = new THREE.Matrix4();
@@ -49,13 +50,13 @@ export function armMatrix(anim) {
   const sq = Math.sqrt(s);
   M.identity();
   // translação do golpe
-  M.multiply(T(-0.3 * Math.sin(sq * Math.PI), 0.4 * Math.sin(sq * Math.PI * 2), -0.4 * Math.sin(s * Math.PI)));
+  M.multiply(T(-0.3 * fastSin(sq * Math.PI), 0.4 * fastSin(sq * Math.PI * 2), -0.4 * fastSin(s * Math.PI)));
   // posição base + equipar/desequipar
   M.multiply(T(0.64, -0.6 + (anim.equipProgress - 1) * 0.6, -0.72));
   M.multiply(TMP.makeRotationY(45 * DEG));
   // balanço do golpe
-  const f6 = Math.sin(s * s * Math.PI);
-  const f7 = Math.sin(sq * Math.PI);
+  const f6 = fastSin(s * s * Math.PI);
+  const f7 = fastSin(sq * Math.PI);
   M.multiply(TMP.makeRotationY(f7 * 70 * DEG));
   M.multiply(TMP.makeRotationZ(-f6 * 20 * DEG));
   // inércia ao girar a visão (mesma do item)
@@ -64,8 +65,8 @@ export function armMatrix(anim) {
   // caminhada
   if (anim.speed > 0.05) {
     const k = Math.min(1, anim.speed / 5), p = anim.walkPhase;
-    M.multiply(T(-Math.sin(p) * 0.05 * k, Math.abs(Math.cos(p * 2)) * 0.05 * k, 0));
-    M.multiply(TMP.makeRotationZ(Math.sin(p) * 5 * DEG * k));
+    M.multiply(T(-fastSin(p) * 0.05 * k, Math.abs(fastCos(p * 2)) * 0.05 * k, 0));
+    M.multiply(TMP.makeRotationZ(fastSin(p) * 5 * DEG * k));
   }
   // do ombro para o braço (ModelPlayer cru)
   M.multiply(T(-1, 3.6, 3.5));

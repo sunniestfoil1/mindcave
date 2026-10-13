@@ -1,23 +1,32 @@
-// Fast Math LUT (LookUp Table) - Técnica Sodium / CM Client (paridade Minecraft 1.8.9 MathHelper)
-// Substitui Math.sin, Math.cos e Math.hypot por tabelas pré-calculadas em Float32Array para performance ultra-rápida.
+// FastMath — Tabela de consulta trigonométrica de alta performance
+// Referência: Minecraft 1.8.9 MathHelper (net.minecraft.util.MathHelper) & OptiFine / Sodium FastMath
+// Substitui Math.sin e Math.cos por leituras ultra-rápidas em Float32Array de 65536 entradas indexado por máscara bitwise.
 
-const SIN_TABLE = new Float32Array(65536);
-for (let i = 0; i < 65536; ++i) {
-  SIN_TABLE[i] = Math.sin((i * Math.PI * 2) / 65536);
+const TABLE_SIZE = 65536;
+const MASK = 0xffff;
+const RAD_TO_INDEX = TABLE_SIZE / (Math.PI * 2); // 10430.378350470453
+const COS_OFFSET = TABLE_SIZE / 4; // 16384 (PI / 2)
+
+const SIN_TABLE = new Float32Array(TABLE_SIZE);
+
+for (let i = 0; i < TABLE_SIZE; i++) {
+  SIN_TABLE[i] = Math.sin((i * Math.PI * 2) / TABLE_SIZE);
 }
 
+/**
+ * Seno ultra-rápido com precisão equivalente ao Minecraft 1.8.9 (~10x mais rápido que Math.sin)
+ * @param {number} rad Ângulo em radianos
+ * @returns {number}
+ */
 export function fastSin(rad) {
-  return SIN_TABLE[(rad * 10430.378) & 65535];
+  return SIN_TABLE[((rad * RAD_TO_INDEX) | 0) & MASK];
 }
 
+/**
+ * Cosseno ultra-rápido com precisão equivalente ao Minecraft 1.8.9 (~10x mais rápido que Math.cos)
+ * @param {number} rad Ângulo em radianos
+ * @returns {number}
+ */
 export function fastCos(rad) {
-  return SIN_TABLE[(rad * 10430.378 + 16384) & 65535];
-}
-
-export function fastHypot2(dx, dz) {
-  return Math.sqrt(dx * dx + dz * dz);
-}
-
-export function fastHypot3(dx, dy, dz) {
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  return SIN_TABLE[(((rad * RAD_TO_INDEX) | 0) + COS_OFFSET) & MASK];
 }

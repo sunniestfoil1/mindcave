@@ -1,4 +1,4 @@
-// Gerenciador de mobs — integra spawn, tick, IA, combate, drops, render — PRD 08
+import * as THREE from 'three';
 import { MobEntity } from './mobEntity';
 import { MobSpawnSystem, spawnChunkAnimals } from './mobSpawn';
 import { applyDamage, addXP } from './survival';
@@ -6,6 +6,8 @@ import { addItem } from './inventory';
 import { getBlock } from './blocks';
 import { stateId } from './chunk';
 import { canBlockDamage, getBlockedDamage } from './combat';
+
+const _mobBox = new THREE.Box3();
 
 export class MobManager {
   constructor(scene, world) {
@@ -132,15 +134,26 @@ export class MobManager {
     }
   }
 
-  renderUpdate(time, playerPos) {
+  renderUpdate(time, playerPos, frustum) {
     const px = playerPos?.x || 0, pz = playerPos?.z || 0;
     for (const mob of this.mobs) {
       if (mob.isDead) continue;
-      // Frustum & Distance Culling: ignora entidades a mais de 64 blocos do jogador
+      // 1. Distance Culling: ignora entidades a mais de 64 blocos do jogador
       const dx = mob.pos.x - px, dz = mob.pos.z - pz;
       if (dx * dx + dz * dz > 4096) {
         if (mob._model) mob._model.visible = false;
         continue;
+      }
+      // 2. Frustum Culling (Sodium / Out of Sight / Patcher): se estiver fora do campo de visão da câmera, oculta e pula animação
+      if (frustum) {
+        const w = (mob.width || 0.6) * 1.5;
+        const h = (mob.height || 1.8) * 1.2;
+        _mobBox.min.set(mob.pos.x - w, mob.pos.y - 0.2, mob.pos.z - w);
+        _mobBox.max.set(mob.pos.x + w, mob.pos.y + h, mob.pos.z + w);
+        if (!frustum.intersectsBox(_mobBox)) {
+          if (mob._model) mob._model.visible = false;
+          continue;
+        }
       }
       if (!mob._model) mob.ensureModel(this.scene);
       mob.updateModel(time);
