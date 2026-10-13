@@ -8,6 +8,8 @@ import { itemIconFile, itemBlockTile, ICON_TINT } from "@/game/gui/iconNames";
 import { drawIsoBoxes, ICON_SLAB, ICON_STAIRS } from "@/game/gui/isoIcon";
 
 const blockCanvasCache = new Map();
+const flatCanvasCache = new Map();
+const itemUrlCache = new Map();
 
 function get3DBlockDataUrl(topImg, sideImg, cacheKey) {
   if (blockCanvasCache.has(cacheKey)) return blockCanvasCache.get(cacheKey);
@@ -57,8 +59,10 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
   const [imgUrl, setImgUrl] = useState(null);
   const atlasVer = getAtlasVersion(); // o ícone é refeito quando as texturas reais terminam de carregar
 
+  const hasItem = Boolean(item && item.id && item.id > 0);
+
   useEffect(() => {
-    if (!item || !item.id) {
+    if (!hasItem) {
       setImgUrl(null);
       return;
     }
@@ -103,8 +107,18 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
         const sd = tile(side, tint && side === top ? tint : null);
         if (t && sd) { setImgUrl(get3DBlockDataUrl(t, sd, `${top}|${side}|${tint}`)); return true; }
       } else {
+        const flatKey = `${side || top}|${tint}`;
+        if (flatCanvasCache.has(flatKey)) {
+          setImgUrl(flatCanvasCache.get(flatKey));
+          return true;
+        }
         const flat = tile(side || top, tint);
-        if (flat) { setImgUrl(flat.toDataURL()); return true; }
+        if (flat) {
+          const u = flat.toDataURL();
+          flatCanvasCache.set(flatKey, u);
+          setImgUrl(u);
+          return true;
+        }
       }
       return false;
     };
@@ -116,13 +130,34 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
     }
     const it = ITEMS[item.id];
     if (!it) { setImgUrl(null); return; }
+
+    const itemKey = it.name;
+    if (itemUrlCache.has(itemKey)) {
+      setImgUrl(itemUrlCache.get(itemKey));
+      return;
+    }
+
     getPackUrl(MC + 'textures/items/' + itemIconFile(it.name) + '.png').then((url) => {
-      if (url) { setImgUrl(url); return; }
+      if (url) {
+        itemUrlCache.set(itemKey, url);
+        setImgUrl(url);
+        return;
+      }
       const blockTile = itemBlockTile(it.name);
+      if (blockTile && flatCanvasCache.has(blockTile)) {
+        setImgUrl(flatCanvasCache.get(blockTile));
+        return;
+      }
       const flat = blockTile ? tile(blockTile) : null;
-      setImgUrl(flat ? flat.toDataURL() : null);
+      if (flat) {
+        const u = flat.toDataURL();
+        flatCanvasCache.set(blockTile, u);
+        setImgUrl(u);
+      } else {
+        setImgUrl(null);
+      }
     });
-  }, [item?.id, item?.meta, atlasVer]);
+  }, [item?.id, item?.meta, atlasVer, hasItem]);
 
   const handleClick = (e) => {
     e.preventDefault();
@@ -136,12 +171,12 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
     if (onRightClick) onRightClick();
   };
 
-  const handleMouseEnter = (e) => { setHover(true); if (onHover) onHover(item, e); };
+  const handleMouseEnter = (e) => { setHover(true); if (onHover && hasItem) onHover(item, e); };
   const handleMouseLeave = (e) => { setHover(false); if (onHover) onHover(null, e); };
 
-  const bg = item ? itemColor(item.id) : "rgba(139,139,139,0.15)";
-  const durRatio = item ? getDurabilityRatio(item) : 1;
-  const showDur = item && (ITEMS[item.id]?.durability) && durRatio < 1;
+  const bg = hasItem ? itemColor(item.id) : undefined;
+  const durRatio = hasItem ? getDurabilityRatio(item) : 1;
+  const showDur = hasItem && (ITEMS[item.id]?.durability) && durRatio < 1;
   const durColor = durRatio > 0.5 ? "bg-green-500" : durRatio > 0.25 ? "bg-yellow-500" : "bg-red-500";
 
   const baseBorder = transparent ? "" : "border border-black/40 rounded-sm";
@@ -153,41 +188,46 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
       onContextMenu={handleContext}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className={`relative flex items-center justify-center cursor-pointer transition-colors ${baseBorder} ${hoverClass}`}
+      draggable={false}
+      onDragStart={(e) => e.preventDefault()}
+      className={`relative flex items-center justify-center cursor-pointer transition-colors select-none ${baseBorder} ${hoverClass}`}
       style={{
         width: size,
         height: size,
-        background: (!transparent && item && !imgUrl) ? bg : undefined,
+        userSelect: 'none',
+        background: (!transparent && hasItem && !imgUrl) ? bg : undefined,
       }}
     >
-      {item && (
+      {hasItem && (
         <>
           {/* Imagem real ou cor fallback */}
           {imgUrl ? (
             <img
               src={imgUrl}
               alt=""
-              className={fill ? "w-full h-full object-contain" : "w-3/4 h-3/4 object-contain"}
-              style={{ imageRendering: 'pixelated' }}
+              draggable={false}
+              onDragStart={(e) => e.preventDefault()}
+              className={fill ? "w-full h-full object-contain pointer-events-none select-none" : "w-3/4 h-3/4 object-contain pointer-events-none select-none"}
+              style={{ imageRendering: 'pixelated', userSelect: 'none' }}
             />
           ) : (
-            <div className={fill ? "w-full h-full rounded-sm" : "w-3/4 h-3/4 rounded-sm"} style={{ background: bg }} />
+            !transparent && <div className={fill ? "w-full h-full rounded-sm" : "w-3/4 h-3/4 rounded-sm"} style={{ background: bg }} />
           )}
 
           {/* Contagem */}
           {item.count > 1 && (
             <span
-              className="absolute text-white"
+              className="absolute text-white pointer-events-none select-none"
               style={guiScale
                 ? { right: -guiScale, bottom: -guiScale, fontSize: 8 * guiScale, lineHeight: 1, fontFamily: "'Minecraft', monospace", textShadow: `${guiScale}px ${guiScale}px 0 #3f3f3f`, pointerEvents: 'none', zIndex: 2 }
-                : { right: 2, bottom: 0, fontSize: 12, fontWeight: 700, textShadow: "1px 1px 1px black, -1px -1px 1px black" }}
+                : { right: 2, bottom: 0, fontSize: 12, fontWeight: 700, textShadow: "1px 1px 1px black, -1px -1px 1px black", pointerEvents: 'none' }}
             >
               {item.count}
             </span>
           )}
           {/* Barra de durabilidade */}
           {showDur && (
-            <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-black/50 rounded-full overflow-hidden">
+            <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-black/50 rounded-full overflow-hidden pointer-events-none">
               <div className={"h-full " + durColor} style={{ width: `${durRatio * 100}%` }} />
             </div>
           )}

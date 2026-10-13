@@ -123,7 +123,17 @@ export class MobEntity {
 
   // === Tick ===
   tick(world, ctx) {
-    if (this.isDead) return;
+    if (this.isDead) {
+      this.deathTime = (this.deathTime || 0) + 1;
+      this.vel.x = 0;
+      this.vel.z = 0;
+      if (this._model) {
+        // Animação clássica da 1.8.9: tomba de lado até 90 graus durante os 20 ticks
+        const progress = Math.min(1, this.deathTime / 20);
+        this._model.rotation.z = progress * (Math.PI / 2);
+      }
+      return;
+    }
     this.ticksAlive++;
 
     // Timers
@@ -282,6 +292,7 @@ export class MobEntity {
     if (this.health <= 0) {
       this.health = 0;
       this.isDead = true;
+      this.deathTime = 0;
     }
     MobEntity.onSound?.(this, this.isDead ? 'death' : 'hurt');
     return true;
@@ -290,12 +301,25 @@ export class MobEntity {
   getDrops(killedByPlayer) {
     if (!this.type.drops) return [];
     const drops = [];
+    const rareDrops = [];
+
     for (const d of this.type.drops) {
-      if (d.rare && !killedByPlayer) continue;
       if (d.playerOnly && !killedByPlayer) continue;
+      if (d.rare) {
+        if (killedByPlayer) rareDrops.push(d);
+        continue;
+      }
       const count = d.min + Math.floor(Math.random() * (d.max - d.min + 1));
       if (count > 0) drops.push({ id: d.id, count, meta: 0 });
     }
+
+    // Drops raros (Minecraft 1.8.9): apenas 2.5% de chance total (1 em 40)
+    // Se a chance de 2.5% passar, seleciona apenas UM dos itens raros possíveis
+    if (rareDrops.length > 0 && Math.random() < 0.025) {
+      const chosen = rareDrops[Math.floor(Math.random() * rareDrops.length)];
+      drops.push({ id: chosen.id, count: 1, meta: chosen.meta || 0 });
+    }
+
     // Carne assada se morreu queimando
     if (this.fireTicks > 0 || this.lastDamageSource === 'burning' || this.lastDamageSource === 'fire') {
       for (const d of drops) {

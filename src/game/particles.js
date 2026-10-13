@@ -120,6 +120,28 @@ export class ParticleManager {
     }
   }
 
+  // Efeito clássico de morte (nuvem branca de fumaça / poof da 1.8.9)
+  spawnDeathPoof(x, y, z) {
+    const count = 16;
+    for (let i = 0; i < count; i++) {
+      const p = this._getFreeParticle();
+      p.active = true;
+      p.x = x + (Math.random() - 0.5) * 0.6;
+      p.y = y + 0.2 + Math.random() * 0.6;
+      p.z = z + (Math.random() - 0.5) * 0.6;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.04 + Math.random() * 0.08;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = 0.06 + Math.random() * 0.1;
+      p.vz = Math.sin(angle) * speed;
+      const shade = 220 + Math.floor(Math.random() * 35);
+      p.r = shade; p.g = shade; p.b = shade;
+      p.life = 0;
+      p.maxLife = 18 + Math.floor(Math.random() * 12);
+      p.onGround = false;
+    }
+  }
+
   tick(world) {
     for (let i = 0; i < MAX_PARTICLES; i++) {
       const p = this.particles[i];

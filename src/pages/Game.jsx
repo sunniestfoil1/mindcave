@@ -26,6 +26,7 @@ import PerformancePanel from "@/components/game/PerformancePanel";
 import ChatUI from "@/components/game/ChatUI";
 import ConnectionScreen from "@/components/game/ConnectionScreen";
 import OpenToLANDialog from "@/components/game/OpenToLANDialog";
+import FeedbackModal from "@/components/game/FeedbackModal";
 import { roomManager } from "@/game/net/roomManager";
 import { SaveQueue } from "@/game/saveQueue";
 import { serializeStats } from "@/game/stats";
@@ -112,6 +113,7 @@ export default function Game() {
   const navigate = useNavigate();
   const [netManager, setNetManager] = useState(null);
   const [showOpenToLAN, setShowOpenToLAN] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [connecting, setConnecting] = useState(null); // room object when connecting
   const [playerNames, setPlayerNames] = useState([]);
   const [user, setUser] = useState(null);
@@ -125,6 +127,7 @@ export default function Game() {
   const showStatsRef = useRef(false);
   const showOptionsRef = useRef(false);
   const showOpenToLANRef = useRef(false);
+  const showFeedbackRef = useRef(false);
   const worldRecRef = useRef(null); // registro do mundo (pvp/maxPlayers/ajustes da tela de opções)
 
   useEffect(() => { showInventoryRef.current = showInventory; }, [showInventory]);
@@ -135,6 +138,7 @@ export default function Game() {
   useEffect(() => { showStatsRef.current = showStats; }, [showStats]);
   useEffect(() => { showOptionsRef.current = showOptions; }, [showOptions]);
   useEffect(() => { showOpenToLANRef.current = showOpenToLAN; }, [showOpenToLAN]);
+  useEffect(() => { showFeedbackRef.current = showFeedback; }, [showFeedback]);
 
   const closeAllGuis = useCallback(() => {
     guiClosingCooldownRef.current = Date.now() + 400;
@@ -145,6 +149,7 @@ export default function Game() {
     setShowChest(false);
     setShowStats(false);
     setShowOpenToLAN(false);
+    setShowFeedback(false);
     setShowOptions(false);
     if (engineRef.current) {
       engineRef.current.paused = false;
@@ -271,7 +276,7 @@ export default function Game() {
             if (p?.isDead) return;
             const anyGuiOpen = showInventoryRef.current || showCreativeRef.current ||
               showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current ||
-              showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current;
+              showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current;
             if (anyGuiOpen) {
               closeAllGuisRef.current();
               return;
@@ -279,6 +284,7 @@ export default function Game() {
             setShowOptions(false);
             setShowStats(false);
             setShowOpenToLAN(false);
+            setShowFeedback(false);
             if (p?.gameMode === 'creative') setShowCreative(true);
             else setShowInventory(true);
             document.exitPointerLock?.();
@@ -376,6 +382,46 @@ export default function Game() {
     };
   }, []);
 
+  // Bloqueio de atalhos destrutivos do navegador (Ctrl+W de correr+andar, zoom com roda do mouse)
+  useEffect(() => {
+    const onWheel = (e) => {
+      if (e.ctrlKey) e.preventDefault();
+    };
+    const onKeyDown = (e) => {
+      if (e.ctrlKey) {
+        if (e.key === 'w' || e.key === 'W' || e.code === 'KeyW') {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        if (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0') {
+          e.preventDefault();
+        }
+      }
+    };
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = 'Deseja realmente sair? Seu mundo foi salvo.';
+      return e.returnValue;
+    };
+
+    window.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('keydown', onKeyDown, { capture: true });
+    window.addEventListener('beforeunload', onBeforeUnload);
+
+    if (navigator.keyboard && typeof navigator.keyboard.lock === 'function') {
+      navigator.keyboard.lock(['KeyW']).catch(() => {});
+    }
+
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('keydown', onKeyDown, { capture: true });
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      if (navigator.keyboard && typeof navigator.keyboard.unlock === 'function') {
+        navigator.keyboard.unlock();
+      }
+    };
+  }, []);
+
   // Achievement toast watcher (PRD 12 RF-030)
   useEffect(() => {
     if (hud?.achievements?.pendingToast) {
@@ -393,7 +439,7 @@ export default function Game() {
     safePointerLock(canvasRef.current);
   };
 
-  const isAnyGuiOpen = showInventory || showCreative || showCraftingTable || showFurnace || showChest || showStats || showOptions || showOpenToLAN || (Date.now() < guiClosingCooldownRef.current);
+  const isAnyGuiOpen = showInventory || showCreative || showCraftingTable || showFurnace || showChest || showStats || showOptions || showOpenToLAN || showFeedback || (Date.now() < guiClosingCooldownRef.current);
 
   return (
     <div className="fixed inset-0 bg-black">
@@ -425,7 +471,20 @@ export default function Game() {
           </div>
         </div>
       )}
-      {hud && !showOptions && <GameHud hud={{ ...hud, hasGuiOpen: isAnyGuiOpen, onExit: handleExit, onOptions: () => { document.exitPointerLock?.(); setShowOptions(true); }, onStats: () => { document.exitPointerLock?.(); setShowStats(true); }, onOpenToLAN: () => { document.exitPointerLock?.(); setShowOpenToLAN(true); } }} onPause={handleResume} />}
+      {hud && !showOptions && (
+        <GameHud
+          hud={{
+            ...hud,
+            hasGuiOpen: isAnyGuiOpen,
+            onExit: handleExit,
+            onOptions: () => { document.exitPointerLock?.(); setShowOptions(true); },
+            onStats: () => { document.exitPointerLock?.(); setShowStats(true); },
+            onOpenToLAN: () => { document.exitPointerLock?.(); setShowOpenToLAN(true); },
+            onFeedback: () => { document.exitPointerLock?.(); setShowFeedback(true); }
+          }}
+          onPause={handleResume}
+        />
+      )}
       <PerformancePanel visible={!!hud?.f3} />
 
       {/* Diagnóstico de spawn/render — só com F3 aberto */}
@@ -504,6 +563,11 @@ export default function Game() {
           onNetHostChange={(host) => { setNetManager(host); engineRef.current.netManager = host; }}
           onClose={closeAllGuis}
         />
+      )}
+
+      {/* Feedback / Caixa de Bugs e Melhorias */}
+      {showFeedback && (
+        <FeedbackModal user={user} onClose={closeAllGuis} />
       )}
 
       {/* Tela de conexão (PRD 15 MC15-RF-030) */}

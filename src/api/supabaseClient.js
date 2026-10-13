@@ -351,6 +351,72 @@ export const mindcaveApi = {
         }
       }
     },
+    CommunityFeedback: {
+      list: async () => {
+        try {
+          const { data, error } = await supabase
+            .from('community_feedback')
+            .select('*')
+            .order('created_at', { ascending: false });
+          if (!error && data) {
+            try { localStorage.setItem('mindcave_feedback_cache', JSON.stringify(data)); } catch {}
+            return data;
+          }
+        } catch {}
+        // Fallback do localStorage
+        try {
+          const cached = localStorage.getItem('mindcave_feedback_cache');
+          if (cached) return JSON.parse(cached);
+        } catch {}
+        return [];
+      },
+      create: async (item) => {
+        const payload = {
+          user_id: item.userId || item.user_id || 'anon',
+          user_name: item.userName || item.user_name || 'Jogador',
+          type: item.type || 'bug',
+          title: item.title,
+          description: item.description,
+          status: 'open',
+          votes: 1,
+        };
+        try {
+          const { data, error } = await supabase
+            .from('community_feedback')
+            .insert(payload)
+            .select()
+            .single();
+          if (!error && data) return data;
+        } catch {}
+        // Fallback local
+        const localItem = {
+          id: 'local_' + Math.random().toString(36).slice(2),
+          ...payload,
+          created_at: new Date().toISOString(),
+        };
+        try {
+          const existing = JSON.parse(localStorage.getItem('mindcave_feedback_cache') || '[]');
+          existing.unshift(localItem);
+          localStorage.setItem('mindcave_feedback_cache', JSON.stringify(existing));
+        } catch {}
+        return localItem;
+      },
+      upvote: async (id) => {
+        try {
+          const { data: cur } = await supabase
+            .from('community_feedback')
+            .select('votes')
+            .eq('id', id)
+            .maybeSingle();
+          if (cur) {
+            await supabase
+              .from('community_feedback')
+              .update({ votes: (cur.votes || 0) + 1 })
+              .eq('id', id);
+          }
+        } catch {}
+      },
+    },
     World: {
       filter: async (query, opts) => {
         let q = supabase.from('worlds').select('*');

@@ -84,14 +84,28 @@ export class MobManager {
       if (mob.isDead && !mob._dropsProcessed) {
         mob._dropsProcessed = true;
         const drops = mob.getDrops(true);
-        if (ctx.inventory && drops.length > 0) {
+        if (ctx.itemEntities && drops.length > 0) {
+          for (const d of drops) {
+            const rx = (Math.random() - 0.5) * 0.2;
+            const rz = (Math.random() - 0.5) * 0.2;
+            ctx.itemEntities.spawnItem(
+              { id: d.id, count: d.count, meta: d.meta || 0 },
+              { x: mob.pos.x, y: mob.pos.y + 0.3, z: mob.pos.z },
+              { x: rx, y: 0.25, z: rz },
+              10
+            );
+          }
+        } else if (ctx.inventory && drops.length > 0) {
           for (const d of drops) addItem(ctx.inventory, d);
         }
         if (mob.type.xp > 0) addXP(player, mob.type.xp);
       }
 
-      // Remover mortos/despawnados
-      if (mob._shouldDespawn || (mob.isDead && mob.ticksAlive % 20 === 0)) {
+      // Remover mortos após 20 ticks (1s) de tombamento clássico ou por explosão imediata
+      if (mob._shouldDespawn || (mob.isDead && (mob.deathTime || 0) >= 20)) {
+        if (ctx.particles) {
+          ctx.particles.spawnDeathPoof(mob.pos.x, mob.pos.y + (mob.type.height || 1.8) * 0.5, mob.pos.z);
+        }
         mob.removeModel(this.scene);
         toRemove.push(mob);
       }

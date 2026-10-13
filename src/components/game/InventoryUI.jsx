@@ -21,9 +21,23 @@ export default function InventoryUI({ inv, onUpdate, onClose, hud }) {
   const [hovered, setHovered] = useState(null);
 
   useEffect(() => {
-    const handler = (e) => setMouse({ x: e.clientX, y: e.clientY });
-    window.addEventListener('mousemove', handler);
-    return () => window.removeEventListener('mousemove', handler);
+    let rafId = 0;
+    let lastX = 0, lastY = 0;
+    const handler = (e) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          setMouse({ x: lastX, y: lastY });
+          rafId = 0;
+        });
+      }
+    };
+    window.addEventListener('mousemove', handler, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', handler);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
   }, []);
 
   useEffect(() => {

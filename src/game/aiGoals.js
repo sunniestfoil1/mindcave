@@ -346,6 +346,7 @@ class CreeperSwellGoal extends Goal {
       ctx.onExplode?.(mob.pos, mob.type.explosionPower || 3);
       mob.health = 0;
       mob.isDead = true;
+      mob._shouldDespawn = true;
     }
   }
 }

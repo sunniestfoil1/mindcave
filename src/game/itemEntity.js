@@ -345,7 +345,11 @@ export class ItemEntityManager {
         }
       }
 
-      // Atração e Coleta pelo Jogador
+      // Atração e Coleta pelo Jogador (bloqueada se o jogador estiver morto ou em modo espectador)
+      if (!player || player.isDead || player.gameMode === 'spectator') {
+        continue;
+      }
+
       const dx = pPos.x - e.pos.x;
       const dy = (pPos.y + 0.8) - e.pos.y;
       const dz = pPos.z - e.pos.z;

@@ -29,8 +29,8 @@ export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisibl
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
     const W = box.w * S, H = box.h * S;
-    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: 'low-power' });
+    renderer.setPixelRatio(1);
     renderer.setSize(W, H, false);
     renderer.setClearColor(0x000000, 0);
 

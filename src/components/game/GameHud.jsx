@@ -20,11 +20,11 @@ function PauseMenuContent({ hud, onPause }) {
       </div>
       {/* Buttons — RF-025 */}
       <GuiButton x={-100} y={k + 24} width={200} label="Voltar ao jogo" onClick={onPause} />
-      <GuiButton x={-100} y={k + 48} width={98} label="Conquistas" disabled />
+      <GuiButton x={-100} y={k + 48} width={98} label="Bugs & Ideias" onClick={hud.onFeedback} />
       <GuiButton x={2} y={k + 48} width={98} label="Estatísticas" onClick={hud.onStats} />
-      <GuiButton x={-100} y={k + 96} width={98} label="Opções..." onClick={hud.onOptions} />
-      {hud.onOpenToLAN && <GuiButton x={2} y={k + 96} width={98} label="Abrir para LAN" onClick={hud.onOpenToLAN} />}
-      <GuiButton x={-100} y={k + 120} width={200} label="Salvar e sair para o título" onClick={hud.onExit} />
+      <GuiButton x={-100} y={k + 72} width={98} label="Opções..." onClick={hud.onOptions} />
+      {hud.onOpenToLAN && <GuiButton x={2} y={k + 72} width={98} label="Abrir para LAN" onClick={hud.onOpenToLAN} />}
+      <GuiButton x={-100} y={k + 96} width={200} label="Salvar e sair para o título" onClick={hud.onExit} />
     </>
   );
 }

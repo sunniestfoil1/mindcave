@@ -742,8 +742,8 @@ export class GameEngine {
     }
     this._wasInWater = this.inFluid === 'water';
 
-    const W = this.isAction('forward') ? 1 : 0, S = this.isAction('back') ? 1 : 0;
-    const A = this.isAction('left') ? 1 : 0, Dd = this.isAction('right') ? 1 : 0;
+    const W = (!p.isDead && this.isAction('forward')) ? 1 : 0, S = (!p.isDead && this.isAction('back')) ? 1 : 0;
+    const A = (!p.isDead && this.isAction('left')) ? 1 : 0, Dd = (!p.isDead && this.isAction('right')) ? 1 : 0;
     const forward = W - S, strafe = A - Dd;
     const yaw = p.yaw;
     const fx = -Math.sin(yaw), fz = Math.cos(yaw);
@@ -798,7 +798,7 @@ export class GameEngine {
 
     // Jump cooldown (10 ticks)
     if (this.jumpTicks === undefined) this.jumpTicks = 0;
-    if (this.isAction('jump') && p.onGround && this.jumpTicks === 0) {
+    if (!p.isDead && this.isAction('jump') && p.onGround && this.jumpTicks === 0) {
       p.vel.y = 0.42;
       this.jumpTicks = 10;
       if (p.sprinting) {
@@ -1023,6 +1023,7 @@ export class GameEngine {
         world: this.world, difficulty: this.difficulty, worldTime: this.worldTime,
         weather: this.weather, gameRules: this.gameRules, projectiles: this.projectiles,
         inventory: this.inventory, getHeldItem: () => this.getHeldItem(),
+        itemEntities: this.itemEntities, particles: this.particles,
         noiseSystem: this.noiseSystem,
         onGunshot: (pos, radius) => {
           this.noiseSystem.emit(pos, radius);
@@ -1351,9 +1352,17 @@ export class GameEngine {
         }
       }
     }
+    // Tombamento clássico ao morrer (1.8.9: tomba para o lado 90 graus e câmera fica no chão)
+    if (this.player.isDead) {
+      this._deathRoll = Math.min(1, (this._deathRoll || 0) + 0.05);
+      this.camera.position.set(eye.x, this.player.pos.y + 0.2, eye.z);
+      this.camera.rotateZ(this._deathRoll * (Math.PI / 2));
+    } else {
+      this._deathRoll = 0;
+    }
     // Balanço de câmera ao tomar dano (1.8.9: 14° · sen(f⁴·π), f = hurtTime/10). Sem direção do golpe: rola sempre para o mesmo lado.
     this._hurtRollValue = this.hurtRoll();
-    if (this._hurtRollValue) this.camera.rotateZ(this._hurtRollValue);
+    if (this._hurtRollValue && !this.player.isDead) this.camera.rotateZ(this._hurtRollValue);
     updateAudioListener(this.camera.position, dir);
   }
 
@@ -2000,6 +2009,7 @@ export class GameEngine {
   // === Morte e renascimento (PRD 05 RF-050..051) ===
   respawn() {
     const p = this.player;
+    this._deathRoll = 0;
     const spawn = p.hasBedSpawn
       ? { x: p.spawnX + 0.5, y: p.spawnY, z: p.spawnZ + 0.5 }
       : { x: this.spawn.x, y: this.spawn.y, z: this.spawn.z };
