@@ -5,7 +5,7 @@
 //  · saída compacta: cores/luz/ao em Uint8 normalizado (menos memória e menos bytes para a GPU).
 import { stateId, chunkIndex } from './chunk';
 import { getBlock, isOpaque, tileForFace, getModelBox, WOOL_COLORS } from './blocks';
-import { blockBoxes, BED_HEIGHT, BED_DIRS } from './shapes';
+import { blockBoxes, BED_HEIGHT, BED_DIRS, DOOR_FACES } from './shapes';
 
 const NB = [[0, 1, 0], [0, -1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
 
@@ -217,6 +217,27 @@ function emitBox(t, tTop, tBottom, tSide, tint, wx, wy, wz, box, l, getBlockAbs)
   }
 }
 
+// Baú: caixa de 14/16; a face voltada para o lado da frente (meta) usa o ladrilho do fecho
+function emitChest(t, tiles, block, meta, wx, wy, wz, l, getBlockAbs, box) {
+  const front = DOOR_FACES[meta & 3];
+  const tTop = tiles.chest_top || tiles.error, tSide = tiles.chest_side || tiles.error, tFront = tiles.chest_front || tiles.error, tBot = tiles.planks || tiles.error;
+  for (let fi = 0; fi < 6; fi++) {
+    const f = FACES[fi], d = f.dir;
+    const tile = d[1] === 1 ? tTop : d[1] === -1 ? tBot : (d[0] === front[0] && d[2] === front[1]) ? tFront : tSide;
+    const base = t.pos.length / 3;
+    for (let i = 0; i < 4; i++) {
+      const c = f.c[i];
+      const px = c[0] ? box[3] : box[0], py = c[1] ? box[4] : box[1], pz = c[2] ? box[5] : box[2];
+      let u, v;
+      if (d[1] === 1) { u = px; v = pz; } else if (d[1] === -1) { u = pz; v = px; }
+      else if (d[2] === -1) { u = px; v = py / 0.875; } else if (d[2] === 1) { u = 1 - px; v = py / 0.875; }
+      else if (d[0] === -1) { u = 1 - pz; v = py / 0.875; } else { u = pz; v = py / 0.875; }
+      pushVert(t, wx + px, wy + py, wz + pz, u, v, tile, 1, 1, 1, l.block / 15, l.sky / 15, f.sh);
+    }
+    t.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+}
+
 // Cama: caixa de 9/16 com a textura de cada metade. A face voltada para a outra metade não é desenhada; a ponta (cabeceira ou pés)
 // usa o ladrilho "end", as laterais o "side". O topo gira conforme a direção para o travesseiro ficar na ponta da cabeceira.
 function emitBed(t, tiles, wx, wy, wz, meta, l, getBlockAbs) {
@@ -359,6 +380,12 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
           const key = model === 'door' ? block.doorTiles[(meta & 8) ? 1 : 0] : tileForFace(block, 'side', meta);
           const tile = tiles[key] || tiles.error;
           for (const box of boxes) emitBox(target, tile, tile, tile, null, wx, wy, wz, box, l, getBlockAbs);
+        } else if (model === 'ladder' || model === 'trapdoor') {
+          const l = getLightAbs(wx, wy, wz);
+          const tile = tiles[tileForFace(block, 'side', meta)] || tiles.error;
+          for (const box of blockBoxes(s, getBlockAbs, wx, wy, wz, 'render')) emitBox(target, tile, tile, tile, null, wx, wy, wz, box, l, getBlockAbs);
+        } else if (model === 'chest') {
+          emitChest(target, tiles, block, meta, wx, wy, wz, getLightAbs(wx, wy, wz), getBlockAbs, blockBoxes(s, getBlockAbs, wx, wy, wz, 'render')[0]);
         } else if (model === 'bed') {
           emitBed(target, tiles, wx, wy, wz, meta, getLightAbs(wx, wy, wz), getBlockAbs);
         } else if (model === 'slab' || model === 'stairs') {

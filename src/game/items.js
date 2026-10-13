@@ -151,6 +151,7 @@ export const ITEMS = {
   313: armor(313, 'diamond_boots', 'Botas de Diamante', 3, 'diamond'),
 
   // Utilitários
+  281: I(281, 'bowl', 'Tigela', { color: 0x8b5a2b, category: 'materials' }),
   325: I(325, 'bucket', 'Balde', { maxStack:16, color:0xa0a0a0, category:'misc' }),
   326: I(326, 'water_bucket', 'Balde de Água', { maxStack:1, color:0x3060c0, category:'misc' }),
   327: I(327, 'lava_bucket', 'Balde de Lava', { maxStack:1, color:0xc04020, fuel:20000, category:'misc' }),

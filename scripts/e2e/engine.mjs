@@ -148,7 +148,7 @@ const result = await page.evaluate(async () => {
     ok(!!bowChild, 'modelo do esqueleto tem o arco');
 
     // ======== RODADA 3: itens, cama, agachar ========
-    const reset = () => { for (let x = -2; x <= 18; x++) for (let z = -2; z <= 18; z++) for (const yy of [B0 + 1, B0 + 2]) { const f = stateId(cw.getBlock(x, yy, z)); if (f >= 8 && f <= 11) cw.setBlock(x, yy, z, 0); } /* água do teste do balde */ engine.mobs.mobs.length = 0; engine.projectiles.projectiles.length = 0; pState.hunger = 20; pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 }; pState.vel = { x: 0, y: 0, z: 0 }; pState.yaw = 0; pState.health = 20; pState.isDead = false; pState.sleeping = false; engine.worldTime = 15000; engine.placeCd = 0; tickN(3); };
+    const reset = () => { engine.paused = false; /* a morte solta o ponteiro e pausa o motor */ for (let x = -2; x <= 18; x++) for (let z = -2; z <= 18; z++) for (const yy of [B0 + 1, B0 + 2]) { const f = stateId(cw.getBlock(x, yy, z)); if (f >= 8 && f <= 11) cw.setBlock(x, yy, z, 0); } /* água do teste do balde */ engine.mobs.mobs.length = 0; engine.projectiles.projectiles.length = 0; pState.hunger = 20; pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 }; pState.vel = { x: 0, y: 0, z: 0 }; pState.yaw = 0; pState.health = 20; pState.isDead = false; pState.sleeping = false; engine.worldTime = 15000; engine.placeCd = 0; tickN(3); };
     reset();
     const held = (id, meta = 0, n = 5) => { pState.hotbar[0] = { id, count: n, meta, ...(id >= 259 && id <= 294 ? { durability: 0 } : {}) }; pState.selectedSlot = 0; return pState.hotbar[0]; };
     const floorAim = (x, z) => { aimTop(x, B0, z); };
@@ -271,6 +271,91 @@ const result = await page.evaluate(async () => {
     let shot = 0; for (let i = 0; i < 200; i++) { engine.tick(); shot = Math.max(shot, engine.projectiles.projectiles.filter(q => q.type === 'arrow').length); }
     ok(shot === 0 && hp() === 20, `esqueleto não atira no criativo (flechas no ar: ${shot})`);
     pState.gameMode = 'survival'; void zSame; void sk2;
+
+    // ======== BAÚ, ESCADA DE MÃO, ALÇAPÃO ========
+    reset(); pState.pos = { x: 8.5, y: B0 + 1, z: 1.5 }; pState.gameMode = 'survival'; tickN(2);
+    let openedChest = 0; engine.onOpenChest = () => { openedChest++; };
+    held(54, 0, 3); pState.yaw = 0; floorAim(8, 3); engine.placeBlock();
+    ok(st(8, B0 + 1, 3) === 54, `baú colocado como bloco real (meta ${stateMeta(cw.getBlock(8, B0 + 1, 3))})`);
+    pState.sneaking = false; aimAt(8, B0 + 1, 3); engine._cachedRaycastFrame = -1; engine.interactBlock(pState);
+    ok(openedChest === 1, 'botão direito abre o baú');
+    // conteúdo + quebrar: itens caem
+    // o Vite serve módulos editados com ?t=…: importar pela MESMA URL do motor, senão são duas instâncias (e dois mapas de baús)
+    const cUrl = performance.getEntriesByType('resource').map(r => r.name).find(n => n.includes('/src/game/containers.js')) || '/src/game/containers.js';
+    const { getOrCreateContainer } = await import(cUrl);
+    getOrCreateContainer(cw, 8, B0 + 1, 3).slots[0] = { id: 264, count: 5, meta: 0 };
+    const itemsBeforeChest = engine.itemEntities.items.length;
+    pState.gameMode = 'creative'; aimAt(8, B0 + 1, 3); engine._cachedRaycastFrame = -1; engine.breakBlock(); pState.gameMode = 'survival';
+    const spilled = engine.itemEntities.items.slice(itemsBeforeChest);
+    ok(st(8, B0 + 1, 3) === 0 && spilled.some(i => i.id === 264 && i.count === 5), 'quebrar o baú derrama o conteúdo no chão');
+    // escada de mão: coloca na parede, escala segurando andar contra a parede
+    for (let y = B0 + 1; y <= B0 + 8; y++) cw.setBlock(11, y, 3, packState(1, 0)); // coluna de pedra
+    pState.pos = { x: 9.5, y: B0 + 1, z: 3.5 }; pState.vel = { x: 0, y: 0, z: 0 }; tickN(2);
+    held(65, 0, 8); engine.placeCd = 0; pState.yaw = -Math.PI / 2; // olhando para leste (+x) em direção à coluna
+    { const e = engine.eyePos(); const dxx = 11.0 - e.x, dyy = (B0 + 1.5) - e.y, dzz = 3.5 - e.z; pState.yaw = Math.atan2(-dxx, dzz); pState.pitch = -Math.atan2(dyy, Math.hypot(dxx, dzz)); engine._cachedRaycastFrame = -1; }
+    engine.placeBlock();
+    ok(st(10, B0 + 1, 3) === 65, `escada de mão colocada na parede (meta ${stateMeta(cw.getBlock(10, B0 + 1, 3))})`);
+    for (let y = B0 + 2; y <= B0 + 6; y++) cw.setBlock(10, y, 3, packState(65, 2));
+    pState.pos = { x: 10.5, y: B0 + 1, z: 3.5 }; pState.vel = { x: 0, y: 0, z: 0 }; pState.yaw = -Math.PI / 2; pState.pitch = 0; engine.keys = {}; tickN(2);
+    engine.onKey(ev('KeyW'), true); tickN(40); engine.onKey(ev('KeyW'), false);
+    ok(pState.pos.y > B0 + 4, `segurando andar contra a escada de mão o jogador sobe (y=${(pState.pos.y - B0).toFixed(2)})`);
+    // cair com a escada: não leva dano e desce devagar
+    pState.pos = { x: 10.5, y: B0 + 6.5, z: 3.5 }; pState.vel = { x: 0, y: 0, z: 0 }; pState.health = 20; pState.fallDistance = 0; tickN(1);
+    engine.onKey(ev('ShiftLeft'), true); tickN(15); engine.onKey(ev('ShiftLeft'), false);
+    ok(pState.pos.y > B0 + 5.5, `agachado na escada de mão o jogador fica preso (y=${(pState.pos.y - B0).toFixed(2)})`);
+    tickN(60);
+    ok(pState.health === 20, 'descendo pela escada de mão não há dano de queda');
+    // alçapão
+    pState.pos = { x: 8.5, y: B0 + 1, z: 1.5 }; pState.vel = { x: 0, y: 0, z: 0 }; tickN(2);
+    held(96, 0, 2); engine.placeCd = 0; floorAim(5, 2); engine.placeBlock();
+    const tdm0 = stateMeta(cw.getBlock(5, B0 + 1, 2));
+    ok(st(5, B0 + 1, 2) === 96, `alçapão colocado (meta ${tdm0})`);
+    engine.toggleOpenable(5, B0 + 1, 2);
+    ok((stateMeta(cw.getBlock(5, B0 + 1, 2)) & 4) !== 0, 'alçapão abre');
+    engine.toggleOpenable(5, B0 + 1, 2);
+    ok((stateMeta(cw.getBlock(5, B0 + 1, 2)) & 4) === 0, 'e fecha');
+    engine.onOpenChest = null;
+
+    // ======== ARCO E FLECHAS, TESOURA ========
+    reset(); pState.gameMode = 'survival'; pState.pos = { x: 8.5, y: B0 + 1, z: 1.5 }; pState.yaw = 0; pState.pitch = 0; tickN(2);
+    const arrowsInAir = () => engine.projectiles.projectiles.filter(q => q.type === 'arrow').length;
+    const arrowCount = () => [...engine.inventory.hotbar, ...engine.inventory.main].reduce((n, i) => n + (i && i.id === 262 ? i.count : 0), 0);
+    const drawBow = (ticks) => { engine.mouseBtn[2] = true; tickN(ticks); engine.mouseBtn[2] = false; tickN(2); };
+    engine.inventory.main.fill(null); pState.hotbar[0] = { id: 261, count: 1, meta: 0 }; pState.selectedSlot = 0;
+    engine.projectiles.projectiles.length = 0;
+    drawBow(25);
+    ok(arrowsInAir() === 0, 'arco sem flechas (sobrevivência) não atira');
+    engine.inventory.main[0] = { id: 262, count: 5, meta: 0 };
+    drawBow(25);
+    ok(arrowsInAir() === 1 && arrowCount() === 4, `com flechas: atira 1 e gasta 1 (no ar ${arrowsInAir()}, restam ${arrowCount()})`);
+    ok((engine.getHeldItem().data?.durability || 0) === 1, 'e o arco se desgasta (durabilidade 1)');
+    pState.gameMode = 'creative'; engine.inventory.main[0] = null; engine.projectiles.projectiles.length = 0;
+    drawBow(25);
+    ok(arrowsInAir() === 1, 'no criativo atira sem flechas');
+    pState.gameMode = 'survival';
+    // tesoura em ovelha
+    reset(); pState.pos = { x: 8.5, y: B0 + 1, z: 1.5 }; tickN(2);
+    pState.hotbar[0] = { id: 359, count: 1, meta: 0 }; pState.selectedSlot = 0;
+    const sheep = engine.mobs.summon('sheep', { x: 8.5, y: B0 + 1, z: 3.5 }); sheep.vel.x = 0; sheep.vel.z = 0; tickN(2);
+    { const e = engine.eyePos(); const dx = sheep.pos.x - e.x, dy = sheep.pos.y + 0.6 - e.y, dz = sheep.pos.z - e.z; pState.yaw = Math.atan2(-dx, dz); pState.pitch = -Math.atan2(dy, Math.hypot(dx, dz)); }
+    const woolBefore = engine.itemEntities.items.length;
+    const used = engine.useOnEntity(engine.getHeldItem());
+    const wool = engine.itemEntities.items.slice(woolBefore).find(i => i.id === 35);
+    ok(used && sheep.sheared === true && wool && wool.count >= 1 && wool.count <= 3, `tesoura tosquia a ovelha e dropa lã (${wool ? wool.count : 0})`);
+    ok(engine.useOnEntity(engine.getHeldItem()) === false, 'ovelha já tosquiada não dá lã de novo');
+
+    // ======== COMER TODAS AS COMIDAS (pelo motor: segurar botão direito) ========
+    reset(); pState.gameMode = 'survival'; pState.pos = { x: 8.5, y: B0 + 1, z: 1.5 }; pState.yaw = 0; pState.pitch = 0; tickN(2);
+    const foodIds = Object.keys(Surv.FOODS).map(Number);
+    const notEaten = [];
+    for (const fid of foodIds) {
+      pState.hunger = 8; pState.saturation = 0; pState.exhaustion = 0; pState.health = 20; pState.hurtResistantTime = 0; pState.effects = [];
+      pState.hotbar[0] = { id: fid, count: 2, meta: 0 }; pState.selectedSlot = 0; engine.paused = false;
+      engine.mouseBtn[2] = true; tickN(50); engine.mouseBtn[2] = false; tickN(3);
+      const left = pState.hotbar[0] ? pState.hotbar[0].count : 0;
+      if (!(pState.hunger > 8 && left === 1)) notEaten.push(`${fid} (fome ${pState.hunger}, restam ${left})`);
+    }
+    ok(notEaten.length === 0, `as ${foodIds.length} comidas podem ser comidas pelo botão direito: aumentam a fome e gastam 1${notEaten.length ? ' — FALHARAM: ' + notEaten.join(', ') : ''}`);
     engine.stop?.();
   } catch (e) { out.push('ERRO ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')); }
   return out;

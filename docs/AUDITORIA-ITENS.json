@@ -1,0 +1,5055 @@
+{
+ "rows": [
+  {
+   "id": 60,
+   "name": "farmland",
+   "namePt": "Terra Arada",
+   "tipo": "item",
+   "cls": "bloco",
+   "icon": "bloco",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 69,
+   "name": "lever",
+   "namePt": "Alavanca",
+   "tipo": "item",
+   "cls": "bloco",
+   "icon": "bloco",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 70,
+   "name": "stone_pressure_plate",
+   "namePt": "Placa de Pressão de Pedra",
+   "tipo": "item",
+   "cls": "bloco",
+   "icon": "bloco",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 72,
+   "name": "wooden_pressure_plate",
+   "namePt": "Placa de Pressão de Madeira",
+   "tipo": "item",
+   "cls": "bloco",
+   "icon": "bloco",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 76,
+   "name": "redstone_torch",
+   "namePt": "Tocha de Redstone",
+   "tipo": "item",
+   "cls": "bloco",
+   "icon": "bloco",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 77,
+   "name": "stone_button",
+   "namePt": "Botão de Pedra",
+   "tipo": "item",
+   "cls": "bloco",
+   "icon": "bloco",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 81,
+   "name": "cactus",
+   "namePt": "Cacto",
+   "tipo": "item",
+   "cls": "bloco",
+   "icon": "bloco",
+   "uses": [
+    "derrete"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 115,
+   "name": "nether_wart",
+   "namePt": "Verruga do Nether",
+   "tipo": "item",
+   "cls": "bloco",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 123,
+   "name": "redstone_lamp",
+   "namePt": "Lâmpada de Redstone",
+   "tipo": "item",
+   "cls": "bloco",
+   "icon": "bloco",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 151,
+   "name": "daylight_sensor",
+   "namePt": "Sensor de Luz",
+   "tipo": "item",
+   "cls": "bloco",
+   "icon": "bloco",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 154,
+   "name": "hopper",
+   "namePt": "Funil",
+   "tipo": "item",
+   "cls": "bloco",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 256,
+   "name": "iron_shovel",
+   "namePt": "Pá de Ferro",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 257,
+   "name": "iron_pickaxe",
+   "namePt": "Picareta de Ferro",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 258,
+   "name": "iron_axe",
+   "namePt": "Machado de Ferro",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 259,
+   "name": "flint_and_steel",
+   "namePt": "Pederneira e Aço",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 260,
+   "name": "apple",
+   "namePt": "Maçã",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "ingrediente"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 261,
+   "name": "bow",
+   "namePt": "Arco",
+   "tipo": "item",
+   "cls": "arma",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 262,
+   "name": "arrow",
+   "namePt": "Flecha",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 263,
+   "name": "coal",
+   "namePt": "Carvão",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "combustível",
+    "ingrediente",
+    "receita",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 264,
+   "name": "diamond",
+   "namePt": "Diamante",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente",
+    "receita",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 265,
+   "name": "iron_ingot",
+   "namePt": "Lingote de Ferro",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente",
+    "receita",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 266,
+   "name": "gold_ingot",
+   "namePt": "Lingote de Ouro",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente",
+    "receita",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 267,
+   "name": "iron_sword",
+   "namePt": "Espada de Ferro",
+   "tipo": "item",
+   "cls": "arma",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 268,
+   "name": "wooden_sword",
+   "namePt": "Espada de Madeira",
+   "tipo": "item",
+   "cls": "arma",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 269,
+   "name": "wooden_shovel",
+   "namePt": "Pá de Madeira",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 270,
+   "name": "wooden_pickaxe",
+   "namePt": "Picareta de Madeira",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 271,
+   "name": "wooden_axe",
+   "namePt": "Machado de Madeira",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 272,
+   "name": "stone_sword",
+   "namePt": "Espada de Pedra",
+   "tipo": "item",
+   "cls": "arma",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 273,
+   "name": "stone_shovel",
+   "namePt": "Pá de Pedra",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 274,
+   "name": "stone_pickaxe",
+   "namePt": "Picareta de Pedra",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 275,
+   "name": "stone_axe",
+   "namePt": "Machado de Pedra",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 276,
+   "name": "diamond_sword",
+   "namePt": "Espada de Diamante",
+   "tipo": "item",
+   "cls": "arma",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 277,
+   "name": "diamond_shovel",
+   "namePt": "Pá de Diamante",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 278,
+   "name": "diamond_pickaxe",
+   "namePt": "Picareta de Diamante",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 279,
+   "name": "diamond_axe",
+   "namePt": "Machado de Diamante",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 280,
+   "name": "stick",
+   "namePt": "Graveto",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "combustível",
+    "ingrediente",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 281,
+   "name": "bowl",
+   "namePt": "Tigela",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 282,
+   "name": "mushroom_stew",
+   "namePt": "Ensopado de Cogumelo",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 283,
+   "name": "golden_sword",
+   "namePt": "Espada de Ouro",
+   "tipo": "item",
+   "cls": "arma",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 284,
+   "name": "golden_shovel",
+   "namePt": "Pá de Ouro",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 285,
+   "name": "golden_pickaxe",
+   "namePt": "Picareta de Ouro",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 286,
+   "name": "golden_axe",
+   "namePt": "Machado de Ouro",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 287,
+   "name": "string",
+   "namePt": "Linha",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 288,
+   "name": "feather",
+   "namePt": "Pena",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 289,
+   "name": "gunpowder",
+   "namePt": "Pólvora",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 290,
+   "name": "wooden_hoe",
+   "namePt": "Enxada de Madeira",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 291,
+   "name": "stone_hoe",
+   "namePt": "Enxada de Pedra",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 292,
+   "name": "iron_hoe",
+   "namePt": "Enxada de Ferro",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 293,
+   "name": "diamond_hoe",
+   "namePt": "Enxada de Diamante",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 294,
+   "name": "golden_hoe",
+   "namePt": "Enxada de Ouro",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 295,
+   "name": "wheat_seeds",
+   "namePt": "Sementes",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 296,
+   "name": "wheat",
+   "namePt": "Trigo",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 297,
+   "name": "bread",
+   "namePt": "Pão",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 298,
+   "name": "leather_helmet",
+   "namePt": "Capacete de Couro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 299,
+   "name": "leather_chestplate",
+   "namePt": "Peitoral de Couro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 300,
+   "name": "leather_leggings",
+   "namePt": "Calças de Couro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 301,
+   "name": "leather_boots",
+   "namePt": "Botas de Couro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 302,
+   "name": "chainmail_helmet",
+   "namePt": "Capacete de Malha",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 303,
+   "name": "chainmail_chestplate",
+   "namePt": "Peitoral de Malha",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 304,
+   "name": "chainmail_leggings",
+   "namePt": "Calças de Malha",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 305,
+   "name": "chainmail_boots",
+   "namePt": "Botas de Malha",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 306,
+   "name": "iron_helmet",
+   "namePt": "Capacete de Ferro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 307,
+   "name": "iron_chestplate",
+   "namePt": "Peitoral de Ferro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 308,
+   "name": "iron_leggings",
+   "namePt": "Calças de Ferro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 309,
+   "name": "iron_boots",
+   "namePt": "Botas de Ferro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 310,
+   "name": "diamond_helmet",
+   "namePt": "Capacete de Diamante",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 311,
+   "name": "diamond_chestplate",
+   "namePt": "Peitoral de Diamante",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 312,
+   "name": "diamond_leggings",
+   "namePt": "Calças de Diamante",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 313,
+   "name": "diamond_boots",
+   "namePt": "Botas de Diamante",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 314,
+   "name": "golden_helmet",
+   "namePt": "Capacete de Ouro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 315,
+   "name": "golden_chestplate",
+   "namePt": "Peitoral de Ouro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 316,
+   "name": "golden_leggings",
+   "namePt": "Calças de Ouro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 317,
+   "name": "golden_boots",
+   "namePt": "Botas de Ouro",
+   "tipo": "item",
+   "cls": "armadura",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 318,
+   "name": "flint",
+   "namePt": "Sílex",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 319,
+   "name": "porkchop",
+   "namePt": "Costeleta Crua",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "derrete"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 320,
+   "name": "cooked_porkchop",
+   "namePt": "Costeleta Assada",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 321,
+   "name": "painting",
+   "namePt": "Pintura",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 322,
+   "name": "golden_apple",
+   "namePt": "Maçã Dourada",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 323,
+   "name": "sign",
+   "namePt": "Placa",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 324,
+   "name": "wooden_door",
+   "namePt": "Porta de Carvalho",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 325,
+   "name": "bucket",
+   "namePt": "Balde",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 326,
+   "name": "water_bucket",
+   "namePt": "Balde de Água",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 327,
+   "name": "lava_bucket",
+   "namePt": "Balde de Lava",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "combustível"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 328,
+   "name": "minecart",
+   "namePt": "Carrinho",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 329,
+   "name": "saddle",
+   "namePt": "Sela",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 330,
+   "name": "iron_door",
+   "namePt": "Porta de Ferro",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 331,
+   "name": "redstone",
+   "namePt": "Redstone",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente",
+    "receita",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 332,
+   "name": "snowball",
+   "namePt": "Bola de Neve",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 333,
+   "name": "boat",
+   "namePt": "Barco",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 334,
+   "name": "leather",
+   "namePt": "Couro",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 335,
+   "name": "brick",
+   "namePt": "Tijolo",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 336,
+   "name": "clay_ball",
+   "namePt": "Bola de Argila",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "derrete"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 337,
+   "name": "paper",
+   "namePt": "Papel",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 339,
+   "name": "book",
+   "namePt": "Livro",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 340,
+   "name": "slime_ball",
+   "namePt": "Bola de Slime",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 344,
+   "name": "spawn_egg",
+   "namePt": "Ovo de Spawn",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 345,
+   "name": "compass",
+   "namePt": "Bússola",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 346,
+   "name": "fishing_rod",
+   "namePt": "Vara de Pescar",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 347,
+   "name": "clock",
+   "namePt": "Relógio",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 348,
+   "name": "glowstone_dust",
+   "namePt": "Pó de Glowstone",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 349,
+   "name": "fish",
+   "namePt": "Peixe Cru",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "derrete"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 350,
+   "name": "cooked_fish",
+   "namePt": "Peixe Assado",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 351,
+   "name": "salmon",
+   "namePt": "Salmão Assado",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "derrete",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 352,
+   "name": "pufferfish",
+   "namePt": "Baiacu",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 353,
+   "name": "sugar",
+   "namePt": "Açúcar",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 354,
+   "name": "clownfish",
+   "namePt": "Peixe-Palhaço",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 355,
+   "name": "bed",
+   "namePt": "Cama",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 356,
+   "name": "repeater",
+   "namePt": "Repetidor",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 357,
+   "name": "cookie",
+   "namePt": "Biscoito",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 359,
+   "name": "shears",
+   "namePt": "Tesoura",
+   "tipo": "item",
+   "cls": "ferramenta",
+   "icon": "pacote",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 360,
+   "name": "melon",
+   "namePt": "Melancia",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 361,
+   "name": "pumpkin_seeds",
+   "namePt": "Sementes de Abóbora",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 362,
+   "name": "melon_seeds",
+   "namePt": "Sementes de Melancia",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 363,
+   "name": "beef",
+   "namePt": "Carne Crua",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "derrete"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 364,
+   "name": "cooked_beef",
+   "namePt": "Bife",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 365,
+   "name": "cooked_chicken",
+   "namePt": "Frango Assado",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 366,
+   "name": "chicken",
+   "namePt": "Frango Cru",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "derrete"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 367,
+   "name": "rotten_flesh",
+   "namePt": "Carne Podre",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 368,
+   "name": "ender_pearl",
+   "namePt": "Pérola do Ender",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 369,
+   "name": "blaze_rod",
+   "namePt": "Vara de Blaze",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "combustível"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 370,
+   "name": "ghast_tear",
+   "namePt": "Lágrima de Ghast",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 371,
+   "name": "gold_nugget",
+   "namePt": "Pepita de Ouro",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 372,
+   "name": "nether_wart",
+   "namePt": "Verruga do Nether",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 374,
+   "name": "glass_bottle",
+   "namePt": "Garrafa de Vidro",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 375,
+   "name": "spider_eye",
+   "namePt": "Olho de Aranha",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 376,
+   "name": "fermented_spider_eye",
+   "namePt": "Olho Fermentado",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 377,
+   "name": "blaze_powder",
+   "namePt": "Pó de Blaze",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 378,
+   "name": "magma_cream",
+   "namePt": "Creme de Magma",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 379,
+   "name": "brewing_stand",
+   "namePt": "Suporte de Poções",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 380,
+   "name": "cauldron",
+   "namePt": "Caldeirão",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 381,
+   "name": "ender_eye",
+   "namePt": "Olho do Ender",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 382,
+   "name": "speckled_melon",
+   "namePt": "Melancia Reluzente",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 384,
+   "name": "experience_bottle",
+   "namePt": "Garrafa de XP",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 385,
+   "name": "item_frame",
+   "namePt": "Moldura",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 386,
+   "name": "writable_book",
+   "namePt": "Livro e Pena",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 387,
+   "name": "written_book",
+   "namePt": "Livro Escrito",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 388,
+   "name": "emerald",
+   "namePt": "Esmeralda",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [
+    "ingrediente",
+    "receita",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 390,
+   "name": "flower_pot",
+   "namePt": "Vaso de Flor",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 391,
+   "name": "carrot",
+   "namePt": "Cenoura",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 392,
+   "name": "potato",
+   "namePt": "Batata",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "derrete"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 393,
+   "name": "baked_potato",
+   "namePt": "Batata Assada",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 394,
+   "name": "poisonous_potato",
+   "namePt": "Batata Venenosa",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 396,
+   "name": "golden_carrot",
+   "namePt": "Cenoura Dourada",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 398,
+   "name": "carrot_on_a_stick",
+   "namePt": "Cenoura na Vara",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 399,
+   "name": "nether_star",
+   "namePt": "Estrela do Nether",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 400,
+   "name": "pumpkin_pie",
+   "namePt": "Torta de Abóbora",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 401,
+   "name": "firework_charge",
+   "namePt": "Estrela de Fogos",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 402,
+   "name": "fireworks",
+   "namePt": "Fogos de Artifício",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 403,
+   "name": "enchanted_book",
+   "namePt": "Livro Encantado",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 404,
+   "name": "comparator",
+   "namePt": "Comparador",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 405,
+   "name": "netherbrick",
+   "namePt": "Tijolo do Nether",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 406,
+   "name": "quartz",
+   "namePt": "Quartzo",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 409,
+   "name": "prismarine_shard",
+   "namePt": "Fragmento de Prism.",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 410,
+   "name": "prismarine_crystals",
+   "namePt": "Cristais de Prism.",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 411,
+   "name": "rabbit",
+   "namePt": "Coelho Cru",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "derrete"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 412,
+   "name": "cooked_rabbit",
+   "namePt": "Coelho Assado",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 413,
+   "name": "rabbit_stew",
+   "namePt": "Ensopado de Coelho",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 415,
+   "name": "armor_stand",
+   "namePt": "Suporte de Armadura",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 419,
+   "name": "lead",
+   "namePt": "Guia",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 420,
+   "name": "name_tag",
+   "namePt": "Etiqueta",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 423,
+   "name": "mutton",
+   "namePt": "Carneiro Cru",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "derrete"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 424,
+   "name": "cooked_mutton",
+   "namePt": "Carneiro Assado",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come",
+    "resultado de fornalha"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 425,
+   "name": "banner",
+   "namePt": "Estandarte",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 450,
+   "name": "iron_nugget",
+   "namePt": "Pepita de Ferro",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "ingrediente",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 451,
+   "name": "gun_barrel",
+   "namePt": "Cano de Ferro",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "ingrediente",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 452,
+   "name": "firing_mechanism",
+   "namePt": "Mecanismo de Disparo",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "ingrediente",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 453,
+   "name": "wooden_stock",
+   "namePt": "Coronha de Madeira",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "ingrediente",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 454,
+   "name": "grip",
+   "namePt": "Empunhadura",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "ingrediente",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 455,
+   "name": "spring",
+   "namePt": "Mola",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "ingrediente",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 456,
+   "name": "light_ammo",
+   "namePt": "Munição Leve",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 457,
+   "name": "heavy_ammo",
+   "namePt": "Munição Pesada",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 458,
+   "name": "shotgun_shell",
+   "namePt": "Cartucho de Escopeta",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 459,
+   "name": "pistol",
+   "namePt": "Pistola",
+   "tipo": "item",
+   "cls": "arma",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 460,
+   "name": "shotgun",
+   "namePt": "Escopeta",
+   "tipo": "item",
+   "cls": "arma",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 461,
+   "name": "bolt_rifle",
+   "namePt": "Rifle de Ferrolho",
+   "tipo": "item",
+   "cls": "arma",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 462,
+   "name": "carbine",
+   "namePt": "Carabina",
+   "tipo": "item",
+   "cls": "arma",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 463,
+   "name": "grenade",
+   "namePt": "Granada de Mão",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 464,
+   "name": "scope",
+   "namePt": "Mira Telescópica",
+   "tipo": "item",
+   "cls": "acessório",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 465,
+   "name": "silencer",
+   "namePt": "Silenciador",
+   "tipo": "item",
+   "cls": "acessório",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 466,
+   "name": "golden_apple_ench",
+   "namePt": "Maçã Dourada Encantada",
+   "tipo": "item",
+   "cls": "comida",
+   "icon": "pacote",
+   "uses": [
+    "come"
+   ],
+   "noCodigo": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 467,
+   "name": "tactical_light",
+   "namePt": "Lanterna Tática",
+   "tipo": "item",
+   "cls": "acessório",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 468,
+   "name": "extended_mag",
+   "namePt": "Carregador Estendido",
+   "tipo": "item",
+   "cls": "acessório",
+   "icon": "SEM ÍCONE",
+   "uses": [
+    "equipa/usa",
+    "receita"
+   ],
+   "noCodigo": true,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 2256,
+   "name": "record_13",
+   "namePt": "Disco 13",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 2257,
+   "name": "record_cat",
+   "namePt": "Disco cat",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 2258,
+   "name": "record_blocks",
+   "namePt": "Disco blocks",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 2259,
+   "name": "record_chirp",
+   "namePt": "Disco chirp",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 2260,
+   "name": "record_far",
+   "namePt": "Disco far",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 2261,
+   "name": "record_mall",
+   "namePt": "Disco mall",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 2262,
+   "name": "record_mellohi",
+   "namePt": "Disco mellohi",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 2263,
+   "name": "record_stal",
+   "namePt": "Disco stal",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 2264,
+   "name": "record_strad",
+   "namePt": "Disco strad",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 2265,
+   "name": "record_ward",
+   "namePt": "Disco ward",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 2266,
+   "name": "record_11",
+   "namePt": "Disco 11",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 2267,
+   "name": "record_wait",
+   "namePt": "Disco wait",
+   "tipo": "item",
+   "cls": "outro",
+   "icon": "pacote",
+   "uses": [],
+   "noCodigo": false,
+   "craftavel": false,
+   "obtivel": false
+  },
+  {
+   "id": 1,
+   "name": "stone",
+   "namePt": "Pedra",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "stone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 4,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 2,
+   "name": "grass",
+   "namePt": "Grama",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "grass_top",
+    "dirt",
+    "grass_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 3,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 3,
+   "name": "dirt",
+   "namePt": "Terra",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "dirt"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 3,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 4,
+   "name": "cobblestone",
+   "namePt": "Pedregulho",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "cobblestone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 4,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 5,
+   "name": "planks",
+   "namePt": "Tábuas de Carvalho",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "planks"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 5,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 7,
+   "name": "bedrock",
+   "namePt": "Bedrock",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "bedrock"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 8,
+   "name": "flowing_water",
+   "namePt": "Água Corrente",
+   "tipo": "bloco",
+   "modelo": "liquid",
+   "faces": [
+    "water"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 9,
+   "name": "water",
+   "namePt": "Água",
+   "tipo": "bloco",
+   "modelo": "liquid",
+   "faces": [
+    "water"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 10,
+   "name": "flowing_lava",
+   "namePt": "Lava Corrente",
+   "tipo": "bloco",
+   "modelo": "liquid",
+   "faces": [
+    "lava"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 11,
+   "name": "lava",
+   "namePt": "Lava",
+   "tipo": "bloco",
+   "modelo": "liquid",
+   "faces": [
+    "lava"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 12,
+   "name": "sand",
+   "namePt": "Areia",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "sand"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 12,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 13,
+   "name": "gravel",
+   "namePt": "Cascalho",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "gravel"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 13,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 14,
+   "name": "gold_ore",
+   "namePt": "Minério de Ouro",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "gold_ore"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 14,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 15,
+   "name": "iron_ore",
+   "namePt": "Minério de Ferro",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "iron_ore"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 15,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 16,
+   "name": "coal_ore",
+   "namePt": "Minério de Carvão",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "coal_ore"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 16,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 17,
+   "name": "log",
+   "namePt": "Tronco de Carvalho",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "log_top",
+    "log_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 17,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 18,
+   "name": "leaves",
+   "namePt": "Folhas de Carvalho",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "leaves"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 19,
+   "name": "sponge",
+   "namePt": "Esponja",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "sponge"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 19,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 20,
+   "name": "glass",
+   "namePt": "Vidro",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "glass"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 21,
+   "name": "lapis_ore",
+   "namePt": "Minério de Lápis",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "lapis_ore"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 21,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 22,
+   "name": "lapis_block",
+   "namePt": "Bloco de Lápis",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "lapis_block"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 22,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 24,
+   "name": "sandstone",
+   "namePt": "Arenito",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "sandstone_top",
+    "sandstone_bottom",
+    "sandstone_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 24,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 26,
+   "name": "bed",
+   "namePt": "Cama",
+   "tipo": "bloco",
+   "modelo": "bed",
+   "faces": [
+    "bed_head_top",
+    "bed_head_side",
+    "planks"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 355,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 30,
+   "name": "web",
+   "namePt": "Teia",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "web"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 30,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 31,
+   "name": "tallgrass",
+   "namePt": "Grama Alta",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "grass_plant"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 35,
+   "name": "wool",
+   "namePt": "Lã",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "wool"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 35,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 37,
+   "name": "flower",
+   "namePt": "Dente-de-leão",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "flower_dandelion"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 37,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 38,
+   "name": "rose",
+   "namePt": "Papoula",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "flower_rose"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 38,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 39,
+   "name": "brown_mushroom",
+   "namePt": "Cogumelo Marrom",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "mushroom_brown"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 39,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 40,
+   "name": "red_mushroom",
+   "namePt": "Cogumelo Vermelho",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "mushroom_red"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 40,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 41,
+   "name": "gold_block",
+   "namePt": "Bloco de Ouro",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "gold_block"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 41,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 42,
+   "name": "iron_block",
+   "namePt": "Bloco de Ferro",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "iron_block"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 42,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 43,
+   "name": "double_stone_slab",
+   "namePt": "Laje Dupla de Pedra",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "stone_slab_top",
+    "stone_slab_side",
+    "sandstone_top",
+    "sandstone_bottom",
+    "sandstone_side",
+    "planks",
+    "cobblestone",
+    "bricks",
+    "stone_bricks",
+    "nether_brick",
+    "quartz_top",
+    "quartz_bottom",
+    "quartz"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 44,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 44,
+   "name": "stone_slab",
+   "namePt": "Laje de Pedra",
+   "tipo": "bloco",
+   "modelo": "slab",
+   "faces": [
+    "stone_slab_top",
+    "stone_slab_side",
+    "sandstone_top",
+    "sandstone_bottom",
+    "sandstone_side",
+    "planks",
+    "cobblestone",
+    "bricks",
+    "stone_bricks",
+    "nether_brick",
+    "quartz_top",
+    "quartz_bottom",
+    "quartz"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 44,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 45,
+   "name": "bricks",
+   "namePt": "Tijolos",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "bricks"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 45,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 46,
+   "name": "tnt",
+   "namePt": "TNT",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "tnt"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 46,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 47,
+   "name": "bookshelf",
+   "namePt": "Estante",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "planks",
+    "bookshelf"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 47,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 48,
+   "name": "mossy_cobblestone",
+   "namePt": "Pedregulho Musgoso",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "mossy_cobble"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 48,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 49,
+   "name": "obsidian",
+   "namePt": "Obsidiana",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "obsidian"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 49,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 50,
+   "name": "torch",
+   "namePt": "Tocha",
+   "tipo": "bloco",
+   "modelo": "torch",
+   "faces": [
+    "torch"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 50,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 51,
+   "name": "fire",
+   "namePt": "Fogo",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "fire"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 53,
+   "name": "oak_stairs",
+   "namePt": "Escada de Carvalho",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "planks"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 53,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 54,
+   "name": "chest",
+   "namePt": "Baú",
+   "tipo": "bloco",
+   "modelo": "chest",
+   "faces": [
+    "chest_top",
+    "planks",
+    "chest_side",
+    "chest_front"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [
+    "chest_top",
+    "chest_side",
+    "chest_front"
+   ],
+   "drop": 54,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 55,
+   "name": "redstone_wire",
+   "namePt": "Fio de Redstone",
+   "tipo": "bloco",
+   "modelo": "carpet",
+   "faces": [
+    "redstone_block"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 331,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 56,
+   "name": "diamond_ore",
+   "namePt": "Minério de Diamante",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "diamond_ore"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 56,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 57,
+   "name": "diamond_block",
+   "namePt": "Bloco de Diamante",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "diamond_block"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 57,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 58,
+   "name": "crafting_table",
+   "namePt": "Bancada",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "crafting_top",
+    "planks",
+    "crafting_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 58,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 59,
+   "name": "wheat",
+   "namePt": "Trigo",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "grass_plant"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 296,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 60,
+   "name": "farmland",
+   "namePt": "Terra Arada",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "dirt"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 3,
+   "dropExiste": true,
+   "noItems": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 61,
+   "name": "furnace",
+   "namePt": "Fornalha",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "furnace_top",
+    "furnace_side",
+    "furnace_front"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 61,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 64,
+   "name": "wooden_door",
+   "namePt": "Porta de Carvalho",
+   "tipo": "bloco",
+   "modelo": "door",
+   "faces": [
+    "door_wood_lower",
+    "door_wood_upper"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 324,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 65,
+   "name": "ladder",
+   "namePt": "Escada de Mão",
+   "tipo": "bloco",
+   "modelo": "ladder",
+   "faces": [
+    "ladder"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 65,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 67,
+   "name": "stone_stairs",
+   "namePt": "Escada de Pedregulho",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "cobblestone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 67,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 69,
+   "name": "lever",
+   "namePt": "Alavanca",
+   "tipo": "bloco",
+   "modelo": "torch",
+   "faces": [
+    "cobblestone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 69,
+   "dropExiste": true,
+   "noItems": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 70,
+   "name": "stone_pressure_plate",
+   "namePt": "Placa de Pressão de Pedra",
+   "tipo": "bloco",
+   "modelo": "carpet",
+   "faces": [
+    "stone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 70,
+   "dropExiste": true,
+   "noItems": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 71,
+   "name": "iron_door",
+   "namePt": "Porta de Ferro",
+   "tipo": "bloco",
+   "modelo": "door",
+   "faces": [
+    "door_iron_lower",
+    "door_iron_upper"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 330,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 72,
+   "name": "wooden_pressure_plate",
+   "namePt": "Placa de Pressão de Madeira",
+   "tipo": "bloco",
+   "modelo": "carpet",
+   "faces": [
+    "planks"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 72,
+   "dropExiste": true,
+   "noItems": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 73,
+   "name": "redstone_ore",
+   "namePt": "Minério de Redstone",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "redstone_ore"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 73,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 75,
+   "name": "unlit_redstone_torch",
+   "namePt": "Tocha de Redstone Apagada",
+   "tipo": "bloco",
+   "modelo": "torch",
+   "faces": [
+    "redstone_block"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 76,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 76,
+   "name": "redstone_torch",
+   "namePt": "Tocha de Redstone",
+   "tipo": "bloco",
+   "modelo": "torch",
+   "faces": [
+    "redstone_block"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 76,
+   "dropExiste": true,
+   "noItems": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 77,
+   "name": "stone_button",
+   "namePt": "Botão de Pedra",
+   "tipo": "bloco",
+   "modelo": "torch",
+   "faces": [
+    "stone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 77,
+   "dropExiste": true,
+   "noItems": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 78,
+   "name": "snow_layer",
+   "namePt": "Camada de Neve",
+   "tipo": "bloco",
+   "modelo": "snow",
+   "faces": [
+    "snow"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 78,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 79,
+   "name": "ice",
+   "namePt": "Gelo",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "ice"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 80,
+   "name": "snow_block",
+   "namePt": "Bloco de Neve",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "snow"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 80,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 81,
+   "name": "cactus",
+   "namePt": "Cacto",
+   "tipo": "bloco",
+   "modelo": "box",
+   "faces": [
+    "cactus_top",
+    "cactus_bottom",
+    "cactus_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 81,
+   "dropExiste": true,
+   "noItems": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 82,
+   "name": "clay",
+   "namePt": "Argila",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "clay"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 82,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 83,
+   "name": "sugarcane",
+   "namePt": "Cana-de-açúcar",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "sugarcane"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 83,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 85,
+   "name": "fence",
+   "namePt": "Cerca de Carvalho",
+   "tipo": "bloco",
+   "modelo": "fence",
+   "faces": [
+    "planks"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 85,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 86,
+   "name": "pumpkin",
+   "namePt": "Abóbora",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "sandstone_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 86,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 87,
+   "name": "netherrack",
+   "namePt": "Netherrack",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "netherrack"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 87,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 88,
+   "name": "soulsand",
+   "namePt": "Areia das Almas",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "soulsand"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 88,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 89,
+   "name": "glowstone",
+   "namePt": "Glowstone",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "glowstone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 89,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 93,
+   "name": "unpowered_repeater",
+   "namePt": "Repetidor Desligado",
+   "tipo": "bloco",
+   "modelo": "carpet",
+   "faces": [
+    "stone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 356,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 94,
+   "name": "powered_repeater",
+   "namePt": "Repetidor Ligado",
+   "tipo": "bloco",
+   "modelo": "carpet",
+   "faces": [
+    "stone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 356,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 95,
+   "name": "stained_glass",
+   "namePt": "Vidro Tingido",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "glass"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 96,
+   "name": "trapdoor",
+   "namePt": "Alçapão",
+   "tipo": "bloco",
+   "modelo": "trapdoor",
+   "faces": [
+    "trapdoor"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 96,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 98,
+   "name": "stone_bricks",
+   "namePt": "Tijolos de Pedra",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "stone_bricks"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 98,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 99,
+   "name": "brown_mushroom_block",
+   "namePt": "Bloco de Cogumelo Marrom",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "mushroom_brown"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 99,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 100,
+   "name": "red_mushroom_block",
+   "namePt": "Bloco de Cogumelo Vermelho",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "mushroom_red"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 100,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 103,
+   "name": "melon_block",
+   "namePt": "Melância",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "glowstone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 103,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 104,
+   "name": "pumpkin_stem",
+   "namePt": "Caule de Abóbora",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "grass_plant"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 361,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 105,
+   "name": "melon_stem",
+   "namePt": "Caule de Melancia",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "grass_plant"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 362,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 106,
+   "name": "vine",
+   "namePt": "Trepadeira",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "vine"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 106,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 107,
+   "name": "fence_gate",
+   "namePt": "Portão de Carvalho",
+   "tipo": "bloco",
+   "modelo": "gate",
+   "faces": [
+    "planks"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 107,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 108,
+   "name": "brick_stairs",
+   "namePt": "Escada de Tijolos",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "bricks"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 108,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 109,
+   "name": "stone_brick_stairs",
+   "namePt": "Escada de Tijolos de Pedra",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "stone_bricks"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 109,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 110,
+   "name": "mycelium",
+   "namePt": "Micélio",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "mycelium_top",
+    "dirt",
+    "mycelium_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 3,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 111,
+   "name": "lilypad",
+   "namePt": "Vitória-régia",
+   "tipo": "bloco",
+   "modelo": "box",
+   "faces": [
+    "lilypad"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 111,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 112,
+   "name": "nether_brick",
+   "namePt": "Tijolo do Nether",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "nether_brick"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 112,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 113,
+   "name": "nether_brick_fence",
+   "namePt": "Cerca de Tijolos do Nether",
+   "tipo": "bloco",
+   "modelo": "fence",
+   "faces": [
+    "nether_brick"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 113,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 114,
+   "name": "nether_brick_stairs",
+   "namePt": "Escada de Tijolos do Nether",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "nether_brick"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 114,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 115,
+   "name": "nether_wart",
+   "namePt": "Verruga do Nether",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "mushroom_red"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 372,
+   "dropExiste": true,
+   "noItems": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 121,
+   "name": "end_stone",
+   "namePt": "Pedra do End",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "end_stone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 121,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 123,
+   "name": "redstone_lamp",
+   "namePt": "Lâmpada de Redstone",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "glowstone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 123,
+   "dropExiste": true,
+   "noItems": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 124,
+   "name": "lit_redstone_lamp",
+   "namePt": "Lâmpada Acesa",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "glowstone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 123,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 125,
+   "name": "double_wooden_slab",
+   "namePt": "Laje Dupla de Madeira",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "planks",
+    "planks_spruce",
+    "planks_birch",
+    "planks_jungle",
+    "planks_acacia",
+    "planks_dark_oak"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 126,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 126,
+   "name": "wooden_slab",
+   "namePt": "Laje de Madeira",
+   "tipo": "bloco",
+   "modelo": "slab",
+   "faces": [
+    "planks",
+    "planks_spruce",
+    "planks_birch",
+    "planks_jungle",
+    "planks_acacia",
+    "planks_dark_oak"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 126,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 128,
+   "name": "sandstone_stairs",
+   "namePt": "Escada de Arenito",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "sandstone_top",
+    "sandstone_bottom",
+    "sandstone_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 128,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 129,
+   "name": "emerald_ore",
+   "namePt": "Minério de Esmeralda",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "emerald_ore"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 129,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 133,
+   "name": "emerald_block",
+   "namePt": "Bloco de Esmeralda",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "emerald_block"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 133,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 134,
+   "name": "spruce_stairs",
+   "namePt": "Escada de Pinheiro",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "planks_spruce"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 134,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 135,
+   "name": "birch_stairs",
+   "namePt": "Escada de Bétula",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "planks_birch"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 135,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 136,
+   "name": "jungle_stairs",
+   "namePt": "Escada da Selva",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "planks_jungle"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 136,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 141,
+   "name": "carrots",
+   "namePt": "Cenouras",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "grass_plant"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 391,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 142,
+   "name": "potatoes",
+   "namePt": "Batatas",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "grass_plant"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 392,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 143,
+   "name": "dead_bush",
+   "namePt": "Arbusto Morto",
+   "tipo": "bloco",
+   "modelo": "cross",
+   "faces": [
+    "dead_bush"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 143,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 149,
+   "name": "unpowered_comparator",
+   "namePt": "Comparador Desligado",
+   "tipo": "bloco",
+   "modelo": "carpet",
+   "faces": [
+    "stone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 404,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 150,
+   "name": "powered_comparator",
+   "namePt": "Comparador Ligado",
+   "tipo": "bloco",
+   "modelo": "carpet",
+   "faces": [
+    "stone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 404,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 151,
+   "name": "daylight_sensor",
+   "namePt": "Sensor de Luz",
+   "tipo": "bloco",
+   "modelo": "carpet",
+   "faces": [
+    "stone"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 151,
+   "dropExiste": true,
+   "noItems": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 152,
+   "name": "redstone_block",
+   "namePt": "Bloco de Redstone",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "redstone_block"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 152,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 154,
+   "name": "hopper",
+   "namePt": "Funil",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "iron_block"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 154,
+   "dropExiste": true,
+   "noItems": true,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 155,
+   "name": "quartz_block",
+   "namePt": "Bloco de Quartzo",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "quartz"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 155,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 156,
+   "name": "quartz_stairs",
+   "namePt": "Escada de Quartzo",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "quartz_top",
+    "quartz_bottom",
+    "quartz"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 156,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 159,
+   "name": "stained_clay",
+   "namePt": "Argila Tingida",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "hardened_clay"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 159,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 161,
+   "name": "leaves2",
+   "namePt": "Folhas de Acácia",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "leaves"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 162,
+   "name": "log2",
+   "namePt": "Tronco de Acácia",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "log_top",
+    "log_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 162,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 163,
+   "name": "acacia_stairs",
+   "namePt": "Escada de Acácia",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "planks_acacia"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 163,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 164,
+   "name": "dark_oak_stairs",
+   "namePt": "Escada de Carvalho Escuro",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "planks_dark_oak"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 164,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 165,
+   "name": "slime",
+   "namePt": "Bloco de Slime",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "slime"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 165,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 168,
+   "name": "prismarine",
+   "namePt": "Prismarinho",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "prismarine"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 168,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 169,
+   "name": "sea_lantern",
+   "namePt": "Lanterna do Mar",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "sea_lantern"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 169,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 170,
+   "name": "hay_block",
+   "namePt": "Fardo de Feno",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "hay"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 170,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 171,
+   "name": "carpet",
+   "namePt": "Tapete",
+   "tipo": "bloco",
+   "modelo": "carpet",
+   "faces": [
+    "wool"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 171,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 173,
+   "name": "coal_block",
+   "namePt": "Bloco de Carvão",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "coal_block"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 173,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 174,
+   "name": "packed_ice",
+   "namePt": "Gelo Compactado",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "ice"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": null,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 175,
+   "name": "mossy_stone_bricks",
+   "namePt": "Tijolos de Pedra Musgosos",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "mossy_cobble"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 175,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 176,
+   "name": "red_sandstone",
+   "namePt": "Arenito Vermelho",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "sandstone_top",
+    "sandstone_bottom",
+    "sandstone_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 176,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 177,
+   "name": "gunsmith_bench",
+   "namePt": "Bancada de Armeiro",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "planks",
+    "crafting_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 177,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 180,
+   "name": "red_sandstone_stairs",
+   "namePt": "Escada de Arenito Vermelho",
+   "tipo": "bloco",
+   "modelo": "stairs",
+   "faces": [
+    "red_sandstone_top",
+    "red_sandstone_bottom",
+    "red_sandstone_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 180,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  },
+  {
+   "id": 181,
+   "name": "double_stone_slab2",
+   "namePt": "Laje Dupla de Arenito Vermelho",
+   "tipo": "bloco",
+   "modelo": "cube",
+   "faces": [
+    "red_sandstone_top",
+    "red_sandstone_bottom",
+    "red_sandstone_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 182,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": false,
+   "obtivel": true
+  },
+  {
+   "id": 182,
+   "name": "stone_slab2",
+   "namePt": "Laje de Arenito Vermelho",
+   "tipo": "bloco",
+   "modelo": "slab",
+   "faces": [
+    "red_sandstone_top",
+    "red_sandstone_bottom",
+    "red_sandstone_side"
+   ],
+   "texturaAusente": [],
+   "texturaFalsa": [],
+   "drop": 182,
+   "dropExiste": true,
+   "noItems": false,
+   "craftavel": true,
+   "obtivel": true
+  }
+ ],
+ "receitasInvalidas": [],
+ "tilesSemArquivo": [
+  "error",
+  "chest_top",
+  "chest_side",
+  "chest_front"
+ ],
+ "resumo": {
+  "itens": 194,
+  "blocos": 131,
+  "itensSemIcone": [
+   "450 iron_nugget",
+   "451 gun_barrel",
+   "452 firing_mechanism",
+   "453 wooden_stock",
+   "454 grip",
+   "455 spring",
+   "456 light_ammo",
+   "457 heavy_ammo",
+   "458 shotgun_shell",
+   "459 pistol",
+   "460 shotgun",
+   "461 bolt_rifle",
+   "462 carbine",
+   "463 grenade",
+   "464 scope",
+   "465 silencer",
+   "467 tactical_light",
+   "468 extended_mag"
+  ],
+  "itensSemUsoNemReceita": [
+   "329 saddle",
+   "376 fermented_spider_eye",
+   "379 brewing_stand",
+   "382 speckled_melon",
+   "385 item_frame",
+   "386 writable_book",
+   "387 written_book",
+   "398 carrot_on_a_stick",
+   "402 fireworks",
+   "405 netherbrick",
+   "410 prismarine_crystals",
+   "415 armor_stand",
+   "419 lead",
+   "425 banner",
+   "2256 record_13",
+   "2257 record_cat",
+   "2258 record_blocks",
+   "2259 record_chirp",
+   "2260 record_far",
+   "2261 record_mall",
+   "2262 record_mellohi",
+   "2263 record_stal",
+   "2264 record_strad",
+   "2265 record_ward",
+   "2266 record_11",
+   "2267 record_wait"
+  ],
+  "blocosTexturaAusente": [],
+  "blocosTexturaFalsa": [
+   "54 chest: chest_top,chest_side,chest_front"
+  ],
+  "blocosDropInexistente": [],
+  "receitasInvalidas": []
+ }
+}

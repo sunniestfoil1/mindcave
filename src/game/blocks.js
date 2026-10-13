@@ -212,6 +212,7 @@ export function getSelectionBox(id, meta = 0) {
     case 'slab': return (meta & 8) ? [0, 0.5, 0, 1, 1, 1] : [0, 0, 0, 1, 0.5, 1];
     case 'bed': return [0, 0, 0, 1, 0.5625, 1];
     case 'fence': case 'gate': return [0.375, 0, 0.375, 0.625, 1, 0.625];
+    case 'chest': return [0.0625, 0, 0.0625, 0.9375, 0.875, 0.9375];
     case 'door': return [0, 0, 0, 1, 1, 1];
     default: return FULL_BOX;
   }
@@ -282,6 +283,9 @@ BLOCKS[71] = shaped(71, 'iron_door', 'Porta de Ferro', { model: 'door', hardness
 BLOCKS[85] = shaped(85, 'fence', 'Cerca de Carvalho', { model: 'fence', hardness: 2.0, faces: { all: 'planks' }, drop: 85, lightOpacity: 0, soundCategory: 'wood' });
 BLOCKS[113] = shaped(113, 'nether_brick_fence', 'Cerca de Tijolos do Nether', { model: 'fence', hardness: 2.0, faces: { all: 'nether_brick' }, drop: 113, lightOpacity: 0 });
 BLOCKS[107] = shaped(107, 'fence_gate', 'Portão de Carvalho', { model: 'gate', hardness: 2.0, faces: { all: 'planks' }, drop: 107, lightOpacity: 0, soundCategory: 'wood' });
+BLOCKS[54] = shaped(54, 'chest', 'Baú', { model: 'chest', hardness: 2.5, faces: { top: 'chest_top', bottom: 'planks', side: 'chest_side', front: 'chest_front' }, drop: 54, lightOpacity: 0, soundCategory: 'wood' });
+BLOCKS[65] = shaped(65, 'ladder', 'Escada de Mão', { model: 'ladder', hardness: 0.4, faces: { all: 'ladder' }, drop: 65, render: 'cutout', lightOpacity: 0, soundCategory: 'wood', climbable: true });
+BLOCKS[96] = shaped(96, 'trapdoor', 'Alçapão', { model: 'trapdoor', hardness: 3.0, faces: { all: 'trapdoor' }, drop: 96, render: 'cutout', lightOpacity: 0, soundCategory: 'wood' });
 export const SLAB_IDS = [44, 126, 182];
 export const STAIR_IDS = STAIRS.map(s => s[0]);
 

@@ -13,7 +13,8 @@ export const ATTACK_REACH = { survival: 3.0, creative: 6.0 };
 export function isSword(item) {
   if (!item || !item.id) return false;
   const def = getItem(item.id);
-  return !!(def && def.weapon && !def.tool);
+  // arco e armas de fogo também são `weapon`, mas não bloqueiam com o botão direito (o arco puxa a corda; a arma de fogo tem controlador próprio)
+  return !!(def && def.weapon && !def.tool && !def.gun && def.name !== 'bow');
 }
 
 export function isBow(item) {

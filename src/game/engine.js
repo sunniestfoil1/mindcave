@@ -47,6 +47,7 @@ import { ItemEntityManager, createItemMesh } from './itemEntity';
 import { perfMonitor } from './perfMonitor';
 import { musicManager } from './musicManager';
 import { voiceChat } from './net/voiceChat';
+import { getContainer, removeContainer } from './containers';
 import { handleBlockBreakPhysics, tickNearbyFallingBlocks, FALLING_BLOCK_IDS, canFallThrough, triggerFallingColumn } from './fallingBlocks';
 
 // MC24-RF-032: valores sRGB crus em tudo (texturas, cores, saída) — sem conversão dupla
@@ -692,7 +693,7 @@ export class GameEngine {
     const hit = this.raycast();
     if (!hit) return false;
     const blockId = hit.id;
-    if (blockId === 64 || blockId === 107) { // porta de madeira e portão: abrem/fecham com o botão direito (a de ferro só com redstone)
+    if (blockId === 64 || blockId === 107 || blockId === 96) { // porta de madeira, portão e alçapão: abrem/fecham com o botão direito (a de ferro só com redstone)
       this.toggleOpenable(hit.x, hit.y, hit.z);
       return true;
     }
@@ -730,6 +731,7 @@ export class GameEngine {
     let placeId = slot.id;
     if (slot.id === 355) { this.placeBed(hit, slot, px, py, pz); return; }
     const plan = computePlacement(placing, meta, hit, this.player.yaw, (a, b, c) => this.world.getBlock(a, b, c));
+    if (plan && plan.invalid) return; // ex.: escada de mão sem parede
     if (plan) { px = plan.x; py = plan.y; pz = plan.z; placeId = plan.id; meta = plan.meta; }
     if (hasShape(getBlock(placeId))) { if (this._shapeHitsPlayer(placeId, meta, px, py, pz)) return; }
     else if (this.intersectsPlayer(px, py, pz)) return;
@@ -768,6 +770,20 @@ export class GameEngine {
       if (rsIds.includes(slot.id)) this.player.stats.redstonePlaced++;
     }
     this.placeCd = 4;
+  }
+
+  // Botão direito em entidade com item na mão: tesoura tosquia ovelha (1–3 de lã) e gasta a tesoura
+  useOnEntity(slot) {
+    if (!slot || slot.id !== 359) return false;
+    const hit = this.raycastEntity();
+    const e = hit && hit.entity;
+    if (!e || e.typeId !== 'sheep' || e.sheared || e.isBaby || e.isDead) return false;
+    e.sheared = true;
+    const n = 1 + Math.floor(Math.random() * 3);
+    this.itemEntities?.spawnItem({ id: 35, count: n, meta: e.woolColor || 0 }, { x: e.pos.x, y: e.pos.y + 1, z: e.pos.z }, { x: (Math.random() - 0.5) * 0.4, y: 2, z: (Math.random() - 0.5) * 0.4 }, 10);
+    playEvent('entity.sheep.shear', { pos: e.pos });
+    this._wearHeld(slot);
+    return true;
   }
 
   _setBlockSync(x, y, z, state) {
@@ -926,13 +942,13 @@ export class GameEngine {
     const st = this.world.getBlock(x, y, z);
     const id = stateId(st);
     let ty = y;
-    if (id !== 107 && (stateMeta(st) & 8)) ty = y - 1;
+    if (id !== 107 && id !== 96 && (stateMeta(st) & 8)) ty = y - 1; // porta: o estado fica na metade de baixo
     const target = this.world.getBlock(x, ty, z);
     if (stateId(target) !== id) return;
     const meta = stateMeta(target) ^ 4;
     this._setBlockSync(x, ty, z, packState(id, meta));
     const open = (meta & 4) !== 0;
-    const name = id === 107 ? 'fence_gate' : id === 71 ? 'iron_door' : 'wooden_door';
+    const name = id === 107 ? 'fence_gate' : id === 71 ? 'iron_door' : id === 96 ? 'wooden_trapdoor' : 'wooden_door';
     playEvent(`block.${name}.${open ? 'open' : 'close'}`, { pos: { x: x + 0.5, y: ty + 0.5, z: z + 0.5 } });
   }
 
@@ -965,8 +981,28 @@ export class GameEngine {
     this.placeCd = 4;
   }
 
+  // Baú quebrado: o conteúdo cai no chão (o baú em si dropa pelo registro)
+  spillContainer(x, y, z, state) {
+    if (stateId(state) !== 54) return;
+    const c = getContainer(this.world, x, y, z);
+    if (!c) return;
+    for (const it of c.slots) {
+      if (!it || !it.id) continue;
+      const a = Math.random() * Math.PI * 2;
+      this.itemEntities?.spawnItem({ id: it.id, count: it.count || 1, meta: it.meta || 0 }, { x: x + 0.5, y: y + 0.5, z: z + 0.5 }, { x: Math.cos(a) * 1.2, y: 2, z: Math.sin(a) * 1.2 }, 10);
+    }
+    removeContainer(x, y, z);
+  }
+
+  // Escada de mão: o jogador dentro de uma célula com escada sobe encostado nela (EntityLivingBase.moveEntityWithHeading)
+  _isOnLadder(p) {
+    const b = getBlock(stateId(this.world.getBlock(Math.floor(p.pos.x), Math.floor(p.pos.y + 0.2), Math.floor(p.pos.z))));
+    return !!(b && b.climbable);
+  }
+
   // Ao quebrar uma metade da cama ou da porta, a outra some junto (sem drop extra)
   breakBedPartner(x, y, z, state) {
+    this.spillContainer(x, y, z, state);
     const id = stateId(state);
     if (id === 26) {
       const pt = bedPartner(x, z, stateMeta(state));
@@ -1217,8 +1253,19 @@ export class GameEngine {
         accel = p.sprinting ? 0.026 : 0.02;
       }
       this.moveFlying(strafe, forward, accel, yaw);
+      if (this._isOnLadder(p)) {
+        // 1.8.9 (antes de mover): horizontal limitado a 0,15; cai no máximo 0,15/tick; Shift segura no lugar; empurrar contra a parede
+        // (colisão do tick anterior) sobe a 0,2/tick
+        p.vel.x = Math.max(-0.15, Math.min(0.15, p.vel.x));
+        p.vel.z = Math.max(-0.15, Math.min(0.15, p.vel.z));
+        if (p.vel.y < -0.15) p.vel.y = -0.15;
+        if (p.sneaking && p.vel.y < 0) p.vel.y = 0;
+        if (this._ladderPush) p.vel.y = 0.2;
+        p.fallDistance = 0;
+      }
       const res = moveEntity(p.pos, p.vel, this.world, 1, { sneaking: p.sneaking, onGround: p.onGround, flying: p.flying });
       p.onGround = res.onGround;
+      this._ladderPush = res.collidedX || res.collidedZ;
       p.vel.x *= friction;
       p.vel.z *= friction;
       p.vel.y -= PLAYER.gravity;
@@ -1287,12 +1334,14 @@ export class GameEngine {
     if (useActive) {
       if (isSword(heldItem)) {
         p.blocking = true; p.usingItem = true;
-      } else if (isBow(heldItem)) {
+      } else if (isBow(heldItem) && (p.gameMode === 'creative' || this._findArrow())) {
         p.bowDrawing = true; p.usingItem = true;
         this.bowChargeTicks++;
         p.bowCharge = computeBowCharge(this.bowChargeTicks);
       } else if (this.tryStartEating(p)) {
         this.tickEating(p);
+      } else if (usePressed && this.useOnEntity(heldItem)) {
+        this.placeCd = 4;
       } else if (usePressed && this.interactBlock(p)) {
         this.placeCd = 4;
       } else if (this.placeCd <= 0 && !heldItem?.id) {
@@ -2500,19 +2549,30 @@ export class GameEngine {
     return this.entities.filter(e => !e.isDead);
   }
 
+  // Primeira pilha de flechas (id 262) na hotbar ou no inventário; { arr, i } ou null
+  _findArrow() {
+    const inv = this.inventory;
+    if (!inv) return null;
+    for (const arr of [inv.hotbar, inv.main]) for (let i = 0; i < arr.length; i++) if (arr[i] && arr[i].id === 262 && arr[i].count > 0) return { arr, i };
+    return null;
+  }
+
   shootArrow(p, charge) {
     if (!this.projectiles) return;
+    // 1.8.9: sem flechas não atira; gasta 1 a cada disparo (no criativo é livre)
+    if (p.gameMode !== 'creative') {
+      const a = this._findArrow();
+      if (!a) return;
+      a.arr[a.i].count--;
+      if (a.arr[a.i].count <= 0) a.arr[a.i] = null;
+    }
     playBowSound(p.pos);
     this.projectiles.spawnArrow(p, charge, {
       onHitEntity: (proj, entity) => {
         if (entity) entity._lastAttacker = p.nomeJogador || p.name;
       },
     });
-    const slot = p.hotbar[p.selectedSlot];
-    if (slot && slot.durability !== undefined && p.gameMode !== 'creative') {
-      slot.durability--;
-      if (slot.durability <= 0) p.hotbar[p.selectedSlot] = { id: 0, meta: 0 };
-    }
+    this._wearHeld(p.hotbar[p.selectedSlot]); // desgaste do arco (antes lia um campo que não existe e nunca gastava)
   }
 
   throwProjectile(p, itemId) {

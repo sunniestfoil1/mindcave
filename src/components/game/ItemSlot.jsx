@@ -5,7 +5,7 @@ import { getDurabilityRatio } from "@/game/mining";
 import { getPackUrl, MC, isPackReady, onPackReady } from "@/game/pack";
 import { getAtlasTileCanvas, getAtlasVersion } from "@/game/textures";
 import { itemIconFile, itemBlockTile, ICON_TINT } from "@/game/gui/iconNames";
-import { drawIsoBoxes, ICON_SLAB, ICON_STAIRS, ICON_FENCE, ICON_GATE } from "@/game/gui/isoIcon";
+import { drawIsoBoxes, ICON_SLAB, ICON_STAIRS, ICON_FENCE, ICON_GATE, ICON_CHEST } from "@/game/gui/isoIcon";
 
 const blockCanvasCache = new Map();
 const flatCanvasCache = new Map();
@@ -101,14 +101,14 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
       const top = b.variants ? tileForFace(b, 'top', meta) : (typeof f === 'string' ? f : (f?.top || f?.all || f?.side || b.name));
       const side = b.variants ? tileForFace(b, 'side', meta) : (typeof f === 'string' ? f : (f?.side || f?.front || f?.all || top));
       const tint = b.tint === 'grass' || b.tint === 'foliage' ? b.tint : null;
-      if (b.model === 'slab' || b.model === 'stairs' || b.model === 'fence' || b.model === 'gate') {
+      if (b.model === 'slab' || b.model === 'stairs' || b.model === 'fence' || b.model === 'gate' || b.model === 'chest') {
         const t = tile(top, null), sd = tile(side, null);
         if (t && sd) {
           const key = `${b.model}|${top}|${side}`;
           if (!blockCanvasCache.has(key)) {
             const c = document.createElement('canvas');
             c.width = 32; c.height = 32;
-            drawIsoBoxes(c.getContext('2d'), { slab: ICON_SLAB, stairs: ICON_STAIRS, fence: ICON_FENCE, gate: ICON_GATE }[b.model], t, sd);
+            drawIsoBoxes(c.getContext('2d'), { slab: ICON_SLAB, stairs: ICON_STAIRS, fence: ICON_FENCE, gate: ICON_GATE, chest: ICON_CHEST }[b.model], t, sd, null, b.model === 'chest' ? tile('chest_front', null) : null);
             blockCanvasCache.set(key, canvasToOptimizedDataUrl(c));
           }
           setImgUrl(blockCanvasCache.get(key));

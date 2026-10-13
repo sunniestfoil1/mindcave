@@ -37,8 +37,8 @@ export function createSurvivalState(gameMode = 'creative') {
 
 // Tabela de pontos de armadura (MC 1.8.9)
 const ARMOR_POINTS = {
-  298: 1, 299: 3, 300: 5, 301: 1,   // Couro
-  302: 2, 303: 5, 304: 6, 305: 2,   // Corrente
+  298: 1, 299: 3, 300: 2, 301: 1,   // Couro (7 no conjunto)
+  302: 2, 303: 5, 304: 4, 305: 1,   // Corrente (12)
   306: 2, 307: 6, 308: 5, 309: 2,   // Ferro
   310: 3, 311: 8, 312: 6, 313: 3,   // Diamante
   314: 2, 315: 5, 316: 3, 317: 1,   // Ouro

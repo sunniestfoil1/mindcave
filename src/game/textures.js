@@ -281,6 +281,7 @@ const TILE_ORDER = [
   'planks_acacia', 'planks_dark_oak', 'red_sandstone_top', 'red_sandstone_bottom', 'red_sandstone_side',
   'bed_head_top', 'bed_feet_top', 'bed_head_side', 'bed_feet_side', 'bed_head_end', 'bed_feet_end',
   'door_wood_lower', 'door_wood_upper', 'door_iron_lower', 'door_iron_upper',
+  'ladder', 'trapdoor', 'chest_top', 'chest_side', 'chest_front',
 ];
 
 let _cache = null;
@@ -365,6 +366,7 @@ const MC_TEXTURE_MAP = {
   'stone_slab_top': 'stone_slab_top', 'stone_slab_side': 'stone_slab_side', 'quartz_top': 'quartz_block_top',
   'quartz_bottom': 'quartz_block_bottom', 'planks_spruce': 'planks_spruce', 'planks_birch': 'planks_birch',
   'planks_jungle': 'planks_jungle', 'planks_acacia': 'planks_acacia', 'planks_dark_oak': 'planks_big_oak',
+  'ladder': 'ladder', 'trapdoor': 'trapdoor',
   'door_wood_lower': 'door_wood_lower', 'door_wood_upper': 'door_wood_upper', 'door_iron_lower': 'door_iron_lower', 'door_iron_upper': 'door_iron_upper',
   'bed_head_top': 'bed_head_top', 'bed_feet_top': 'bed_feet_top', 'bed_head_side': 'bed_head_side',
   'bed_feet_side': 'bed_feet_side', 'bed_head_end': 'bed_head_end', 'bed_feet_end': 'bed_feet_end',
@@ -419,6 +421,26 @@ async function composeGrassSide(ctx) {
   ctx.drawImage(tmp, x0, y0);
 }
 
+// O baú do 1.8.9 é uma entidade: as faces vêm de textures/entity/chest/normal.png (layout de caixa 64×64). Monta 3 ladrilhos:
+// tampa (topo), lateral (tampa + corpo) e frente (com o fecho).
+async function composeChest(ctx) {
+  const src = await getPackCanvas(MC + 'textures/entity/chest/normal.png');
+  if (!src) return;
+  const draw = (name, fn) => {
+    const idx = TILE_ORDER.indexOf(name);
+    const { x0, y0 } = tileRect(idx);
+    ctx.clearRect(x0, y0, TILE, TILE);
+    const t = document.createElement('canvas'); t.width = TILE; t.height = TILE;
+    const c = t.getContext('2d'); c.imageSmoothingEnabled = false;
+    fn(c);
+    ctx.drawImage(t, x0, y0);
+  };
+  const lidH = TILE * 5 / 15, bodyH = TILE - lidH; // 5 px de tampa + 10 de corpo = 15
+  draw('chest_top', (c) => c.drawImage(src, 14, 0, 14, 14, 0, 0, TILE, TILE));
+  draw('chest_side', (c) => { c.drawImage(src, 0, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 0, 33, 14, 10, 0, lidH, TILE, bodyH); });
+  draw('chest_front', (c) => { c.drawImage(src, 14, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 14, 33, 14, 10, 0, lidH, TILE, bodyH); c.drawImage(src, 1, 1, 2, 4, 7, lidH - 1, 2, 4); });
+}
+
 export function loadRealTextures() {
   if (_realLoaded) return Promise.resolve(true);
   if (_loadingPromise) return _loadingPromise;
@@ -446,6 +468,7 @@ export function loadRealTextures() {
         }
       }));
       await composeGrassSide(ctx);
+      await composeChest(ctx);
       texture.needsUpdate = true;
       _atlasVersion++;
       _realLoaded = true;

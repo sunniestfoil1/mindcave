@@ -311,6 +311,7 @@ function buildCreeperModel() {
 
 // 3. ModelQuadruped: porco, vaca, ovelha (cada um com as medidas do seu modelo)
 function buildQuadrupedModel(mobType) {
+  let furGroups = null;
   const mat = getMobMaterial(mobType, 64, 32);
   const { root, inner } = rigRoot();
   const H = Math.PI / 2;
@@ -337,12 +338,13 @@ function buildQuadrupedModel(mobType) {
     legs = [[-3, 12, 7], [3, 12, 7], [-3, 12, -5], [3, 12, -5]].map((p) => mcPart(mat, 64, 32, { uv: [0, 16], box: lb, pivot: p }));
     // lã (sheep_fur.png): mesmas caixas infladas
     const fur = getMobMaterial('sheep_fur', 64, 32);
-    head.add(mcPart(fur, 64, 32, { uv: [0, 0], box: [-3, -4, -4, 6, 6, 6], pivot: [0, 0, 0], inflate: 0.6 }));
-    body.add(mcPart(fur, 64, 32, { uv: [28, 8], box: [-4, -10, -7, 8, 16, 6], pivot: [0, 0, 0], inflate: 1.75 }));
-    legs.forEach((l) => l.add(mcPart(fur, 64, 32, { uv: [0, 16], box: [-2, 0, -2, 4, 6, 4], pivot: [0, 0, 0], inflate: 0.5 })));
+    const furParts = [mcPart(fur, 64, 32, { uv: [0, 0], box: [-3, -4, -4, 6, 6, 6], pivot: [0, 0, 0], inflate: 0.6 }), mcPart(fur, 64, 32, { uv: [28, 8], box: [-4, -10, -7, 8, 16, 6], pivot: [0, 0, 0], inflate: 1.75 })];
+    head.add(furParts[0]); body.add(furParts[1]);
+    legs.forEach((l) => { const f = mcPart(fur, 64, 32, { uv: [0, 16], box: [-2, 0, -2, 4, 6, 4], pivot: [0, 0, 0], inflate: 0.5 }); furParts.push(f); l.add(f); });
+    furGroups = furParts; // some quando a ovelha é tosquiada
   }
   inner.add(head, body, ...parts, ...legs);
-  root.userData = { head, body, leg1: legs[0], leg2: legs[1], leg3: legs[2], leg4: legs[3], type: 'quadruped', mobType };
+  root.userData = { head, body, leg1: legs[0], leg2: legs[1], leg3: legs[2], leg4: legs[3], type: 'quadruped', mobType, fur: furGroups };
   return root;
 }
 
@@ -481,6 +483,7 @@ export function animateMobModel(model, mob, time) {
   const attacking = !!mob.target;
 
   const look = () => { if (u.head) raw(u.head, headPitch, headYaw, 0); };
+  if (u.fur) for (const f of u.fur) f.visible = !mob.sheared; // ovelha tosquiada fica sem lã
 
   if (u.type === 'biped') {
     look();

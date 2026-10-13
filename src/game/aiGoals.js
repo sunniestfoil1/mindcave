@@ -479,6 +479,7 @@ class EatGrassGoal extends Goal {
       // Transformar grama em terra e regenerar lã
       const bx = Math.floor(mob.pos.x), by = Math.floor(mob.pos.y), bz = Math.floor(mob.pos.z);
       world.setBlock(bx, by - 1, bz, 3); // dirt
+      mob.sheared = false; // a lã cresce de novo (EntitySheep.eatGrassBonus)
       mob.sheared = false;
     }
   }

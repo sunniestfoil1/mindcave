@@ -109,6 +109,27 @@ try {
   power = true; rs.evaluate(0, 2, 0); ok(open(), 'recebe energia (avaliando a metade de cima): abre');
   power = false; rs.evaluate(0, 1, 0); ok(!open(), 'perde a energia: fecha');
   w.set(0, 1, 0, 64, 1 | 4); rs.evaluate(0, 1, 0); ok(open(), 'aberta à mão sem energia: a redstone vizinha NÃO a fecha');
+
+  // ---- baú, escada de mão, alçapão ----
+  const idItems = (await server.ssrLoadModule('/src/game/items.js')).ITEMS;
+  ok(BLOCKS[54]?.model === 'chest' && BLOCKS[65]?.model === 'ladder' && BLOCKS[96]?.model === 'trapdoor' && !!idItems[281], 'baú (54), escada de mão (65), alçapão (96) e tigela (281) existem');
+  ok(BLOCKS[65].climbable === true, 'escada de mão é escalável');
+  ok(same(Sh.ladderBox(3), [0, 0, 0, 1, 1, 0.125]) && same(Sh.ladderBox(1), [0, 0, 0.875, 1, 1, 1]) && same(Sh.ladderBox(0), [0.875, 0, 0, 1, 1, 1]) && same(Sh.ladderBox(2), [0, 0, 0, 0.125, 1, 1]), 'escada de mão: placa encostada na parede oposta à direção em que olha');
+  ok(same(Sh.trapdoorBox(0), [0, 0, 0, 1, 0.1875, 1]) && same(Sh.trapdoorBox(8), [0, 0.8125, 0, 1, 1, 1]), 'alçapão fechado: placa no chão ou no teto');
+  ok(same(Sh.trapdoorBox(0 | 4), [0, 0, 0, 0.1875, 1, 1]) && same(Sh.trapdoorBox(2 | 4), [0.8125, 0, 0, 1, 1, 1]), 'alçapão aberto: placa vertical na parede da dobradiça');
+  const hitWall = (nx, nz) => ({ x: 0, y: 0, z: 0, nx, ny: 0, nz, hy: 0.3 });
+  const wallState = (x, y, z) => (x === 0 && y === 0 && z === 0 ? ps(1, 0) : 0);
+  let lp = Sh.computePlacement(BLOCKS[65], 0, hitWall(1, 0), 0, wallState);
+  ok(lp && lp.x === 1 && lp.meta === 2, `escada de mão na face leste de um bloco olha para leste (meta ${lp?.meta})`);
+  ok(Sh.computePlacement(BLOCKS[65], 0, { x: 0, y: 0, z: 0, nx: 0, ny: 1, nz: 0, hy: 1 }, 0, wallState).invalid === true, 'escada de mão não se coloca em cima de bloco');
+  ok(Sh.computePlacement(BLOCKS[65], 0, hitWall(1, 0), 0, () => ps(18, 0)).invalid === true, 'nem em folhas (não é parede cheia)');
+  lp = Sh.computePlacement(BLOCKS[96], 0, { x: 0, y: 0, z: 0, nx: 1, ny: 0, nz: 0, hy: 0.8 }, 0, wallState);
+  ok(lp.meta === (0 | 8), `alçapão na metade de cima da parede: dobradiça na parede, metade de cima (meta ${lp.meta})`);
+  lp = Sh.computePlacement(BLOCKS[54], 0, { x: 0, y: 0, z: 0, nx: 0, ny: 1, nz: 0, hy: 1 }, 0, () => 0);
+  ok(lp.meta === 1, `baú olhando para o sul (yaw 0) fica com a frente para o norte (meta ${lp.meta})`);
+  // física: a escada de mão é uma placa fina; o jogador a atravessa pelo vão da célula mas não a placa
+  w = mk(); floor(w); w.set(3, 1, 0, 65, 0); // olha para oeste: placa no lado leste (x 0.875-1)
+  ok(Sh.blockBoxes(w.getBlock(3, 1, 0), gb(w), 3, 1, 0, 'collide')[0][0] === 0.875, 'colisão da escada de mão = placa de 2/16');
 } catch (e) { console.log('ERRO', e.message, (e.stack || '').split(String.fromCharCode(10)).slice(0, 5).join(' | ')); fail++; }
 await server.close();
 process.exit(fail ? 1 : 0);

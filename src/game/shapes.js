@@ -19,7 +19,7 @@ const opposite = (d) => dirIndex(-DIRS[d][0], -DIRS[d][1]);
 export function isSlabBlock(block) { return !!block && block.model === 'slab'; }
 export function isStairsBlock(block) { return !!block && block.model === 'stairs'; }
 export const BED_HEIGHT = 0.5625; // 9/16
-const SHAPED_MODELS = new Set(['slab', 'stairs', 'bed', 'door', 'fence', 'gate']);
+const SHAPED_MODELS = new Set(['slab', 'stairs', 'bed', 'door', 'fence', 'gate', 'chest', 'ladder', 'trapdoor']);
 export function hasShape(block) { return !!block && SHAPED_MODELS.has(block.model); }
 
 const stateIdOf = (s) => (s >> 4) & 0xfff;
@@ -183,6 +183,28 @@ export function gateBoxes(meta, kind) {
   return out;
 }
 
+// === Baú, escada de mão e alçapão (1.8.9) === (direções na ordem de DOOR_FACES: 0 oeste, 1 norte, 2 leste, 3 sul)
+// Baú: caixa de 14/16 com 1/16 de folga; meta = lado da frente (de frente para quem o colocou).
+export const CHEST_BOX = [0.0625, 0, 0.0625, 0.9375, 0.875, 0.9375];
+// Escada de mão: placa de 2/16 encostada na parede; meta = para onde a escada olha (oposto à parede).
+export function ladderBox(meta) {
+  const F = DOOR_FACES[meta & 3], T = 0.125;
+  const xr = F[0] === 0 ? [0, 1] : F[0] > 0 ? [0, T] : [1 - T, 1];
+  const zr = F[1] === 0 ? [0, 1] : F[1] > 0 ? [0, T] : [1 - T, 1];
+  return [xr[0], 0, zr[0], xr[1], 1, zr[1]];
+}
+// Alçapão: meta & 3 = lado da dobradiça, & 4 = aberto, & 8 = metade de cima. Fechado é uma placa de 3/16 no chão ou no teto;
+// aberto vira uma placa vertical na parede do lado da dobradiça.
+export function trapdoorBox(meta) {
+  const T = 3 / 16;
+  if ((meta & 4) === 0) return (meta & 8) ? [0, 1 - T, 0, 1, 1, 1] : [0, 0, 0, 1, T, 1];
+  const H = DOOR_FACES[meta & 3];
+  const xr = H[0] === 0 ? [0, 1] : H[0] < 0 ? [0, T] : [1 - T, 1];
+  const zr = H[1] === 0 ? [0, 1] : H[1] < 0 ? [0, T] : [1 - T, 1];
+  return [xr[0], 0, zr[0], xr[1], 1, zr[1]];
+}
+export function isLadderBlock(b) { return !!b && b.model === 'ladder'; }
+
 // Caixas do bloco em (x, y, z) no estado dado (relativas ao bloco). getState(x, y, z) devolve o estado do vizinho.
 // kind: 'collide' (física), 'select' (mira e contorno) ou 'render' (malha). Lajes, escadas e cama usam a mesma caixa nos três.
 // Para blocos sem forma própria devolve null (quem chama usa o cubo/caixa do registro).
@@ -195,6 +217,9 @@ export function blockBoxes(state, getState, x, y, z, kind = 'select') {
   if (b.model === 'door') return doorBoxes(doorInfo(state, getState || (() => 0), x, y, z));
   if (b.model === 'fence') return fenceBoxes(getState ? fenceConnections(stateIdOf(state), getState, x, y, z) : [false, false, false, false], kind);
   if (b.model === 'gate') return gateBoxes(stateMetaOf(state), kind);
+  if (b.model === 'chest') return [CHEST_BOX];
+  if (b.model === 'ladder') return [ladderBox(stateMetaOf(state))];
+  if (b.model === 'trapdoor') return [trapdoorBox(stateMetaOf(state))];
   return null;
 }
 
@@ -225,10 +250,24 @@ export function rayBox(ox, oy, oz, dx, dy, dz, box, maxT) {
 //    de uma laje igual (ou colocar onde já há a outra metade) a transforma em laje dupla;
 //  · escada: sobe na direção em que o jogador olha (0 leste, 1 oeste, 2 sul, 3 norte), invertida se clicou na metade de cima.
 export function computePlacement(placing, slotMeta, hit, yaw, getState) {
-  if (!placing || !['slab', 'stairs', 'gate'].includes(placing.model)) return null;
+  if (!placing || !['slab', 'stairs', 'gate', 'chest', 'ladder', 'trapdoor'].includes(placing.model)) return null;
   const px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
   const fracY = hit.hy !== undefined ? hit.hy - hit.y : 0.5;
   const upper = hit.ny === -1 || (hit.ny === 0 && fracY > 0.5);
+  const lookIdx = [3, 0, 1, 2][Math.floor(yaw * 2 / Math.PI + 0.5) & 3]; // direção do olhar na ordem de DOOR_FACES
+  const normalIdx = hit.ny === 0 ? DOOR_FACES.findIndex(d => d[0] === hit.nx && d[1] === hit.nz) : -1;
+  if (placing.model === 'chest') return { x: px, y: py, z: pz, id: placing.id, meta: (lookIdx + 2) & 3 }; // a frente olha para o jogador
+  if (placing.model === 'ladder') {
+    // só em parede lateral e de bloco cheio opaco; a escada olha para fora da parede
+    const wall = getState(hit.x, hit.y, hit.z);
+    const wb = BLOCKS[stateIdOf(wall)];
+    if (normalIdx < 0 || !wb || !wb.solid || !wb.opaque || wb.model !== 'cube') return { invalid: true };
+    return { x: px, y: py, z: pz, id: placing.id, meta: normalIdx };
+  }
+  if (placing.model === 'trapdoor') {
+    if (normalIdx >= 0) return { x: px, y: py, z: pz, id: placing.id, meta: ((normalIdx + 2) & 3) | (fracY > 0.5 ? 8 : 0) };
+    return { x: px, y: py, z: pz, id: placing.id, meta: lookIdx | (hit.ny === -1 ? 8 : 0) };
+  }
   if (placing.model === 'gate') {
     const i = Math.floor(yaw * 2 / Math.PI + 0.5) & 3;
     return { x: px, y: py, z: pz, id: placing.id, meta: [3, 0, 1, 2][i] }; // sul, oeste, norte, leste → ordem de DOOR_FACES

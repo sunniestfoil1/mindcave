@@ -42,6 +42,7 @@ export const HARVEST = {
   67: { tool: 'pickaxe', level: 0 }, 108: { tool: 'pickaxe', level: 0 }, 109: { tool: 'pickaxe', level: 0 }, 114: { tool: 'pickaxe', level: 0 },
   128: { tool: 'pickaxe', level: 0 }, 156: { tool: 'pickaxe', level: 0 }, 180: { tool: 'pickaxe', level: 0 },
   126: { tool: 'axe', level: 0 }, 125: { tool: 'axe', level: 0 },
+  54: { tool: 'axe', level: 0 }, 65: { tool: 'axe', level: 0 }, 96: { tool: 'axe', level: 0 },
   64: { tool: 'axe', level: 0 }, 85: { tool: 'axe', level: 0 }, 107: { tool: 'axe', level: 0 }, // madeira: machado só é mais rápido
   71: { tool: 'pickaxe', level: 0 }, 113: { tool: 'pickaxe', level: 0 },                       // ferro e nether exigem picareta
   53: { tool: 'axe', level: 0 }, 134: { tool: 'axe', level: 0 }, 135: { tool: 'axe', level: 0 }, 136: { tool: 'axe', level: 0 },
