@@ -2775,13 +2775,52 @@ export class GameEngine {
     this.fpsCamera.position.set(0, 0, 0);
     this.renderer.autoClear = false;
 
-    this.fpsScene.add(new THREE.AmbientLight(0xffffff, 1.0));
+    // Iluminação padrão de item do 1.8.9 (RenderHelper.enableStandardItemLighting): ambiente 0,4 e duas luzes 0,6 vindas de (0,2; 1; -0,7) e
+    // (-0,2; 1; 0,7). No three r171 as luzes são físicas (divididas por π), por isso as intensidades levam ×π. As direções giram com a visão
+    // (o GL as fixa depois de rotacionar pitch e yaw) e o conjunto escurece com a luz do local (lightmap), como o braço no escuro de uma caverna.
+    this._handAmb = new THREE.AmbientLight(0xffffff, 0.4 * Math.PI);
+    this._handL0 = new THREE.DirectionalLight(0xffffff, 0.6 * Math.PI);
+    this._handL1 = new THREE.DirectionalLight(0xffffff, 0.6 * Math.PI);
+    this.fpsScene.add(this._handAmb, this._handL0, this._handL1);
 
     this.handRig = buildHandRig();
     this.fpsArm = this.handRig.arm;
     this.fpsItemGroup = this.handRig.itemGroup;
     this.fpsScene.add(this.fpsArm, this.handRig.itemRoot);
     this.fpsItem = null;
+  }
+
+  // Direção das duas luzes no espaço da câmera: Rx(pitch)·Ry(yaw) aplicado aos vetores do GL (graus do MC; pitch positivo = olhando para baixo)
+  _updateHandLighting() {
+    if (!this._handL0) return;
+    const p = this.player, pitch = p.pitch, yaw = p.yaw;
+    const cp = Math.cos(pitch), sp = Math.sin(pitch), cy = Math.cos(yaw), sy = Math.sin(yaw);
+    const rot = (v, out) => {
+      // Ry(yaw) e depois Rx(pitch), rotações de mão direita como glRotatef
+      const x1 = cy * v[0] + sy * v[2], y1 = v[1], z1 = -sy * v[0] + cy * v[2];
+      out.set(x1, cp * y1 - sp * z1, sp * y1 + cp * z1);
+    };
+    const n0 = 1 / Math.hypot(0.2, 1.0, 0.7);
+    rot([0.2 * n0, 1.0 * n0, -0.7 * n0], this._handL0.position);
+    rot([-0.2 * n0, 1.0 * n0, 0.7 * n0], this._handL1.position);
+    // luz do local (mesma curva do shader do mundo): sem isso a mão ficaria 100% clara numa caverna escura
+    const eye = this.eyePos();
+    const ex = Math.floor(eye.x), ey = Math.floor(eye.y), ez = Math.floor(eye.z);
+    const L = this.world.getLight(ex, ey, ez);
+    // A luz de céu só existe depois que o chunk foi iluminado pelos workers; com céu aberto acima do olho vale 15 já (sem mão preta no spawn)
+    if (this.frame % 10 === 0 || this._openSky === undefined) {
+      let open = true;
+      for (let y = ey + 1; y < Math.min(255, ey + 80); y++) { if (isSolid(stateId(this.world.getBlock(ex, y, ez)))) { open = false; break; } }
+      this._openSky = open;
+    }
+    const lvl = (l) => { const f = 1 - l; return (1 - f) / (f * 3 + 1); };
+    const sunB = this.world.uniforms?.uSunBright?.value ?? 1;
+    const skyL = this._openSky ? 15 : (Number.isFinite(L?.sky) ? L.sky : 15), blkL = Number.isFinite(L?.block) ? L.block : 0; // chunk ainda sem luz: céu aberto
+    const sky = lvl(skyL / 15) * sunB * 0.95 + 0.05, blk = lvl(blkL / 15) * 1.5;
+    const f = Math.max(0.05, Math.min(1, (sky + blk) * 0.96 + 0.03));
+    this._handLightF = (this._handLightF ?? f) + (f - (this._handLightF ?? f)) * 0.2; // suaviza a transição
+    this._handAmb.intensity = 0.4 * Math.PI * this._handLightF;
+    this._handL0.intensity = this._handL1.intensity = 0.6 * Math.PI * this._handLightF;
   }
 
   updateFirstPersonHand() {
@@ -2824,6 +2863,7 @@ export class GameEngine {
       if (this.fpsGlint) { this.fpsItemGroup.remove(this.fpsGlint.group); this.fpsGlint = null; }
     }
 
+    this._updateHandLighting();
     this.fpsCamera.rotation.z = this._hurtRollValue || 0; // a mão também balança com o dano
     // Pose da mão (RF-051): braço com micro-interpolação sub-tick fluida
     const partialTick = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));

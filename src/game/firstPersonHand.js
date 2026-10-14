@@ -19,6 +19,11 @@ function bakeRawArmGeometry(geo) {
   // centro da caixa no quadro skinview: (-6, -6, 0) px
   geo.translate(-6 / 16, -6 / 16, 0);
   geo.applyMatrix4(toRaw);
+  // ModelBiped.setRotationAngles soma cos(0)·0,05 + 0,05 = 0,1 rad em Z ao braço direito (ageInTicks = 0 na mão em 1ª pessoa), girando em torno do
+  // ponto de rotação (-5, 2, 0) px. Medido no print oficial: com 0,1 rad os vértices do braço batem em 2–3 px; sem ele a mão ficava ~25 px fora.
+  geo.translate(5 / 16, -2 / 16, 0);
+  geo.rotateZ(0.1);
+  geo.translate(-5 / 16, 2 / 16, 0);
   return geo;
 }
 
