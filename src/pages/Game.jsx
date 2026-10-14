@@ -352,6 +352,8 @@ export default function Game() {
         });
 
         engineRef.current = engine;
+        if (import.meta.env.DEV) window.__mindcave = { get engine() { return engineRef.current; } }; // ganchos só para os testes de navegador
+        engine.containerOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current;
         engine.guiOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current;
         await engine.start();
         console.log('[Game] Spawn:', spawn, 'Player pos:', pState.pos, 'Flying:', pState.flying, 'GameMode:', pState.gameMode);

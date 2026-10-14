@@ -345,31 +345,49 @@ function getSoundCategory(blockId) {
 
 // === TODOS OS GATILHOS DE ÁUDIO DO MINECRAFT 1.8.9 ===
 
-// Passos (Footsteps)
+// --- Sons de bloco: tabela REAL do 1.8.9 (Block.SoundType + o setStepSound de cada bloco, extraídos do MCP) ---
+// Tipos: nome do som, volume, frequência, e quais eventos tocam ao quebrar/colocar/andar/bater. Metal toca o som de pedra com tom 1,5;
+// vidro quebra com o som de vidro mas é colocado com o de pedra; escada de mão quebra como madeira; bigorna tem volume 0,3.
+import BLOCK_SOUND_TYPES from './blockSoundTypes.json';
+const SOUND_TYPES = {
+  stone:  { v: 1, f: 1,   brk: 'block.stone.break',  put: 'block.stone.place',  step: 'block.stone.step',  hit: 'block.stone.hit' },
+  wood:   { v: 1, f: 1,   brk: 'block.wood.break',   put: 'block.wood.place',   step: 'block.wood.step',   hit: 'block.wood.hit' },
+  gravel: { v: 1, f: 1,   brk: 'block.gravel.break', put: 'block.gravel.place', step: 'block.gravel.step', hit: 'block.gravel.hit' },
+  grass:  { v: 1, f: 1,   brk: 'block.grass.break',  put: 'block.grass.place',  step: 'block.grass.step',  hit: 'block.grass.hit' },
+  metal:  { v: 1, f: 1.5, brk: 'block.stone.break',  put: 'block.stone.place',  step: 'block.stone.step',  hit: 'block.stone.hit' },
+  glass:  { v: 1, f: 1,   brk: 'block.glass.break',  put: 'block.stone.place',  step: 'block.stone.step',  hit: 'block.glass.hit' },
+  cloth:  { v: 1, f: 1,   brk: 'block.wool.break',   put: 'block.wool.place',   step: 'block.wool.step',   hit: 'block.wool.hit' },
+  sand:   { v: 1, f: 1,   brk: 'block.sand.break',   put: 'block.sand.place',   step: 'block.sand.step',   hit: 'block.sand.hit' },
+  snow:   { v: 1, f: 1,   brk: 'block.snow.break',   put: 'block.snow.place',   step: 'block.snow.step',   hit: 'block.snow.hit' },
+  ladder: { v: 1, f: 1,   brk: 'block.wood.break',   put: 'block.wood.place',   step: 'block.ladder.step', hit: 'block.ladder.hit' },
+  anvil:  { v: 0.3, f: 1, brk: 'block.stone.break',  put: 'block.anvil.place',  step: 'block.anvil.step',  hit: 'block.anvil.hit' },
+};
+const soundTypeOf = (blockId) => SOUND_TYPES[BLOCK_SOUND_TYPES[blockId] || 'stone'];
+// as posições de bloco chegam como inteiros; o som sai do centro do bloco (+0,5)
+const centered = (pos) => (pos && Number.isInteger(pos.x) && Number.isInteger(pos.y) && Number.isInteger(pos.z) ? { x: pos.x + 0.5, y: pos.y + 0.5, z: pos.z + 0.5 } : pos);
+
+// Passos: volume = volume do tipo × 0,15, tom = frequência do tipo (Entity.playStepSound)
 export function playStepSound(blockId, pos) {
-  const cat = getSoundCategory(blockId);
-  let soundName = `step/${cat}${Math.floor(Math.random() * 4) + 1}.ogg`;
-  if (cat === 'wood') soundName = `step/wood${Math.floor(Math.random() * 6) + 1}.ogg`;
-  if (cat === 'grass') soundName = `step/grass${Math.floor(Math.random() * 6) + 1}.ogg`;
-  playSound(soundName, { pos, volume: 0.35 });
+  const st = soundTypeOf(blockId);
+  playEvent(st.step, { pos, volume: st.v * 0.15, pitch: st.f });
 }
 
-// Mineração contínua (Dig)
+// Bater no bloco enquanto minera (PlayerControllerMP): som de passo com volume (v+1)/8 e tom f×0,5, a cada 4 ticks
 export function playDigSound(blockId, pos) {
-  const cat = getSoundCategory(blockId);
-  playSound(`dig/${cat}${Math.floor(Math.random() * 4) + 1}.ogg`, { pos, volume: 0.4 });
+  const st = soundTypeOf(blockId);
+  playEvent(st.step, { pos: centered(pos), volume: (st.v + 1) / 8, pitch: st.f * 0.5 });
 }
 
-// Destruição de bloco (Break)
+// Quebrar o bloco (evento 2001): som de quebra com volume (v+1)/2 e tom f×0,8
 export function playBlockBreakSound(blockId, pos) {
-  const cat = getSoundCategory(blockId);
-  playSound(`dig/${cat}1.ogg`, { pos, volume: 0.8, pitch: 0.9 + Math.random() * 0.2 });
+  const st = soundTypeOf(blockId);
+  playEvent(st.brk, { pos: centered(pos), volume: (st.v + 1) / 2, pitch: st.f * 0.8 });
 }
 
-// Colocação de bloco (Place)
+// Colocar o bloco (ItemBlock.onItemUse): som de colocação (igual ao de quebra na maioria) com volume (v+1)/2 e tom f×0,8
 export function playBlockPlaceSound(blockId, pos) {
-  const cat = getSoundCategory(blockId);
-  playSound(`step/${cat}${Math.floor(Math.random() * 4) + 1}.ogg`, { pos, volume: 0.7 });
+  const st = soundTypeOf(blockId);
+  playEvent(st.put, { pos: centered(pos), volume: (st.v + 1) / 2, pitch: st.f * 0.8 });
 }
 
 // Dano no jogador

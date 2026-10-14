@@ -220,7 +220,6 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
 
   const pickItem = (itemData, isShift, isRight = false) => {
     const max = itemData.maxStack || 64;
-    playClickSound();
     if (isShift) {
       addItem(inv, { id: itemData.id, count: max, meta: itemData.meta || 0 });
       refresh();
@@ -231,7 +230,6 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
   };
 
   const slotAction = (arr, index, isLeft) => {
-    playClickSound();
     const getSlot = () => arr[index];
     const setSlot = (val) => { arr[index] = val; };
     if (isLeft) leftClick(inv, getSlot, setSlot);
@@ -333,7 +331,7 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
               {/* Lixeira: solta o item do cursor */}
               <div
                 title="Destruir item"
-                onClick={() => { if (inv?.cursor) { playClickSound(); inv.cursor = null; refresh(); } }}
+                onClick={() => { if (inv?.cursor) { inv.cursor = null; refresh(); } }}
                 style={{ position: 'absolute', left: 173 * S, top: 112 * S, width: 18 * S, height: 18 * S, cursor: 'pointer' }}
               />
             </>

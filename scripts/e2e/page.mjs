@@ -81,6 +81,50 @@ await sleep(1500);
 const m = await page.evaluate(() => ({ ms: window.__m.t1 - window.__m.t0, avgFrame: window.__m.frames.reduce((a, b) => a + b, 0) / window.__m.frames.length }));
 out.push(`INFO frame médio no headless: ${m.avgFrame.toFixed(0)} ms (render por software)`);
 ok(m.ms >= 0 && m.ms < 250, `HUD volta ${m.ms.toFixed(0)} ms depois do E (dentro da página)`);
+// ---- inventário com mouse de verdade: shift-click, armadura, duplo clique, arrastar, bancada ----
+await page.evaluate(() => {
+  const inv = window.__mindcave.engine.inventory;
+  for (const a of [inv.main, inv.hotbar, inv.crafting]) a.fill(null);
+  inv.armor.fill(null); inv.cursor = null; inv.craftResult = null;
+  inv.main[0] = { id: 5, count: 8, meta: 0 }; inv.main[1] = { id: 1, count: 20, meta: 0 };
+  inv.main[4] = { id: 4, count: 10, meta: 0 }; inv.main[9] = { id: 4, count: 20, meta: 0 }; inv.hotbar[3] = { id: 4, count: 30, meta: 0 };
+});
+await page.keyboard.press('KeyE'); await sleep(700);
+const slotXY = (sel) => page.evaluate((sel) => { const el = document.querySelector(`[data-slot="${sel}"]`); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }, sel);
+const clickSlot = async (sel, opts = {}) => { const p = await slotXY(sel); if (!p) throw new Error('slot ' + sel); await page.mouse.move(p.x, p.y); await page.mouse.click(p.x, p.y, opts); await sleep(80); };
+const shiftClickSlot = async (sel) => { await page.keyboard.down('Shift'); await clickSlot(sel); await page.keyboard.up('Shift'); };
+const invState = () => page.evaluate(() => { const i = window.__mindcave.engine.inventory; return JSON.parse(JSON.stringify({ main: i.main, hotbar: i.hotbar, armor: i.armor, crafting: i.crafting, cursor: i.cursor })); });
+{
+  await clickSlot('main:0'); await clickSlot('grid:0');
+  let st = await invState();
+  ok(st.crafting[0]?.id === 5 && st.crafting[0].count === 8 && !st.cursor, 'clique: tábuas vão do inventário para a grade de fabricação');
+  await shiftClickSlot('grid:0'); st = await invState();
+  ok(st.hotbar[0]?.id === 5 && st.hotbar[0].count === 8 && !st.crafting[0], 'shift-click em item da grade de fabricação leva para a hotbar');
+  await clickSlot('main:1'); await clickSlot('armor:0'); st = await invState();
+  ok(!st.armor[0] && st.cursor?.id === 1, 'pedra NÃO entra no slot de armadura (fica no cursor)');
+  await clickSlot('main:1'); st = await invState();
+  // duplo clique de verdade (dois pares down/up seguidos dentro da página, sem o atraso do Puppeteer)
+  await page.evaluate(() => { const el = document.querySelector('[data-slot="main:4"]'); for (let i = 0; i < 2; i++) for (const t of ['mousedown', 'mouseup']) el.dispatchEvent(new MouseEvent(t, { bubbles: true, button: 0 })); });
+  await sleep(150);
+  st = await invState();
+  const total4 = [...st.main, ...st.hotbar].filter(Boolean).filter(x => x.id === 4).reduce((a, x) => a + x.count, 0) + (st.cursor?.id === 4 ? st.cursor.count : 0);
+  ok(st.cursor?.id === 4 && st.cursor.count === total4 && total4 === 60, `duplo clique junta todo o pedregulho no cursor (${st.cursor?.count}/60)`);
+  await clickSlot('main:20'); st = await invState();
+  ok(!st.cursor && st.main[20]?.count === 60, 'soltar o cursor num slot vazio guarda a pilha');
+  // fabricação: 4 tábuas na grade → shift-click no resultado fabrica as bancadas na hotbar
+  await page.evaluate(() => { const i = window.__mindcave.engine.inventory; i.crafting[0] = { id: 5, count: 3, meta: 0 }; i.crafting[1] = { id: 5, count: 3, meta: 0 }; i.crafting[2] = { id: 5, count: 3, meta: 0 }; i.crafting[3] = { id: 5, count: 3, meta: 0 }; });
+  await clickSlot('grid:0'); await sleep(450); await clickSlot('grid:0'); // força recálculo do resultado (espera >300 ms: não é duplo clique)
+  await shiftClickSlot('result:result'); st = await invState();
+  const tables = [...st.hotbar, ...st.main].filter(Boolean).filter(x => x.id === 58).reduce((a, x) => a + x.count, 0);
+  ok(tables === 3, `shift-click no resultado fabrica até esgotar os ingredientes (${tables} bancadas)`);
+}
+{
+  // o jogo NÃO pausa com o inventário aberto: o relógio do mundo segue andando
+  const t0 = await page.evaluate(() => window.__mindcave.engine.worldTime); await sleep(1500);
+  const t1 = await page.evaluate(() => window.__mindcave.engine.worldTime);
+  ok(t1 - t0 >= 10, `com o inventário aberto o mundo continua rodando (relógio +${t1 - t0} ticks em 1,5 s)`);
+}
+await page.keyboard.press('KeyE'); await sleep(500);
 // ---- E no menu de pausa / opções não fecha nada ----
 await page.keyboard.press('Escape'); await sleep(500);
 const pausedNow = await hasPauseMenu();

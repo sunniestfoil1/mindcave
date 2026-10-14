@@ -1391,7 +1391,7 @@ export class GameEngine {
         this._walkDist = (this._walkDist || 0) + distMoved;
         this._lastWalkX = p.pos.x;
         this._lastWalkZ = p.pos.z;
-        if (this._walkDist > 1.8) {
+        if (this._walkDist > 1.667 && !p.sneaking) { // 1/0,6: Entity.moveEntity soma o deslocamento × 0,6 a cada passo; agachado não toca passos
           this._walkDist = 0;
           const blockBelow = this.world.getBlock(Math.floor(p.pos.x), Math.floor(p.pos.y - 0.2), Math.floor(p.pos.z));
           playStepSound(stateId(blockBelow), p.pos);
@@ -1674,7 +1674,8 @@ export class GameEngine {
     
     // No online (multiplayer) e durante o chat o mundo continua rodando (1.8.9)
     const isOnline = !!this.netManager;
-    const canTickWorld = isOnline || !this.paused || this.chatOpen;
+    // Só o menu de pausa (Esc) congela o mundo: com inventário/bancada/baú aberto o jogo segue rodando, como no original
+    const canTickWorld = isOnline || !this.paused || this.chatOpen || !!this.containerOpenFn?.();
 
     if (canTickWorld) {
       this.tickAcc += dt;
@@ -1736,7 +1737,7 @@ export class GameEngine {
       this.updatePlayerModel();
       this.updateRemotePlayers();
       // Pausado em singleplayer o mundo congela (como no original): não há o que animar nos itens, mobs e partículas
-      const frozen = this.paused && !isOnline && !this.chatOpen;
+      const frozen = this.paused && !isOnline && !this.chatOpen && !this.containerOpenFn?.();
       if (this.itemEntities && !frozen) {
         const inv = this.inventory || this.player.inventory;
         this.itemEntities.update(Math.min(dt, 100) / 1000, this.player, inv, this.world, this.worldTime, this._cameraFrustum, this.camera);

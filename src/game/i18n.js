@@ -52,6 +52,12 @@ const S = {
   'options.skinCustomisation': ['Personalização de skin...', 'Skin Customization...', 'Personalizar el aspecto...', 'Personnalisation du skin...', 'Skin-Anpassung ...'],
 
   // Botões de tela (chaves oficiais gui.*)
+  // Títulos de painéis (chaves oficiais container.*, do lang do 1.8.9)
+  'container.crafting': ['Criando', 'Crafting', 'Fabricación', 'Fabrication', 'Handwerk'],
+  'container.inventory': ['Inventário', 'Inventory', 'Inventario', 'Inventaire', 'Inventar'],
+  'container.chest': ['Baú', 'Chest', 'Cofre', 'Coffre', 'Truhe'],
+  'container.chestDouble': ['Baú Grande', 'Large Chest', 'Cofre grande', 'Grand coffre', 'Große Truhe'],
+  'container.furnace': ['Fornalha', 'Furnace', 'Horno', 'Fourneau', 'Ofen'],
   'gui.done': ['Pronto', 'Done', 'Hecho', 'Terminé', 'Fertig'],
   'gui.back': ['Voltar', 'Back', 'Atrás', 'Retour', 'Zurück'],
   'gui.reset': ['Restaurar', 'Reset', 'Restablecer', 'Réinitialiser', 'Zurücksetzen'],

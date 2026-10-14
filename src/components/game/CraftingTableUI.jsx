@@ -1,16 +1,16 @@
 // Bancada de trabalho (container/crafting_table.png, 176×166): grade 3×3 em (30,17), resultado em (124,35).
 import React, { useState } from "react";
-import ContainerFrame, { PlayerSlots, Sprite } from "./ContainerFrame";
+import ContainerFrame, { PlayerSlots, playerRefs, Sprite } from "./ContainerFrame";
 import { McText } from "./GuiSprite";
-import { leftClick, rightClick, shiftClick } from "@/game/inventory";
+import { arrRef, shiftMove } from "@/game/slotOps";
 import { matchRecipe, consumeIngredients, createResult } from "@/game/recipes";
-import { playClickSound } from "@/game/sounds";
+import { useT } from "@/game/i18n";
 
 export default function CraftingTableUI({ inv, onUpdate, onClose, onCraft }) {
+  const t = useT();
   const [, forceUpdate] = useState(0);
   const refresh = () => { forceUpdate(n => n + 1); onUpdate?.(); };
 
-  // Crafting 3x3
   if (!inv.crafting3) inv.crafting3 = new Array(9).fill(null);
 
   const updateCraftResult = () => {
@@ -18,54 +18,30 @@ export default function CraftingTableUI({ inv, onUpdate, onClose, onCraft }) {
     inv.craftResult = recipe ? createResult(recipe) : null;
   };
 
-  const click = (arr, i, isLeft) => {
-    playClickSound();
-    const getSlot = () => arr[i];
-    const setSlot = (val) => { arr[i] = val; };
-    if (isLeft) leftClick(inv, getSlot, setSlot);
-    else rightClick(inv, getSlot, setSlot);
-    updateCraftResult();
-    refresh();
+  const { hotbar, main } = playerRefs(inv);
+  const grid = inv.crafting3.map((_, i) => arrRef(inv.crafting3, i, { group: 'grid' }));
+  const result = {
+    group: 'result', output: true, repeatable: true,
+    get: () => inv.craftResult, set: () => {},
+    afterTake: () => { consumeIngredients(inv.crafting3); updateCraftResult(); onCraft?.(); },
   };
-
-  const handleShift = (section, index) => {
-    shiftClick(inv, section, index);
-    updateCraftResult();
-    refresh();
-  };
-
-  const takeResult = () => {
-    if (!inv.craftResult) return;
-    const recipe = matchRecipe(inv.crafting3, 3);
-    if (!recipe) return;
-    if (!inv.cursor) {
-      inv.cursor = createResult(recipe);
-      consumeIngredients(inv.crafting3);
-    } else if (inv.cursor.id === recipe.result.id) {
-      inv.cursor.count += recipe.result.count;
-      consumeIngredients(inv.crafting3);
-    }
-    onCraft?.();
-    updateCraftResult();
-    refresh();
-  };
+  const player = [...hotbar, ...main];
+  const targets = (r) => (r.group === 'hotbar' ? main : r.group === 'main' ? hotbar : player);
 
   return (
-    <ContainerFrame texture="textures/gui/container/crafting_table.png" w={176} h={166} inv={inv} onClose={onClose} onUpdate={refresh}>
+    <ContainerFrame
+      texture="textures/gui/container/crafting_table.png" w={176} h={166} inv={inv} onClose={onClose} onUpdate={refresh}
+      onChange={updateCraftResult}
+      getAllRefs={() => [...grid, ...main, ...hotbar]}
+      onShift={(r) => shiftMove(inv, r, targets(r))}
+    >
       {({ S, slot, tex }) => (
         <>
           <Sprite url={tex} u={0} v={0} w={176} h={166} S={S} />
-          <McText text="Criação" x={28} y={6} S={S} />
-          {inv.crafting3.map((item, i) => slot('c' + i, 30 + (i % 3) * 18, 17 + Math.floor(i / 3) * 18, item, {
-            slotRef: { arr: inv.crafting3, index: i },
-            onClick: () => click(inv.crafting3, i, true),
-            onRightClick: () => click(inv.crafting3, i, false),
-            onShiftClick: () => handleShift('crafting', i),
-          }))}
-
-          {slot('result', 124, 35, inv.craftResult, { onClick: takeResult, onRightClick: takeResult, onShiftClick: takeResult })}
-          <PlayerSlots inv={inv} slot={slot} mainY={84} hotY={142}
-            click={(a, i) => click(a, i, true)} rightClick={(a, i) => click(a, i, false)} shift={handleShift} />
+          <McText text={t('container.crafting')} x={28} y={6} S={S} />
+          {inv.crafting3.map((item, i) => slot('c' + i, 30 + (i % 3) * 18, 17 + Math.floor(i / 3) * 18, item, { ref: grid[i] }))}
+          {slot('result', 124, 35, inv.craftResult, { ref: result })}
+          <PlayerSlots refs={{ hotbar, main }} inv={inv} slot={slot} mainY={84} hotY={142} />
         </>
       )}
     </ContainerFrame>
