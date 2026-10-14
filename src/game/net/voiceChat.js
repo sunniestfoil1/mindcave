@@ -1,212 +1,240 @@
-// Gerenciador de Chat de Voz Posicional 3D via WebRTC (PRD 26)
-// Captura microfone local, calcula atenuação 3D espacial e gerencia nós de áudio
+// Chat de voz por aproximação (WebRTC + Web Audio). O alcance depende do tom de voz de quem fala:
+// baixo = 8 blocos, médio = 18, alto = 24. O tom é medido no microfone de quem fala (sem controle automático de ganho, que achataria
+// o volume), em relação ao volume habitual da pessoa, e segue no estado do jogador (campo `v` da mensagem de movimento);
+// quem ouve ajusta o alcance do PannerNode daquele jogador.
 import { getAudioContext, getVoiceGain } from '../sounds';
+
+export const VOICE_RANGES = [8, 18, 24];       // blocos: tom baixo, médio, alto
+export const VOICE_TIER_NAMES = ['baixo', 'médio', 'alto'];
+// Estado enviado aos outros jogadores (campo v): 0 desligado, 1 mutado, 2 ligado em silêncio, 3/4/5 falando em tom baixo/médio/alto
+export const VOICE_OFF = 0, VOICE_MUTED = 1, VOICE_IDLE = 2, VOICE_SPEAK0 = 3;
+
+const TICK_MS = 40;
+
+// Tom da fala em relação ao volume habitual da pessoa: sussurro (<55%), fala normal, voz alta (>170%)
+export function classifyTier(speechLevel, reference) {
+  const rel = speechLevel / reference;
+  return rel < 0.55 ? 0 : rel > 1.7 ? 2 : 1;
+}
+const FFT = 512;
 
 class VoiceChatManager {
   constructor() {
     this.localStream = null;
+    this.outDest = null;          // destino do Web Audio: a trilha enviada pelo WebRTC existe desde o início (silenciosa até o microfone ligar)
     this.outgoingStream = null;
     this.localTrack = null;
     this.analyser = null;
     this.gateGain = null;
     this.micMuted = false;
     this.isSpeaking = false;
-    this.remotePanners = new Map(); // peerId -> { panner, gainNode, mediaStreamSource, element }
-    this.speakingPeers = new Set(); // set of peerIds speaking right now
-    this._speakingCheckTimer = null;
+    this.voiceTier = 1;           // 0 baixo, 1 médio, 2 alto (do jogador local)
+    this.remotePanners = new Map(); // peerId -> { panner, gainNode, source, audioEl, voice, tier }
+    this.speakingPeers = new Set();
+    this._timer = null;
     this._onVoiceStateChange = null;
     this._dspNodes = [];
+    this._buf = new Float32Array(FFT);
+    // medição de nível
+    this._level = 0;              // RMS suavizado
+    this._noise = 0.004;          // piso de ruído do ambiente
+    this._speech = 0;             // nível médio da fala em curso
+    this._ref = 0.045;            // volume habitual da pessoa (vira o "médio")
+    this._closeTicks = 0;
+    this._tierHold = 0;
+  }
+
+  get enabled() { return !!this.localStream; }
+
+  // Trilha de saída sempre presente: assim quem liga o microfone depois da conexão já fala sem renegociar o WebRTC
+  _ensureOutgoing() {
+    if (this.outgoingStream) return this.outgoingStream;
+    const ctx = getAudioContext();
+    if (!ctx) return null;
+    this.outDest = ctx.createMediaStreamDestination();
+    this.outgoingStream = this.outDest.stream;
+    return this.outgoingStream;
   }
 
   getOutgoingStream() {
-    return this.outgoingStream || this.localStream;
+    return this._ensureOutgoing() || this.localStream;
   }
 
   async initLocalMicrophone() {
     if (this.localStream) return this.localStream;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        // sem autoGainControl: o ganho automático apaga a diferença entre sussurro e grito, que é o que define o alcance
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
         video: false,
       });
-
       this.localStream = stream;
       this.localTrack = stream.getAudioTracks()[0];
-      if (this.localTrack) {
-        this.localTrack.enabled = !this.micMuted;
-      }
+      if (this.localTrack) this.localTrack.enabled = !this.micMuted;
 
       const ctx = getAudioContext();
-      if (ctx) {
-        // === PIPELINE DE REDUÇÃO DE RUÍDO DSP LEVE EM CPU (NATIVO WEB AUDIO) ===
-        // 1. High-Pass Filter (85 Hz) - Remove rumble, ventoinhas e vibração mecânica de mesa
-        const highPass = ctx.createBiquadFilter();
-        highPass.type = 'highpass';
-        highPass.frequency.value = 85;
-        highPass.Q.value = 0.7;
-
-        // 2. Low-Pass Filter (7500 Hz) - Remove chiados agudos (hiss) de microfones comuns
-        const lowPass = ctx.createBiquadFilter();
-        lowPass.type = 'lowpass';
-        lowPass.frequency.value = 7500;
-        lowPass.Q.value = 0.7;
-
-        // 3. Compressor Dinâmico - Equilibra volumes sem distorção e sem peso em CPU
+      const dest = this._ensureOutgoing() && this.outDest;
+      if (ctx && dest) {
+        const highPass = ctx.createBiquadFilter();   // tira ronco de ventoinha e mesa
+        highPass.type = 'highpass'; highPass.frequency.value = 85; highPass.Q.value = 0.7;
+        const lowPass = ctx.createBiquadFilter();    // tira chiado agudo
+        lowPass.type = 'lowpass'; lowPass.frequency.value = 7500; lowPass.Q.value = 0.7;
         const compressor = ctx.createDynamicsCompressor();
-        compressor.threshold.value = -24;
-        compressor.knee.value = 10;
-        compressor.ratio.value = 3;
-        compressor.attack.value = 0.003;
-        compressor.release.value = 0.25;
-
-        // 4. Noise Gate Gain Node - Corta silêncios com decaimento suave
-        const gateGain = ctx.createGain();
+        compressor.threshold.value = -24; compressor.knee.value = 10; compressor.ratio.value = 3;
+        compressor.attack.value = 0.003; compressor.release.value = 0.25;
+        const gateGain = ctx.createGain();           // abre na fala, fecha no silêncio
         gateGain.gain.value = 0.0;
         this.gateGain = gateGain;
-
-        // 5. Analisador de espectro leve (FFT 256)
         this.analyser = ctx.createAnalyser();
-        this.analyser.fftSize = 256;
-        this.analyser.smoothingTimeConstant = 0.4;
+        this.analyser.fftSize = FFT;
+        this.analyser.smoothingTimeConstant = 0;
 
-        // Conectar cadeia: Mic -> HighPass -> LowPass -> Gate -> Compressor -> Destino WebRTC
         const micSource = ctx.createMediaStreamSource(stream);
         micSource.connect(highPass);
         highPass.connect(lowPass);
         lowPass.connect(gateGain);
         gateGain.connect(compressor);
-
-        // Analyser conectado após filtros para detecção precisa de voz humana
-        lowPass.connect(this.analyser);
-
-        const dest = ctx.createMediaStreamDestination();
+        lowPass.connect(this.analyser);              // o nível é medido antes do portão e do compressor
         compressor.connect(dest);
-        this.outgoingStream = dest.stream;
-
-        this._dspNodes = [micSource, highPass, lowPass, gateGain, compressor, dest];
+        this._dspNodes = [micSource, highPass, lowPass, gateGain, compressor];
         this._startSpeechDetection(ctx);
       }
-
-      if (this._onVoiceStateChange) this._onVoiceStateChange();
+      this._notify();
       return stream;
     } catch (err) {
       console.warn('[VoiceChat] Microfone não disponível ou negado:', err);
-      if (this._onVoiceStateChange) this._onVoiceStateChange();
+      this._notify();
       return null;
     }
   }
 
-  toggleMute() {
-    this.micMuted = !this.micMuted;
-    if (this.localTrack) {
-      this.localTrack.enabled = !this.micMuted;
-    }
-    if (this._onVoiceStateChange) this._onVoiceStateChange();
-    return this.micMuted;
+  // Desliga o chat de voz: solta o microfone e para de enviar. A trilha de saída fica (em silêncio) para religar depois.
+  stopMicrophone() {
+    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    if (this.localTrack) { this.localTrack.stop(); this.localTrack = null; }
+    for (const node of this._dspNodes) { try { node.disconnect(); } catch { /* já solto */ } }
+    this._dspNodes = [];
+    this.localStream = null;
+    this.gateGain = null;
+    this.analyser = null;
+    this.isSpeaking = false;
+    this._level = 0; this._speech = 0; this._closeTicks = 0;
+    this._notify();
   }
+
+  toggleMute() { this.setMuted(!this.micMuted); return this.micMuted; }
 
   setMuted(muted) {
     this.micMuted = !!muted;
-    if (this.localTrack) {
-      this.localTrack.enabled = !this.micMuted;
-    }
-    if (this._onVoiceStateChange) this._onVoiceStateChange();
+    if (this.localTrack) this.localTrack.enabled = !this.micMuted;
+    this._notify();
+  }
+
+  _notify() { if (this._onVoiceStateChange) this._onVoiceStateChange(); }
+
+  // Estado enviado aos outros jogadores
+  getWireState() {
+    if (!this.enabled) return VOICE_OFF;
+    if (this.micMuted) return VOICE_MUTED;
+    return this.isSpeaking ? VOICE_SPEAK0 + this.voiceTier : VOICE_IDLE;
   }
 
   _startSpeechDetection(ctx) {
-    if (this._speakingCheckTimer) clearInterval(this._speakingCheckTimer);
-    const dataArray = new Uint8Array(128);
-
-    this._speakingCheckTimer = setInterval(() => {
+    if (this._timer) clearInterval(this._timer);
+    const buf = this._buf;
+    this._timer = setInterval(() => {
       if (!this.analyser || this.micMuted) {
-        if (this.gateGain && ctx) {
-          try { this.gateGain.gain.setTargetAtTime(0.0, ctx.currentTime, 0.05); } catch {}
-        }
-        if (this.isSpeaking) {
-          this.isSpeaking = false;
-          if (this._onVoiceStateChange) this._onVoiceStateChange();
-        }
+        if (this.gateGain) { try { this.gateGain.gain.setTargetAtTime(0.0, ctx.currentTime, 0.05); } catch { /* contexto fechado */ } }
+        if (this.isSpeaking) { this.isSpeaking = false; this._notify(); }
         return;
       }
-
-      this.analyser.getByteFrequencyData(dataArray);
+      this.analyser.getFloatTimeDomainData(buf);
       let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        sum += dataArray[i];
-      }
-      const average = sum / dataArray.length;
-      const speakingNow = average > 14; // Sensibilidade do Noise Gate
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      const rms = Math.sqrt(sum / buf.length);
+      this._level = rms > this._level ? rms : this._level * 0.85 + rms * 0.15;   // sobe na hora, desce devagar
 
-      // Noise Gate ativo: abre para fala, fecha suavemente para ruído de fundo
-      if (this.gateGain && ctx) {
-        try {
-          const targetGain = speakingNow ? 1.0 : 0.0;
-          const timeConstant = speakingNow ? 0.015 : 0.12;
-          this.gateGain.gain.setTargetAtTime(targetGain, ctx.currentTime, timeConstant);
-        } catch {}
+      const open = Math.max(0.012, this._noise * 2.6);
+      const close = open * 0.6;
+      const loud = this._level > (this.isSpeaking ? close : open);
+      let changed = false;
+      if (loud) {
+        this._closeTicks = 0;
+        if (!this.isSpeaking) { this.isSpeaking = true; this._speech = this._level; changed = true; }
+      } else if (this.isSpeaking && ++this._closeTicks >= 6) {   // ~240 ms de silêncio fecha
+        this.isSpeaking = false; changed = true;
       }
-
-      if (speakingNow !== this.isSpeaking) {
-        this.isSpeaking = speakingNow;
-        if (this._onVoiceStateChange) this._onVoiceStateChange();
+      if (!this.isSpeaking) {
+        this._noise += (Math.min(rms, 0.03) - this._noise) * 0.05;               // aprende o ruído do ambiente
+      } else {
+        this._speech += (this._level - this._speech) * 0.25;
+        this._ref += (Math.min(0.25, Math.max(0.01, this._speech)) - this._ref) * 0.0015; // o volume habitual acompanha a pessoa devagar
+        const next = classifyTier(this._speech, this._ref);
+        if (next !== this.voiceTier) {
+          if (++this._tierHold >= 3) { this.voiceTier = next; this._tierHold = 0; changed = true; }  // 120 ms no novo tom
+        } else this._tierHold = 0;
       }
-    }, 40); // 25 updates/segundo — baixíssimo custo de CPU (<0.1%)
+      if (this.gateGain) {
+        try { this.gateGain.gain.setTargetAtTime(this.isSpeaking ? 1.0 : 0.0, ctx.currentTime, this.isSpeaking ? 0.015 : 0.12); } catch { /* contexto fechado */ }
+      }
+      if (changed) this._notify();
+    }, TICK_MS);
   }
 
   attachRemoteAudioStream(peerId, remoteStream) {
     const ctx = getAudioContext();
     const voiceMasterGain = getVoiceGain();
     if (!ctx || !remoteStream) return;
-
     this.detachRemoteAudioStream(peerId);
-
     try {
       const panner = ctx.createPanner();
-      panner.panningModel = 'HRTF';
+      // HRTF é o mais realista mas pesa por jogador: com muita gente usa o panorama simples
+      panner.panningModel = this.remotePanners.size < 4 ? 'HRTF' : 'equalpower';
       panner.distanceModel = 'linear';
-      panner.refDistance = 3;   // Volume máximo até 3 blocos
-      panner.maxDistance = 30;  // Alcance máximo de 30 blocos
       panner.rolloffFactor = 1;
-
       const gainNode = ctx.createGain();
       gainNode.gain.value = 1.0;
-
       const source = ctx.createMediaStreamSource(remoteStream);
       source.connect(panner);
       panner.connect(gainNode);
-      if (voiceMasterGain) {
-        gainNode.connect(voiceMasterGain);
-      } else {
-        gainNode.connect(ctx.destination);
-      }
-
-      // Elemento de áudio escondido para garantir reprodução no navegador
+      gainNode.connect(voiceMasterGain || ctx.destination);
+      // Elemento de áudio escondido: sem ele alguns navegadores não tocam o stream remoto
       const audioEl = document.createElement('audio');
       audioEl.srcObject = remoteStream;
       audioEl.autoplay = true;
-      audioEl.muted = true; // Muted no elemento DOM pois o som sai via Web Audio PannerNode
-
-      this.remotePanners.set(peerId, {
-        panner,
-        gainNode,
-        source,
-        audioEl,
-        x: 0, y: 0, z: 0,
-      });
+      audioEl.muted = true;
+      const item = { panner, gainNode, source, audioEl, voice: VOICE_OFF, tier: 1 };
+      this.remotePanners.set(peerId, item);
+      this._applyRange(item, 1);
     } catch (e) {
       console.warn('[VoiceChat] Erro ao conectar PannerNode para peer:', peerId, e);
+    }
+  }
+
+  // Alcance do jogador pelo tom: volume cheio até 55% do alcance e some linearmente até o limite (8, 18 ou 24 blocos)
+  _applyRange(item, tier) {
+    const range = VOICE_RANGES[tier] ?? VOICE_RANGES[1];
+    item.tier = tier;
+    item.panner.refDistance = range * 0.55;
+    item.panner.maxDistance = range;
+  }
+
+  // Estado de voz de outro jogador (campo v). Falando: o tom define o alcance.
+  setRemoteVoice(peerId, v) {
+    const item = this.remotePanners.get(peerId);
+    v = v | 0;
+    if (v >= VOICE_SPEAK0) this.speakingPeers.add(peerId); else this.speakingPeers.delete(peerId);
+    if (!item) return;
+    item.voice = v;
+    if (v >= VOICE_SPEAK0) {
+      const tier = Math.min(2, v - VOICE_SPEAK0);
+      if (tier !== item.tier) this._applyRange(item, tier);
     }
   }
 
   updateRemotePosition(peerId, pos) {
     const item = this.remotePanners.get(peerId);
     if (!item || !item.panner || !pos) return;
-
-    item.x = pos.x; item.y = pos.y; item.z = pos.z;
     try {
       if (item.panner.positionX) {
         item.panner.positionX.value = pos.x;
@@ -215,47 +243,30 @@ class VoiceChatManager {
       } else if (item.panner.setPosition) {
         item.panner.setPosition(pos.x, pos.y, pos.z);
       }
-    } catch {}
+    } catch { /* contexto fechado */ }
   }
 
   setPeerSpeaking(peerId, speaking) {
-    if (speaking) this.speakingPeers.add(peerId);
-    else this.speakingPeers.delete(peerId);
-    if (this._onVoiceStateChange) this._onVoiceStateChange();
+    if (speaking) this.speakingPeers.add(peerId); else this.speakingPeers.delete(peerId);
+    this._notify();
   }
 
   detachRemoteAudioStream(peerId) {
     const item = this.remotePanners.get(peerId);
     if (!item) return;
     try {
-      if (item.source) item.source.disconnect();
-      if (item.panner) item.panner.disconnect();
-      if (item.gainNode) item.gainNode.disconnect();
-      if (item.audioEl) item.audioEl.remove();
-    } catch {}
+      item.source?.disconnect();
+      item.panner?.disconnect();
+      item.gainNode?.disconnect();
+      item.audioEl?.remove();
+    } catch { /* já solto */ }
     this.remotePanners.delete(peerId);
     this.speakingPeers.delete(peerId);
   }
 
   stop() {
-    if (this._speakingCheckTimer) clearInterval(this._speakingCheckTimer);
-    if (this.localTrack) {
-      this.localTrack.stop();
-      this.localTrack = null;
-    }
-    if (this._dspNodes) {
-      for (const node of this._dspNodes) {
-        try { node.disconnect(); } catch {}
-      }
-      this._dspNodes = [];
-    }
-    this.localStream = null;
-    this.outgoingStream = null;
-    this.gateGain = null;
-    this.analyser = null;
-    for (const peerId of Array.from(this.remotePanners.keys())) {
-      this.detachRemoteAudioStream(peerId);
-    }
+    this.stopMicrophone();
+    for (const peerId of Array.from(this.remotePanners.keys())) this.detachRemoteAudioStream(peerId);
   }
 }
 

@@ -52,6 +52,7 @@ import { ItemEntityManager, createItemMesh, isItemSpriteReady } from './itemEnti
 import { perfMonitor } from './perfMonitor';
 import { musicManager } from './musicManager';
 import { voiceChat } from './net/voiceChat';
+import { createVoiceIcon, setVoiceIconState, disposeVoiceIcon } from './voiceIcon';
 import { getContainer, removeContainer } from './containers';
 import { handleBlockBreakPhysics, tickNearbyFallingBlocks, FALLING_BLOCK_IDS, canFallThrough, triggerFallingColumn } from './fallingBlocks';
 
@@ -293,6 +294,8 @@ export class GameEngine {
     this.nametag = createNametag(this.player.nomeJogador || 'Player');
     this.nametag.visible = false;
     this.playerModel.add(this.nametag);
+    this.voiceIconLocal = createVoiceIcon();   // só aparece em 3ª pessoa (o modelo some em 1ª)
+    this.playerModel.add(this.voiceIconLocal);
 
     // Modelo baseado em skin 64×64 (skinview3d) — já completo, sem GLB
 
@@ -487,6 +490,7 @@ export class GameEngine {
       this.emitHud();
       return;
     }
+    if (down && !e.repeat && voiceChat.enabled && e.code === (keys.voiceMute || 'KeyV')) { voiceChat.toggleMute(); return; }
     if (down && !e.repeat && (e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === keys.sprint)) {
       this.sprintToggled = !this.sprintToggled;
     }
@@ -1634,6 +1638,7 @@ export class GameEngine {
         dead: !!p.isDead,
         sleeping: !!p.sleeping,
         h: this.getHeldItem()?.id || 0,
+        v: voiceChat.getWireState(), // chat de voz: 0 desligado, 1 mutado, 2 ligado, 3-5 falando (tom baixo/médio/alto)
       };
       if (this.netManager.broadcast) {
         this.netManager.broadcast(posMsg, undefined, false);
@@ -2040,12 +2045,16 @@ export class GameEngine {
     // Efeito de flash vermelho ao tomar dano (Hurt Red Tint)
     const isHurt = p.hurtTime > 0;
     const hurtColor = isHurt ? 0xff5555 : 0xffffff;
-    m.traverse(c => { if (c.material && c.material.color) c.material.color.setHex(hurtColor); });
+    m.traverse(c => { if (c.material && c.material.color && !c.isSprite) c.material.color.setHex(hurtColor); });
     if (this.fpsArm) {
       this.fpsArm.traverse(c => { if (c.material && c.material.color) c.material.color.setHex(hurtColor); });
     }
     // Nametag acompanha a altura (abaixa se morto, mas sem encostar no chão)
     if (this.nametag) this.nametag.position.y = p.isDead ? 0.85 : 2.35;
+    if (this.voiceIconLocal) {
+      this.voiceIconLocal.position.y = (p.isDead ? 0.85 : 2.35) + 0.3;
+      setVoiceIconState(this.voiceIconLocal, voiceChat.getWireState());
+    }
   }
 
   // Capa remota: uma busca por nickname (guardada em cache; valor undefined = busca em voo)
@@ -2139,8 +2148,11 @@ export class GameEngine {
           const tag = createNametag(rp.name || 'Player');
           tag.position.y = 2.35;
           group.add(tag);
+          const icon = createVoiceIcon();   // microfone em cima do nome: falando (cor = tom) ou mutado
+          icon.position.y = 2.65;
+          group.add(icon);
           this.scene.add(group);
-          entry = { group, tag, born: performance.now() };
+          entry = { group, tag, icon, born: performance.now() };
           this._remoteMeshes.set(id, entry);
         }
 
@@ -2197,16 +2209,20 @@ export class GameEngine {
             entry.group.traverse(c => { if (c.material && c.material.color && !c.isSprite) c.material.color.setHex(tint); });
           }
           if (entry.tag) entry.tag.position.y = rp.isDead ? 0.85 : 2.35;
+          if (entry.icon) entry.icon.position.y = (rp.isDead ? 0.85 : 2.35) + 0.3;
         }
 
-        // Atualizar áudio posicional 3D para voz
+        // Voz por aproximação: posição do jogador, tom (alcance) e ícone do microfone
         voiceChat.updateRemotePosition(id, { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0 });
+        voiceChat.setRemoteVoice(id, rp.voice | 0);
+        if (entry?.icon) setVoiceIconState(entry.icon, rp.voice | 0);
       }
     }
 
     for (const [id, entry] of this._remoteMeshes.entries()) {
       if (!activeIds.has(id)) {
         this.scene.remove(entry.group);
+        disposeVoiceIcon(entry.icon);
         this._remoteMeshes.delete(id);
       }
     }
@@ -2333,6 +2349,7 @@ export class GameEngine {
       voiceChat: {
         muted: voiceChat.micMuted,
         speaking: voiceChat.isSpeaking,
+        tier: voiceChat.voiceTier,
         active: !!voiceChat.localStream,
       },
     };

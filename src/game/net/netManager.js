@@ -216,7 +216,8 @@ export class NetHost {
         p.isDead = !!msg.dead;
         p.sleeping = !!msg.sleeping;
         p.held = msg.h || 0;
-        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, sleeping: !!msg.sleeping, h: msg.h || 0 }, userId, false);
+        p.voice = msg.v | 0;
+        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, sleeping: !!msg.sleeping, h: msg.h || 0, v: msg.v | 0 }, userId, false);
         break;
       }
       case 'sleep': {
@@ -534,6 +535,7 @@ export class NetClient {
         p.isDead = !!msg.dead;
         p.sleeping = !!msg.sleeping;
         p.held = msg.h || 0;
+        p.voice = msg.v | 0;
         // Interpolação suave e rápida para combate fluido (0.55), com snap se distância > 4 blocos
         const dx = p.targetX - p.x;
         const dy = p.targetY - p.y;

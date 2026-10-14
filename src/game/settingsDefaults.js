@@ -115,7 +115,7 @@ export const DEFAULT_USER = {
     drop: 'KeyQ', inventory: 'KeyE',
     slot1: 'Digit1', slot2: 'Digit2', slot3: 'Digit3', slot4: 'Digit4',
     slot5: 'Digit5', slot6: 'Digit6', slot7: 'Digit7', slot8: 'Digit8', slot9: 'Digit9',
-    chat: 'KeyT', command: 'Slash', playerList: 'Tab',
+    chat: 'KeyT', command: 'Slash', playerList: 'Tab', voiceMute: 'KeyV',
     screenshot: 'F2', perspective: 'F5', smoothCamera: 'F8',
     fullscreen: 'F11', hideHud: 'F1', debug: 'F3',
     reload: 'KeyR', fireMode: 'KeyB', zoom: 'KeyC', studio: 'F7',
@@ -218,7 +218,7 @@ export const KEY_ACTIONS = [
   ]},
   { group: 'Multijogador', actions: [
     { id: 'chat', label: 'Abrir chat' }, { id: 'command', label: 'Abrir comando' },
-    { id: 'playerList', label: 'Lista de jogadores' },
+    { id: 'playerList', label: 'Lista de jogadores' }, { id: 'voiceMute', label: 'Silenciar microfone' },
   ]},
   { group: 'Diversos', actions: [
     { id: 'screenshot', label: 'Captura de tela' }, { id: 'perspective', label: 'Alternar perspectiva' },

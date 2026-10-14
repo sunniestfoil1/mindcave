@@ -1,17 +1,35 @@
-import React from "react";
+import React, { useState } from "react";
 import SurvivalHud from "./SurvivalHud";
 import HudBars from "./HudBars";
 import PlayerListOverlay from "./PlayerListOverlay";
 import ScoreboardSidebar from "./ScoreboardSidebar";
 import { GuiScreen, GuiButton, GuiText, useGui } from "@/components/java";
-import { voiceChat } from "@/game/net/voiceChat";
+import { voiceChat, VOICE_RANGES, VOICE_TIER_NAMES } from "@/game/net/voiceChat";
+import { useGuiScaleValue } from "./GuiSprite";
 import { perfMonitor } from "@/game/perfMonitor";
 
 const SHADER_NAMES = ['Clássico', 'Shaders'];
 
+// Ícone de microfone (pixel art) do chat de voz: cortado e vermelho quando está desligado ou mutado
+function MicImg({ muted, size, style }) {
+  return <img src={muted ? '/assets/ui/mic-muted.svg' : '/assets/ui/mic.svg'} alt="" draggable={false} width={size} height={size} style={{ imageRendering: 'pixelated', ...style }} />;
+}
+
 function PauseMenuContent({ hud, onPause }) {
   const { guiHeight, scale } = useGui();
   const k = Math.floor(guiHeight / 4) - 16;
+  const voice = hud.voiceChat;
+  const [voiceError, setVoiceError] = useState('');
+  const toggleVoice = async () => {
+    setVoiceError('');
+    if (voice?.active) { voiceChat.stopMicrophone(); return; }
+    const stream = await voiceChat.initLocalMicrophone();
+    if (!stream) setVoiceError('Não foi possível usar o microfone. Libere a permissão no navegador.');
+  };
+  const iconClick = async () => { if (voice?.active) voiceChat.toggleMute(); else await toggleVoice(); };
+  const tierText = voice?.speaking
+    ? `Falando em tom ${VOICE_TIER_NAMES[voice.tier]}: ouvem até ${VOICE_RANGES[voice.tier]} blocos`
+    : `Tom baixo ${VOICE_RANGES[0]} blocos · médio ${VOICE_RANGES[1]} · alto ${VOICE_RANGES[2]}`;
   return (
     <>
       {/* Title */}
@@ -25,8 +43,29 @@ function PauseMenuContent({ hud, onPause }) {
       <GuiButton x={-100} y={k + 72} width={98} label="Opções..." onClick={hud.onOptions} />
       {hud.onOpenToLAN && <GuiButton x={2} y={k + 72} width={98} label="Abrir para LAN" onClick={hud.onOpenToLAN} />}
       <GuiButton x={-100} y={k + 96} width={200} label="Salvar e sair para o título" onClick={hud.onExit} />
+      {/* Chat de voz por aproximação: botão de ligar/desligar e, ao lado, o ícone do microfone (mutar) */}
+      {voice && (
+        <>
+          <GuiButton x={-100} y={k + 124} width={200}
+            label={voice.active ? 'Desativar Chat de Voz por Aproximação' : 'Ativar Chat de Voz por Aproximação'}
+            onClick={toggleVoice} />
+          <GuiButton x={-124} y={k + 124} width={20} title={voice.active ? (voice.muted ? 'Microfone mutado: clique para ligar' : 'Microfone ligado: clique para mutar') : 'Ativar o chat de voz'}
+            icon={<MicImg muted={!voice.active || voice.muted} size={12 * scale} />} onClick={iconClick} />
+          <div style={{ position: 'absolute', left: 0, right: 0, top: (k + 148) * scale, display: 'flex', justifyContent: 'center' }}>
+            <GuiText text={voiceError || (voice.active ? tierText : 'O alcance da voz depende do seu tom: sussurro, fala normal e voz alta')}
+              color={voiceError ? '#FF5555' : '#A0A0A0'} shadow scale={scale} />
+          </div>
+        </>
+      )}
     </>
   );
+}
+
+// Indicador discreto do próprio microfone enquanto joga (o botão de ligar/desligar fica só no menu de pausa)
+function VoiceStatusIcon({ voice }) {
+  const S = useGuiScaleValue();
+  const tint = voice.muted ? 'none' : voice.speaking ? (voice.tier === 0 ? 'hue-rotate(-20deg)' : voice.tier === 2 ? 'sepia(1) saturate(4)' : 'none') : 'opacity(0.45)';
+  return <MicImg muted={voice.muted} size={9 * S} style={{ filter: tint }} />;
 }
 
 export default function GameHud({ hud, onPause }) {
@@ -116,35 +155,7 @@ export default function GameHud({ hud, onPause }) {
             {hud.fps} fps
           </div>
         )}
-        {hud.voiceChat && (
-          <button
-            onClick={async () => {
-              if (!hud.voiceChat.active) {
-                await voiceChat.initLocalMicrophone();
-              } else {
-                voiceChat.toggleMute();
-              }
-            }}
-            className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 font-mono transition-all cursor-pointer ${
-              !hud.voiceChat.active
-                ? 'bg-stone-800/80 text-stone-300 hover:bg-stone-700 border border-stone-600'
-                : hud.voiceChat.muted
-                ? 'bg-red-900/70 text-red-200 border border-red-500/30'
-                : hud.voiceChat.speaking
-                ? 'bg-green-600/80 text-white border border-green-400 animate-pulse'
-                : 'bg-emerald-900/60 text-emerald-200 border border-emerald-500/40'
-            }`}
-            title={!hud.voiceChat.active ? "Clique para solicitar permissão e ativar microfone" : "Clique para alternar o microfone (Mute/Unmute)"}
-          >
-            {!hud.voiceChat.active
-              ? '🎤 Ativar Mic'
-              : hud.voiceChat.muted
-              ? '🔇 Mic Mutado'
-              : hud.voiceChat.speaking
-              ? '🎙️ Falando...'
-              : '🎤 Mic Ativo'}
-          </button>
-        )}
+        {hud.voiceChat?.active && !hud.paused && <VoiceStatusIcon voice={hud.voiceChat} />}
         {hud.musicTrack && !hud.f3 && (
           <div className="text-xs text-yellow-300/90 bg-black/40 backdrop-blur-xs px-2 py-0.5 rounded border border-yellow-500/20 flex items-center gap-1 animate-fade-in">
             🎶 {hud.musicTrack}
