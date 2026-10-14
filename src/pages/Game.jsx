@@ -513,7 +513,7 @@ export default function Game() {
         />
       )}
       {/* Só depois que hud existe: o engine já chamou musicManager.start() e o rádio toma a trilha. */}
-      {hud && <RadioWidget />}
+      {hud && <RadioWidget visible={!!hud.paused} />}
       <PerformancePanel visible={!!hud?.f3} />
 
       {/* Diagnóstico de spawn/render — só com F3 aberto */}

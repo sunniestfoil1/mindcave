@@ -388,11 +388,10 @@ export default function RadioWidget({ visible = true }) {
     return () => cancelAnimationFrame(raf);
   }, [engine, frame]);
 
-  if (!visible) return null;
-
   const track = RADIO_PLAYLIST[state.index] || RADIO_PLAYLIST[0];
-  const transform = entered ? "translateX(0)" : "translateX(120%)";
-  const opacity = entered ? (pop ? 1 : 0.4) : 0;
+  const shown = visible && entered;
+  const transform = shown ? "translateX(0)" : "translateX(120%)";
+  const opacity = shown ? (pop ? 1 : 0.4) : 0;
   const scale = pop ? "scale(1)" : "scale(0.95)";
 
   const btn =
@@ -400,7 +399,8 @@ export default function RadioWidget({ visible = true }) {
 
   return (
     <div
-      className="pointer-events-auto fixed bottom-4 right-4 z-50 max-w-[calc(100vw-2rem)] font-mono select-none"
+      className={`${shown ? "pointer-events-auto" : "pointer-events-none"} fixed bottom-4 right-4 z-50 max-w-[calc(100vw-2rem)] font-mono select-none`}
+      aria-hidden={!shown}
       style={{
         transform,
         opacity,
