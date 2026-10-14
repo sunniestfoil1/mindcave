@@ -392,6 +392,19 @@ const result = await page.evaluate(async () => {
     reset(); pState.gameMode = 'survival';
     engine.breakBedPartner(FX, B0 + 3, FZ, packState(49, 0)); cw.setBlock(FX, B0 + 3, FZ, 0); engine.breakBedPartner(FX, B0 + 3, FZ, packState(49, 0));
     ok(stateId(cw.getBlock(FX + 1, B0 + 2, FZ)) !== 90, 'quebrar a moldura apaga o portal');
+
+    // ======== ESC: pausar e retomar rápido, em software (o navegador não aceita Esc como gesto para travar o mouse) ========
+    reset(); engine.paused = true; engine.guiOpenFn = () => false;
+    engine.onKey({ code: 'Escape', repeat: false, preventDefault() {}, target: document.body }, true);
+    ok(engine.paused === false, 'Esc com o jogo pausado retoma na hora');
+    engine.onKey({ code: 'Escape', repeat: false, preventDefault() {}, target: document.body }, true);
+    ok(engine.paused === true, 'Esc de novo (mouse não travado) pausa na hora');
+    engine.onKey({ code: 'Escape', repeat: false, preventDefault() {}, target: document.body }, true);
+    ok(engine.paused === false, 'Esc, Esc, Esc: terceiro Esc retoma');
+    engine.guiOpenFn = () => true; engine.paused = true;
+    engine.onKey({ code: 'Escape', repeat: false, preventDefault() {}, target: document.body }, true);
+    ok(engine.paused === true, 'com inventário/opções abertos, Esc não retoma o jogo por baixo');
+    engine.guiOpenFn = () => false; engine.paused = false;
     engine.stop?.();
   } catch (e) { out.push('ERRO ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')); }
   return out;

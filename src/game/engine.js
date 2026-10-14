@@ -22,6 +22,7 @@ import { createAnimationState, tickAnimation, startSwing, applyThirdPersonPose }
 import { buildHandRig, poseHand } from './firstPersonHand';
 import { attackEntity, isSword, isBow, isThrowable, computeBowCharge, createCpsTracker, recordClick, getCps, ATTACK_REACH } from './combat';
 import { MobManager } from './mobManager';
+import { hasGlint, buildGlintOverlay } from './glint';
 import { ClientWorld } from './world';
 import { tryCreatePortal, checkPortalIntegrity, findNearbyPortal, buildPortal } from './portal';
 import { findNetherFloor } from './netherGen';
@@ -355,10 +356,16 @@ export class GameEngine {
     } catch (e) { /* pointer lock not available (iframe) */ }
   }
 
+  // Retomou com Esc sem o mouse travado: o primeiro clique/tecla (gesto válido) recaptura
+  _grabIfWanted() {
+    if (this._wantLock && !this.paused && !this.chatOpen && document.pointerLockElement !== this.canvas) this._requestPointerLock();
+  }
+
   bindInput() {
     this._onKeyDown = (e) => this.onKey(e, true);
     this._onKeyUp = (e) => this.onKey(e, false);
     this._onMouseDown = (e) => {
+      this._grabIfWanted();
       this.mouseBtn[e.button] = true;
       const pickKey = (settingsStore.get('user.keys') || {}).pick;
       if (pickKey && pickKey.startsWith('Mouse') && parseInt(pickKey.slice(5)) === e.button) {
@@ -375,8 +382,10 @@ export class GameEngine {
     this._onPLChange = () => {
       if (this.chatOpen || this.netManager) {
         this.paused = false;
+      } else if (document.pointerLockElement === this.canvas) {
+        this.paused = false; this._wantLock = false;
       } else {
-        this.paused = document.pointerLockElement !== this.canvas;
+        this.paused = true; this._wantLock = false;
       }
       if (!this.paused) this.mouseBtn = {};
       this.keys = {};
@@ -520,7 +529,15 @@ export class GameEngine {
       else document.documentElement.requestFullscreen?.().catch(() => {});
       return;
     }
-    if (down && (e.code === 'Escape')) return;
+    if (down && e.code === 'Escape') {
+      // Esc, Esc, Esc rápido como no jogo original: o navegador devolve o mouse ao primeiro Esc, mas NÃO aceita Esc como gesto para travar
+      // de novo — então pausar/retomar é feito aqui, em software, na hora. O mouse é recapturado no primeiro clique/tecla (ver _grabIfWanted).
+      if (e.repeat || this.netManager || this.chatOpen || this.guiOpenFn?.()) return;
+      if (this.paused) { this.paused = false; this.mouseBtn = {}; this.keys = {}; this._wantLock = true; this._requestPointerLock(); this.emitHud(); }
+      else if (document.pointerLockElement !== this.canvas) { this.paused = true; this._wantLock = false; this.emitHud(); }
+      return;
+    }
+    this._grabIfWanted();
 
     this.keys[e.code] = down;
     if (down && !e.repeat) { // repetição de tecla (segurar W/espaço) não conta como toque duplo
@@ -543,6 +560,7 @@ export class GameEngine {
 
   onMouseMove(e) {
     if (this.paused || this.chatOpen || this.player?.isDead || this.player?.sleeping) return;
+    if (document.pointerLockElement !== this.canvas && !this.netManager) return;
     const sensPct = settingsStore.get('user.mouseSensitivity') || 100;
     // Vanilla 1.8.9: s = pct/200 (slider 0–200%); graus/px = 1,2 × (0,6·s + 0,2)³ → 100% = 0,15°/px
     const s = sensPct / 200;
@@ -2731,24 +2749,39 @@ export class GameEngine {
     const p = this.player;
     const heldItem = this.getHeldItem();
 
-    // Atualizar mesh do item — texturizado (atlas/ícone), mesmo builder do item dropado
+    // Atualizar mesh do item — texturizado (atlas/ícone), mesmo builder do item dropado.
+    // Normalizado para 1×1(×1): o cubo do item caído mede 0,25 e o plano 0,3; a escala real vem da cadeia do ItemRenderer (firstPersonHand.itemMatrix)
+    let handStyle = 'sprite';
+    const glintOn = hasGlint(heldItem);
     if (heldItem && heldItem.id) {
-      if (!this.fpsItem || this.fpsItem._itemId !== heldItem.id) {
+      const blk = heldItem.id < 256 ? BLOCKS[heldItem.id] : null;
+      const cutout = blk && (blk.model === 'cross' || blk.model === 'torch' || blk.model === 'crop' || !blk.solid);
+      handStyle = blk && !cutout ? 'block' : 'sprite';
+      if (!this.fpsItem || this.fpsItem._itemId !== heldItem.id || this.fpsItem._glint !== glintOn) {
         // Materiais são cacheados/partilhados — só remove do grupo, sem dispose
         if (this.fpsItem) this.fpsItemGroup.remove(this.fpsItem);
+        if (this.fpsGlint) { this.fpsItemGroup.remove(this.fpsGlint.group); this.fpsGlint = null; }
         this.fpsItem = createItemMesh({ id: heldItem.id, meta: heldItem.meta || 0 }, 1, this.world?.atlas);
         this.fpsItem._itemId = heldItem.id;
-        this.fpsItem.scale.setScalar(1.4);
+        this.fpsItem._glint = glintOn;
+        this.fpsItem.scale.setScalar(handStyle === 'block' ? 4 : 1 / (blk ? 0.32 : 0.3));
         this.fpsItemGroup.add(this.fpsItem);
+        if (glintOn) {
+          this.fpsGlint = buildGlintOverlay(this.fpsItem);
+          this.fpsGlint.group.scale.copy(this.fpsItem.scale);
+          this.fpsItemGroup.add(this.fpsGlint.group);
+        }
       }
+      if (this.fpsGlint) this.fpsGlint.update(performance.now());
     } else {
       if (this.fpsItem) { this.fpsItemGroup.remove(this.fpsItem); this.fpsItem = null; }
+      if (this.fpsGlint) { this.fpsItemGroup.remove(this.fpsGlint.group); this.fpsGlint = null; }
     }
 
     this.fpsCamera.rotation.z = this._hurtRollValue || 0; // a mão também balança com o dano
     // Pose da mão (RF-051): braço com micro-interpolação sub-tick fluida
     const partialTick = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));
-    poseHand(this.handRig, this.anim, p, heldItem ? getItem(heldItem.id) : null, !!(heldItem && heldItem.id), this.worldTime / 20, partialTick);
+    poseHand(this.handRig, this.anim, p, heldItem ? getItem(heldItem.id) : null, !!(heldItem && heldItem.id), this.worldTime / 20, partialTick, handStyle);
 
     // Renderizar a mão por cima do mundo (RF-050)
     if ((this.perspective === 0) && !this.paused) {

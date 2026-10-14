@@ -5,6 +5,7 @@ import { getDurabilityRatio } from "@/game/mining";
 import { getPackUrl, MC, isPackReady, onPackReady } from "@/game/pack";
 import { getAtlasTileCanvas, getAtlasVersion } from "@/game/textures";
 import { itemIconFile, itemBlockTile, ICON_TINT } from "@/game/gui/iconNames";
+import { hasGlint } from "@/game/glint";
 import { drawIsoBoxes, ICON_SLAB, ICON_STAIRS, ICON_FENCE, ICON_GATE, ICON_CHEST } from "@/game/gui/isoIcon";
 
 const blockCanvasCache = new Map();
@@ -62,9 +63,21 @@ function get3DBlockDataUrl(topImg, sideImg, cacheKey) {
 }
 
 // fill: o ícone ocupa o slot inteiro (slots de container de 16×16 px de GUI); guiScale: fator inteiro para o tamanho do número
+let glintUrlCache = null;
+function useGlintUrl(active) {
+  const [url, setUrl] = useState(glintUrlCache);
+  useEffect(() => {
+    if (!active || glintUrlCache) return;
+    getPackUrl(MC + 'textures/misc/enchanted_item_glint.png').then((u) => { if (u) { glintUrlCache = u; setUrl(u); } });
+  }, [active]);
+  return url;
+}
+
 export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, onHover, size = 44, highlight = false, transparent = false, fill = false, guiScale = 0, ...rest }) {
 
   const [hover, setHover] = useState(false);
+  const glintOn = !!item && hasGlint(item);
+  const glintUrl = useGlintUrl(glintOn);
   const [imgUrl, setImgUrl] = useState(null);
   const atlasVer = getAtlasVersion(); // o ícone é refeito quando as texturas reais terminam de carregar
   const [packVer, setPackVer] = useState(isPackReady() ? 1 : 0);
@@ -234,6 +247,22 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
             />
           ) : (
             !transparent && <div className={fill ? "w-full h-full rounded-sm" : "w-3/4 h-3/4 rounded-sm"} style={{ background: bg }} />
+          )}
+
+          {/* Brilho de encantamento: a textura oficial corre em duas camadas, só sobre os pixels opacos do ícone */}
+          {glintOn && imgUrl && glintUrl && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none" aria-hidden="true">
+              <div
+                className={fill ? "w-full h-full mc-glint" : "w-3/4 h-3/4 mc-glint"}
+                style={{
+                  WebkitMaskImage: `url(${imgUrl})`, maskImage: `url(${imgUrl})`,
+                  WebkitMaskSize: 'contain', maskSize: 'contain', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center', maskPosition: 'center',
+                  backgroundImage: `url(${glintUrl}), url(${glintUrl})`,
+                  imageRendering: 'pixelated',
+                }}
+              />
+            </div>
           )}
 
           {/* Contagem */}

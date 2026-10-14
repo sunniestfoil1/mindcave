@@ -2,7 +2,6 @@
 // Decisão de jogo: o braço fica visível atrás do item segurado (pedido do jogador).
 import * as THREE from 'three';
 import { buildFirstPersonArm } from './playerModel';
-import { getFirstPersonTransform } from './animation';
 import { fastSin, fastCos } from './fastMath';
 
 const DEG = Math.PI / 180;
@@ -82,18 +81,65 @@ export function armMatrix(anim, partialTick = 0) {
   return M;
 }
 
-export function poseHand(rig, anim, player, heldDef, hasItem, time, partialTick = 0) {
+// Item segurado: cadeia exata do ItemRenderer.renderItemInFirstPerson da 1.8.9, com os valores "display.firstperson" dos modelos oficiais
+// (models/item/iron_sword.json etc.: rotação (0,-135,25), translação (0,4,2)/16, escala 1,7). Bloco não tem transform próprio (escala 1).
+// Ordem GL: golpe → posição base → equipar → giro de 45° → balanço do golpe → escala 0,4 → transform do modelo → escala 0,5 do RenderItem.
+// O mesh do item é normalizado para 1×1(×1) centrado; o "−0,5" do RenderItem já está embutido nisso.
+export function itemMatrix(out, anim, heldDef, style, partialTick, time) {
+  const pt = Math.min(1, Math.max(0, partialTick));
+  const lerp = (a, b) => (a ?? b) + (b - (a ?? b)) * pt;
+  const s = anim.isSwinging ? Math.min(1, Math.max(0, lerp(anim.prevSwingProgress, anim.swingProgress))) : 0;
+  const ep = Math.min(1, Math.max(0, lerp(anim.prevEquipProgress, anim.equipProgress)));
+  const sq = Math.sqrt(s);
+  const f = fastSin(s * s * Math.PI), f1 = fastSin(sq * Math.PI);
+  const m = out.identity();
+  m.multiply(T(-0.4 * f1, 0.2 * fastSin(sq * Math.PI * 2), -0.2 * fastSin(s * Math.PI)));
+  m.multiply(T(0.56, -0.52, -0.72));
+  m.multiply(T(0, (ep - 1) * 0.6, 0));
+  // caminhada e inércia da mão (não existem no ItemRenderer; vêm do bob da câmera, aqui aplicados na mão)
+  if (anim.speed > 0.05) {
+    const k = Math.min(1, anim.speed / 5);
+    const p = lerp(anim.prevWalkPhase, anim.walkPhase);
+    m.multiply(T(-fastSin(p) * 0.05 * k, Math.abs(fastCos(p * 2)) * 0.05 * k, 0));
+    m.multiply(TMP.makeRotationZ(fastSin(p) * 5 * DEG * k));
+  }
+  m.multiply(TMP.makeRotationY(anim.handRotY * 0.2));
+  m.multiply(TMP.makeRotationX(anim.handRotX * 0.2));
+  m.multiply(TMP.makeRotationY(45 * DEG));
+  if (anim.blocking) {
+    // ItemRenderer.func_178103_d (bloquear com espada)
+    m.multiply(T(-0.5, 0.2, 0));
+    m.multiply(TMP.makeRotationY(30 * DEG));
+    m.multiply(TMP.makeRotationX(-80 * DEG));
+    m.multiply(TMP.makeRotationY(60 * DEG));
+  } else {
+    m.multiply(TMP.makeRotationY(f * -20 * DEG));
+    m.multiply(TMP.makeRotationZ(f1 * -20 * DEG));
+    m.multiply(TMP.makeRotationX(f1 * -80 * DEG));
+  }
+  if (anim.eating) { m.multiply(T(0, 0.05 + Math.abs(Math.sin(time * 6)) * 0.03, -0.1)); m.multiply(TMP.makeRotationX(-30 * DEG)); }
+  if (anim.bowDrawing) m.multiply(T(0, 0, 0.04 * (anim.bowCharge || 0)));
+  m.multiply(TMP.makeScale(0.4, 0.4, 0.4));
+  if (style === 'sprite') {
+    const rod = heldDef && heldDef.name === 'fishing_rod';
+    m.multiply(T(0, 4 / 16, 2 / 16));
+    m.multiply(TMP.makeRotationY((rod ? 45 : -135) * DEG));
+    m.multiply(TMP.makeRotationZ(25 * DEG));
+    m.multiply(TMP.makeScale(1.7, 1.7, 1.7));
+  }
+  m.multiply(TMP.makeScale(0.5, 0.5, 0.5));
+  return m;
+}
+
+export function poseHand(rig, anim, player, heldDef, hasItem, time, partialTick = 0, style = 'sprite') {
+  rig.arm.visible = true;
+  rig.arm.matrix.copy(armMatrix(anim, partialTick));
   if (hasItem) {
-    // Braço visível atrás do item ("mão segurando o bloco", pedido do jogador)
-    rig.arm.visible = true;
-    rig.arm.matrix.copy(armMatrix(anim, partialTick));
-    const tf = getFirstPersonTransform(anim, player, heldDef, time, partialTick);
-    rig.itemRoot.position.set(tf.x, tf.y, tf.z);
-    rig.itemRoot.rotation.set(tf.rotX, tf.rotY, tf.rotZ);
+    rig.itemRoot.matrixAutoUpdate = false;
+    itemMatrix(rig.itemRoot.matrix, anim, heldDef, style, partialTick, time);
+    rig.itemRoot.matrixWorldNeedsUpdate = true;
     rig.itemRoot.visible = true;
   } else {
     rig.itemRoot.visible = false;
-    rig.arm.visible = true;
-    rig.arm.matrix.copy(armMatrix(anim, partialTick));
   }
 }

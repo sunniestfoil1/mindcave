@@ -350,6 +350,7 @@ export default function Game() {
         });
 
         engineRef.current = engine;
+        engine.guiOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current;
         await engine.start();
         console.log('[Game] Spawn:', spawn, 'Player pos:', pState.pos, 'Flying:', pState.flying, 'GameMode:', pState.gameMode);
         console.log('[Game] Chunks loaded:', cw.chunks.size, 'Render distance:', engine.renderDistance);

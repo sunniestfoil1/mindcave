@@ -125,3 +125,16 @@
 .mc-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #ffffff;
 }
+/* Brilho de encantamento (ItemSlot): duas camadas da textura oficial andando em sentidos opostos, tingidas de roxo e somadas ao ícone */
+.mc-glint {
+  background-color: #8040cc;
+  background-blend-mode: multiply, multiply;
+  background-size: 200% 200%, 200% 200%;
+  mix-blend-mode: screen;
+  animation: mc-glint-a 3s linear infinite;
+  opacity: 0.85;
+}
+@keyframes mc-glint-a {
+  from { background-position: 0 0, 100% 100%; }
+  to { background-position: 100% 0, 0 100%; }
+}

@@ -4,7 +4,7 @@
 // Física: só aterrissa descendo sobre a face superior; item nascido dentro de bloco fica
 // parado — nunca é teleportado para cima (bug que fazia o item subir até a superfície).
 import * as THREE from 'three';
-import { getBlock, tileForFace, blockTint } from './blocks';
+import { getBlock, BLOCKS, tileForFace, blockTint } from './blocks';
 import { getItem } from './items';
 import { addItem } from './inventory';
 import { playPopSound, playXpOrbSound } from './sounds';
@@ -166,7 +166,7 @@ function planeMatFor(id, def) {
 /** Mesh de item dropado (e usado pela mão em 1ª pessoa): cubo texturizado p/ bloco, plano c/ ícone p/ item. */
 export function createItemMesh(item, count = 1, atlas = null) {
   const group = new THREE.Group();
-  const block = getBlock(item.id);
+  const block = item.id < 256 ? (BLOCKS[item.id] || null) : null; // getBlock() devolve pedra para id desconhecido: item (id ≥ 256) nunca é bloco
   const itemDef = getItem(item.id);
 
   // Efeito visual de agrupamento 1.8.9: no máximo 4 réplicas em pilha
