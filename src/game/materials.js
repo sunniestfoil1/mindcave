@@ -60,15 +60,29 @@ varying float vViewDist;
 varying vec2 vTileOrigin;
 `;
 
+
+// Amostragem do atlas com derivadas calculadas do UV CONTÍNUO (vUv), não do fract(vUv): no limite entre dois blocos o fract salta de 1 para 0,
+// a GPU vê um gradiente enorme e escolhe o mipmap mais borrado — o que desenhava uma linha com a média do atlas (azul da água) ao redor
+// da grama e dos blocos. O gradiente também é limitado a 16 texels (mip 4): acima disso o mipmap misturaria tiles vizinhos do atlas.
+const SAMPLE = `
+vec4 sampleAtlas(vec2 atlasUv) {
+  vec2 gx = dFdx(vUv), gy = dFdy(vUv);
+  float fp = max(length(gx), length(gy)) * 16.0;
+  float k = fp > 16.0 ? 16.0 / fp : 1.0;
+  return textureGrad(map, atlasUv, gx * uTileSize * k, gy * uTileSize * k);
+}
+`;
+
 // Pixels com alfa entre 0.5 e 0.97 do atlas marcam "NÃO tingir" (ex.: terra na lateral da grama);
 // alfa 1.0 recebe a tinta de bioma (vColor = só a tinta; o sombreamento por face vai no vAo).
 const FRAG_OPAQUE = `
 precision highp float;
 ${UNIFORMS}
 ${LIGHTMAP}
+${SAMPLE}
 void main() {
   vec2 atlasUv = vTileOrigin + fract(vUv) * uTileSize;
-  vec4 tex = texture2D(map, atlasUv);
+  vec4 tex = sampleAtlas(atlasUv);
   if (tex.a < 0.5) discard;
   tex.rgb /= tex.a; // atlas premultiplicado
   // A flag "não tingir" (alfa 0.5–0.97) vem do texel exato: o mipmap também gera alfa nessa faixa nas bordas dos recortes
@@ -86,9 +100,10 @@ precision highp float;
 uniform float uWaterOpacity;
 ${UNIFORMS}
 ${LIGHTMAP}
+${SAMPLE}
 void main() {
   vec2 atlasUv = vTileOrigin + fract(vUv) * uTileSize;
-  vec4 tex = texture2D(map, atlasUv);
+  vec4 tex = sampleAtlas(atlasUv);
   if (tex.a > 0.0) tex.rgb /= tex.a; // atlas premultiplicado
   vec3 col = tex.rgb * vColor * lightmap(vLight) * vAo;
   float fog = smoothstep(uFogNear, uFogFar, vViewDist);

@@ -3024,6 +3024,8 @@ export class GameEngine {
     if (this.weather) this.weather.dispose();
     for (const w of Object.values(this.worlds)) if (w && w !== this.world) w.dispose(this.scene);
     if (this.world) this.world.dispose(this.scene);
-    if (this.renderer) { this.renderer.dispose(); this.renderer.forceContextLoss?.(); }
+    // Sem forceContextLoss: o canvas do jogo é reaproveitado se a tela montar de novo (StrictMode/voltar ao jogo) e um canvas de contexto perdido
+    // faz o próximo WebGLRenderer falhar com "Cannot read properties of null (reading 'precision')". O contexto some com o canvas.
+    if (this.renderer) this.renderer.dispose();
   }
 }

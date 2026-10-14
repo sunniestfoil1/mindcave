@@ -1,10 +1,12 @@
 // Overlays e indicadores do modo sobrevivência. Hotbar, vida, fome, armadura e XP ficam em HudBars (textura oficial).
 import React from "react";
 import { EFFECT_INFO } from "@/game/effects";
+import { McText, useGuiScaleValue } from "./GuiSprite";
 
 const WEATHER_TEXT = { rain: 'Chuva', thunder: 'Tempestade', snow: 'Neve' };
 
 export default function SurvivalHud({ hud }) {
+  const S = useGuiScaleValue();
   if (!hud) return null;
   return (
     <>
@@ -13,10 +15,10 @@ export default function SurvivalHud({ hud }) {
         <div className="absolute inset-0 bg-orange-600/15 pointer-events-none" />
       )}
 
-      {/* Indicador de corrida alternada */}
+      {/* Indicador de corrida alternada: só o texto, branco com sombra, na fonte e no tamanho do jogo (escala da GUI) */}
       {hud.sprintToggled && !hud.paused && (
-        <div className="absolute bottom-2 left-2 text-xs font-mono text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] bg-black/30 px-2 py-0.5 rounded pointer-events-none z-30">
-          [Corrida: Ativada]
+        <div style={{ position: 'absolute', left: 4 * S, bottom: 22 * S, width: 160 * S, height: 10 * S, pointerEvents: 'none' }}>
+          <McText text="[Sprinting (Toggled)]" x={0} y={0} S={S} color="#FFFFFF" shadow />
         </div>
       )}
 

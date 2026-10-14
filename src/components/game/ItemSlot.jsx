@@ -12,45 +12,50 @@ const blockCanvasCache = new Map();
 const flatCanvasCache = new Map();
 const itemUrlCache = new Map();
 
+// PNG sem perdas: o WebP com perda manchava os pixels dos ícones
 function canvasToOptimizedDataUrl(canvas) {
-  try {
-    const webp = canvas.toDataURL('image/webp', 0.9);
-    if (webp && webp.startsWith('data:image/webp')) return webp;
-  } catch {}
-  return canvas.toDataURL();
+  return canvas.toDataURL('image/png');
 }
 
+// Os ícones guardam o desenho do atlas; quando as texturas reais terminam de carregar (atlasVer muda) o cache inteiro é descartado
+let cacheAtlasVer = -1;
+function syncIconCaches(ver) {
+  if (ver !== cacheAtlasVer) { blockCanvasCache.clear(); flatCanvasCache.clear(); cacheAtlasVer = ver; }
+}
+
+// Ícone isométrico do bloco desenhado em 96×96 (3× o molde de 32) com vizinho-mais-próximo: cada pixel da textura sai nítido e o
+// navegador só reduz para o tamanho do slot (antes eram 32 px esticados e borrados).
+const ICON_K = 3;
 function get3DBlockDataUrl(topImg, sideImg, cacheKey) {
   if (blockCanvasCache.has(cacheKey)) return blockCanvasCache.get(cacheKey);
 
   const canvas = document.createElement('canvas');
-  canvas.width = 32;
-  canvas.height = 32;
+  canvas.width = 32 * ICON_K;
+  canvas.height = 32 * ICON_K;
   const ctx = canvas.getContext('2d');
-  ctx.imageRendering = 'pixelated';
+  ctx.imageSmoothingEnabled = false;
+  const K = ICON_K;
 
   const side = sideImg || topImg;
 
-  // Face Superior (Top) - 100% brilho
+  // Face superior: 100% de brilho
   if (topImg) {
     ctx.save();
-    ctx.setTransform(0.75, 0.4375, -0.75, 0.4375, 16, 2);
+    ctx.setTransform(0.75 * K, 0.4375 * K, -0.75 * K, 0.4375 * K, 16 * K, 2 * K);
     ctx.drawImage(topImg, 0, 0, 16, 16);
     ctx.restore();
   }
-
-  // Face Esquerda (Left) - 85% brilho (sombra sutil)
   if (side) {
+    // Face esquerda: 85%
     ctx.save();
-    ctx.setTransform(0.75, 0.375, 0, 0.875, 4, 9);
+    ctx.setTransform(0.75 * K, 0.375 * K, 0, 0.875 * K, 4 * K, 9 * K);
     ctx.drawImage(side, 0, 0, 16, 16);
     ctx.fillStyle = 'rgba(0,0,0,0.15)';
     ctx.fillRect(0, 0, 16, 16);
     ctx.restore();
-
-    // Face Direita (Right) - 65% brilho (sombra lateral)
+    // Face direita: 65%
     ctx.save();
-    ctx.setTransform(0.75, -0.375, 0, 0.875, 16, 15);
+    ctx.setTransform(0.75 * K, -0.375 * K, 0, 0.875 * K, 16 * K, 15 * K);
     ctx.drawImage(side, 0, 0, 16, 16);
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(0, 0, 16, 16);
@@ -88,6 +93,7 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
   const hasItem = Boolean(item && item.id && item.id > 0);
 
   useEffect(() => {
+    syncIconCaches(atlasVer);
     if (!hasItem) {
       setImgUrl(null);
       return;
