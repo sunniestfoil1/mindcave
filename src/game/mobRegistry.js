@@ -70,7 +70,7 @@ export const MOB_TYPES = {
     maxHealth: 4, speed: 0.20, followRange: 10,
     drops: [{ id: 288, min: 0, max: 2 }, { id: 365, min: 1, max: 1 }], xp: 1,
     breedItem: 295,
-    canFly: true, fallsSlow: true,
+    fallsSlow: true, // EntityChicken: motionY *= 0,6 ao cair; a gravidade é normal (antes 'canFly' tirava a gravidade e a galinha acertada subia para sempre)
     goals: [
       { type: 'swim', priority: 0 },
       { type: 'panic', priority: 1 },

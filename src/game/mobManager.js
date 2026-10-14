@@ -76,6 +76,8 @@ export class MobManager {
       },
     };
 
+    this._collideEntities(player);
+
     const toRemove = [];
     for (const mob of this.mobs) {
       if (!mob._model) mob.ensureModel(this.scene);
@@ -159,7 +161,7 @@ export class MobManager {
     }
   }
 
-  renderUpdate(time, playerPos, frustum) {
+  renderUpdate(time, playerPos, frustum, partialTick = 1) {
     const px = playerPos?.x || 0, pz = playerPos?.z || 0;
     for (const mob of this.mobs) {
       if (mob.isDead) continue;
@@ -181,7 +183,52 @@ export class MobManager {
         }
       }
       if (!mob._model) mob.ensureModel(this.scene);
-      mob.updateModel(time);
+      mob.updateModel(time, partialTick);
+    }
+  }
+
+
+  // Entity.applyEntityCollision (1.8.9): entidades cujas caixas (alargadas 0,2 em X/Z) se cruzam se empurram. Direção normalizada pela
+  // maior componente, força 0,05 e atenuação 1/dist; as duas partes recebem o impulso (mob×mob e jogador×mob).
+  _collideEntities(player) {
+    const list = this.mobs;
+    const push = (a, b, ax, az, bx, bz) => {
+      let dx = bx - ax, dz = bz - az;
+      let m = Math.max(Math.abs(dx), Math.abs(dz));
+      if (m < 0.01) return;
+      m = Math.sqrt(m);
+      dx /= m; dz /= m;
+      let inv = 1 / m; if (inv > 1) inv = 1;
+      dx *= inv * 0.05; dz *= inv * 0.05;
+      return [dx, dz];
+    };
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      if (a.isDead) continue;
+      const wa = a.type.width / 2 + 0.2, ha = a.type.height;
+      // jogador (criativo/espectador não empurra nem é empurrado)
+      if (player && !player.isDead && player.gameMode !== 'spectator' && !player.flying) {
+        const w = wa + 0.3, ddx = player.pos.x - a.pos.x, ddz = player.pos.z - a.pos.z;
+        if (Math.abs(ddx) < w && Math.abs(ddz) < w && player.pos.y < a.pos.y + ha && player.pos.y + 1.8 > a.pos.y) {
+          const v = push(a, player, a.pos.x, a.pos.z, player.pos.x, player.pos.z);
+          if (v) {
+            // o mob é empurrado para longe do jogador; o jogador recebe o contrário, mais fraco
+            a._pushX = (a._pushX || 0) - v[0]; a._pushZ = (a._pushZ || 0) - v[1];
+            if (player.vel && player.gameMode !== 'creative') { player.vel.x += v[0] * 0.5; player.vel.z += v[1] * 0.5; }
+          }
+        }
+      }
+      for (let j = i + 1; j < list.length; j++) {
+        const b = list[j];
+        if (b.isDead) continue;
+        const w = wa + b.type.width / 2, ddx = b.pos.x - a.pos.x, ddz = b.pos.z - a.pos.z;
+        if (Math.abs(ddx) >= w || Math.abs(ddz) >= w) continue;
+        if (a.pos.y >= b.pos.y + b.type.height || b.pos.y >= a.pos.y + ha) continue;
+        const v = push(a, b, a.pos.x, a.pos.z, b.pos.x, b.pos.z);
+        if (!v) continue;
+        a._pushX = (a._pushX || 0) - v[0]; a._pushZ = (a._pushZ || 0) - v[1];
+        b._pushX = (b._pushX || 0) + v[0]; b._pushZ = (b._pushZ || 0) + v[1];
+      }
     }
   }
 

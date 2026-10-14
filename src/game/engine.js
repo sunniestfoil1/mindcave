@@ -1741,7 +1741,7 @@ export class GameEngine {
         const inv = this.inventory || this.player.inventory;
         this.itemEntities.update(Math.min(dt, 100) / 1000, this.player, inv, this.world, this.worldTime, this._cameraFrustum, this.camera);
       }
-      if (this.mobs && !frozen) this.mobs.renderUpdate(this.worldTime / 20, this.player.pos, this._cameraFrustum);
+      if (this.mobs && !frozen) this.mobs.renderUpdate(this.worldTime / 20, this.player.pos, this._cameraFrustum, Math.min(1, Math.max(0, this.tickAcc / TICK_MS)));
       if (this.particles && !frozen) this.particles.renderUpdate();
       perfMonitor.endStage('entities');
       perfMonitor.beginStage('render');

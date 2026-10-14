@@ -41,7 +41,8 @@ const result = await page.evaluate(async () => {
     const engine = new GameEngine(canvas, { world: cw, player: pState, spawn, worldTime: 1000, gameRules: {}, difficulty: 'normal', onHud: () => {}, onProgress: () => {}, onChatMessage: (m) => msgs.push(m), onDeath: (d) => deaths.push(d), onAutosave: async () => {} });
     await engine.start();
     engine.paused = false;
-    await new Promise(r => setTimeout(r, 3500)); // deixa o loop carregar chunks
+    for (let i = 0; i < 60 && cw.chunks.size < 9; i++) await new Promise(r => setTimeout(r, 250)); // deixa o loop carregar chunks (espera até 15 s, máquina lenta não reprova)
+    await new Promise(r => setTimeout(r, 1500));
     ok(cw.chunks.size > 0, `chunks carregados: ${cw.chunks.size}`);
 
     // plataforma de pedra 21×21 em y=99 e ar acima
@@ -423,6 +424,32 @@ const result = await page.evaluate(async () => {
       const px = pm.userData.playerObject.skin.map?.image?.getContext?.('2d')?.getImageData(10, 10, 1, 1).data;
       ok(applied && px && px[0] === 255 && px[1] === 0, 'o modelo recebe a skin personalizada (pixel vermelho), não o Steve');
       SS.setSkinChoice(old);
+    }
+
+    // ======== MOBS: galinha acertada volta ao chão, empurrão entre entidades, movimento interpolado ========
+    reset(); pState.gameMode = 'survival'; pState.pos = { x: 8.5, y: B0 + 1, z: 1.5 }; engine.difficulty = 'peaceful'; tickN(2);
+    {
+      const hen = engine.mobs.spawn('chicken', { x: 8.5, y: B0 + 1, z: 12.5 });
+      tickN(5);
+      hen.applyDamage(1, 'attack', { pos: { x: 8.5, y: B0 + 1, z: 10.5 } });
+      let maxY = hen.pos.y;
+      for (let i = 0; i < 80; i++) { tickN(1); maxY = Math.max(maxY, hen.pos.y); }
+      ok(maxY - (B0 + 1) < 4, `galinha acertada sobe pouco (pico +${(maxY - B0 - 1).toFixed(1)} blocos) e não fica no ar`);
+      ok(hen.onGround && Math.abs(hen.pos.y - (B0 + 1)) < 0.2, `galinha volta ao chão (y=${hen.pos.y.toFixed(2)})`);
+      const cow = engine.mobs.spawn('cow', { x: 4.5, y: B0 + 1, z: 6.5 });
+      const cow2 = engine.mobs.spawn('cow', { x: 4.7, y: B0 + 1, z: 6.5 });
+      tickN(2); const x0 = cow.pos.x, x1 = cow2.pos.x;
+      for (const m of [cow, cow2]) m.ai.tick = () => {}; // sem IA: só o empurrão
+      tickN(25);
+      ok(Math.abs(cow2.pos.x - cow.pos.x) > Math.abs(x1 - x0) + 0.3, `duas vacas sobrepostas se empurram para longe (distância ${(Math.abs(x1 - x0)).toFixed(2)} → ${Math.abs(cow2.pos.x - cow.pos.x).toFixed(2)})`);
+      const cow3 = engine.mobs.spawn('cow', { x: 12.5, y: B0 + 1, z: 6.5 }); cow3.ai.tick = () => {};
+      pState.pos = { x: 12.0, y: B0 + 1, z: 6.5 }; tickN(25);
+      ok(Math.abs(cow3.pos.x - 12.5) > 0.3 || Math.abs(cow3.pos.z - 6.5) > 0.3, 'o jogador empurra a vaca ao encostar');
+      const z0 = hen.pos.z; hen.vel.z = 0.2; hen.vel.x = 0;
+      tickN(1); engine.updateMobsForTest?.();
+      engine.mobs.renderUpdate(0, pState.pos, null, 0.5);
+      const mid = hen._model.position.z, last = hen.pos.z, prev = hen._prevZ;
+      ok(prev === undefined || (mid >= Math.min(prev, last) - 1e-6 && mid <= Math.max(prev, last) + 1e-6), 'o modelo é desenhado entre a posição do tick anterior e a atual (interpolação)');
     }
 
     // ======== FOV AO CORRER: transição suave do EntityRenderer 1.8.9 (metade do caminho a cada tick, interpolada entre ticks) ========

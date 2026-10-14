@@ -76,9 +76,12 @@ export class MobEntity {
     }
   }
 
-  updateModel(time) {
+  // pt = fração do tick atual (0..1): o corpo é desenhado entre a posição do tick anterior e a atual, senão os mobs andam "aos pulos" de 20 Hz
+  updateModel(time, pt = 1) {
     if (!this._model) return;
-    this._model.position.set(this.pos.x, this.pos.y, this.pos.z);
+    const k = Math.min(1, Math.max(0, pt));
+    const ppx = this._prevX ?? this.pos.x, ppy = this._prevY ?? this.pos.y, ppz = this._prevZ ?? this.pos.z;
+    this._model.position.set(ppx + (this.pos.x - ppx) * k, ppy + (this.pos.y - ppy) * k, ppz + (this.pos.z - ppz) * k);
     
     // Suavização angular suave de yaw do corpo (evita estalos ou giros instantâneos)
     if (this._renderYaw === undefined) this._renderYaw = this.yaw;
@@ -90,7 +93,14 @@ export class MobEntity {
 
     this._model.visible = true;
     if (this.isBaby) this._model.scale.set(0.5, 0.5, 0.5);
+    // passada das pernas interpolada entre ticks (limbSwing/limbSwingAmount do 1.8.9 usam partialTicks)
+    const ls = this._limbSwing, lsa = this._limbSwingAmount;
+    if (this._prevLimbSwing !== undefined) {
+      this._limbSwing = this._prevLimbSwing + ((ls || 0) - this._prevLimbSwing) * k;
+      this._limbSwingAmount = this._prevLimbSwingAmount + ((lsa || 0) - this._prevLimbSwingAmount) * k;
+    }
     animateMobModel(this._model, this, time);
+    this._limbSwing = ls; this._limbSwingAmount = lsa;
   }
 
   // === Path following ===
@@ -135,6 +145,8 @@ export class MobEntity {
       return;
     }
     this.ticksAlive++;
+    this._prevX = this.pos.x; this._prevY = this.pos.y; this._prevZ = this.pos.z;
+    this._prevLimbSwing = this._limbSwing || 0; this._prevLimbSwingAmount = this._limbSwingAmount || 0;
 
     // Timers
     if (this.hurtTime > 0) this.hurtTime--;
@@ -247,6 +259,15 @@ export class MobEntity {
     // Galinha cai devagar
     if (this.type.fallsSlow && this.vel.y < -0.1) this.vel.y *= 0.6;
 
+    // Empurrões de outras entidades (Entity.applyEntityCollision): somados ao movimento, decaem com a fricção; a IA não os apaga
+    const ax = this.vel.x, az = this.vel.z;
+    const pu = this._pushX || 0, pv = this._pushZ || 0;
+    this.vel.x += pu; this.vel.z += pv;
+    this._pushX = pu * fric; this._pushZ = pv * fric;
+    if (Math.abs(this._pushX) < 1e-4) this._pushX = 0;
+    if (Math.abs(this._pushZ) < 1e-4) this._pushZ = 0;
+    const mx = this.vel.x, mz = this.vel.z;
+
     // Mover
     const res = moveEntity(this.pos, this.vel, world, 1, {
       width: this.type.width, height: this.type.height,
@@ -254,6 +275,8 @@ export class MobEntity {
       onGround: this.onGround,
     });
     this.onGround = res.onGround;
+    if (this.vel.x === mx) this.vel.x = ax;
+    if (this.vel.z === mz) this.vel.z = az;
 
     // Escalar paredes (Aranha) ou Pular degraus de 1 bloco (Creeper, Zumbi, etc.)
     if (res.collidedX || res.collidedZ) {
