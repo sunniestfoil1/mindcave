@@ -94,7 +94,6 @@ export const BLOCKS = {
 
   // Especiais
   50: B(50, 'torch', 'Tocha', { hardness: 0, faces: { all: 'torch' }, drop: 50, lightEmission: 14, lightOpacity: 0, model: 'torch', solid: false, replaceable: true, soundCategory: 'wood' }),
-  89: B(89, 'glowstone', 'Glowstone', { hardness: 0.3, faces: { all: 'glowstone' }, drop: 89, lightEmission: 15 }),
   19: B(19, 'sponge', 'Esponja', { hardness: 0.6, faces: { all: 'sponge' }, drop: 19 }),
   30: B(30, 'web', 'Teia', { hardness: 4.0, faces: { all: 'web' }, drop: 30, render: 'cutout', lightOpacity: 1, model: 'cross', solid: false, speedFactor: 0.25 }),
   51: B(51, 'fire', 'Fogo', { solid: false, opaque: false, render: 'cutout', faces: { all: 'fire' }, drop: null, lightEmission: 15, lightOpacity: 0, model: 'cross', replaceable: true }),
@@ -126,7 +125,7 @@ export const BLOCKS = {
   81: B(81, 'cactus', 'Cacto', { hardness: 0.4, faces: { top: 'cactus_top', bottom: 'cactus_bottom', side: 'cactus_side' }, drop: 81, render: 'cutout', lightOpacity: 0, model: 'box', box: [0.0625, 0, 0.0625, 0.9375, 1, 0.9375], solid: true, opaque: false }),
   141: B(141, 'carrots', 'Cenouras', { hardness: 0, faces: { all: 'carrots_stage_0' }, drop: 391, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' , variants: [{ all: 'carrots_stage_0' }, { all: 'carrots_stage_0' }, { all: 'carrots_stage_1' }, { all: 'carrots_stage_1' }, { all: 'carrots_stage_2' }, { all: 'carrots_stage_2' }, { all: 'carrots_stage_2' }, { all: 'carrots_stage_3' }]}),
   142: B(142, 'potatoes', 'Batatas', { hardness: 0, faces: { all: 'potatoes_stage_0' }, drop: 392, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' , variants: [{ all: 'potatoes_stage_0' }, { all: 'potatoes_stage_0' }, { all: 'potatoes_stage_1' }, { all: 'potatoes_stage_1' }, { all: 'potatoes_stage_2' }, { all: 'potatoes_stage_2' }, { all: 'potatoes_stage_2' }, { all: 'potatoes_stage_3' }]}),
-  143: B(143, 'dead_bush', 'Arbusto Morto', { hardness: 0, faces: { all: 'dead_bush' }, drop: 143, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
+  32: B(32, 'dead_bush', 'Arbusto Morto', { hardness: 0, faces: { all: 'dead_bush' }, drop: 32, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
   174: B(174, 'packed_ice', 'Gelo Compactado', { hardness: 0.5, faces: { all: 'ice' }, drop: null, render: 'translucent', opaque: false, lightOpacity: 3, slipperiness: 0.98 }),
   86: B(86, 'pumpkin', 'Abóbora', { hardness: 1.0, faces: { top: 'pumpkin_top', bottom: 'pumpkin_top', side: 'pumpkin_side', front: 'pumpkin_face_off' }, drop: 86 , orient: true}),
   103: B(103, 'melon_block', 'Melância', { hardness: 1.0, faces: { top: 'melon_top', bottom: 'melon_top', side: 'melon_side' }, drop: 103 }),

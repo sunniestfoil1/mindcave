@@ -157,13 +157,13 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
     const it = ITEMS[item.id];
     if (!it) { setImgUrl(null); return; }
 
-    const itemKey = it.name;
+    const itemKey = it.name === 'dye' ? `dye:${(item.meta || 0) & 15}` : it.name;
     if (itemUrlCache.has(itemKey)) {
       setImgUrl(itemUrlCache.get(itemKey));
       return;
     }
 
-    getPackUrl(MC + 'textures/items/' + itemIconFile(it.name) + '.png').then((url) => {
+    getPackUrl(MC + 'textures/items/' + itemIconFile(it.name, item.meta || 0) + '.png').then((url) => {
       if (url) {
         itemUrlCache.set(itemKey, url);
         setImgUrl(url);

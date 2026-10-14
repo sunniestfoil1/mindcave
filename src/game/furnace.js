@@ -30,19 +30,18 @@ export const SMELTING = {
   14: { out: 266, xp: 1.0 },      // minério de ouro → lingote
   12: { out: 20, xp: 0.1 },       // areia → vidro
   4: { out: 1, xp: 0.1 },         // pedregulho → pedra
-  336: { out: 335, xp: 0.3 },     // bola de argila → tijolo
+  337: { out: 336, xp: 0.3 },     // bola de argila → tijolo
   82: { out: 159, xp: 0.35 },     // bloco de argila → argila endurecida
   17: { out: 263, xp: 0.15, meta: 1 }, // tronco → carvão vegetal (meta 1)
   162: { out: 263, xp: 0.15, meta: 1 }, // tronco2 → carvão vegetal
   81: { out: 351, xp: 1.0, meta: 2 },   // cacto (ID 81) → corante verde
   363: { out: 364, xp: 0.35 },    // carne crua → bife
   319: { out: 320, xp: 0.35 },    // costeleta crua → assada
-  366: { out: 365, xp: 0.35 },    // frango cru → assado
+  365: { out: 366, xp: 0.35 },    // frango cru → assado
   423: { out: 424, xp: 0.35 },    // carneiro cru → assado
   411: { out: 412, xp: 0.35 },    // coelho cru → assado
   392: { out: 393, xp: 0.35 },    // batata → assada
   349: { out: 350, xp: 0.35 },    // peixe cru → assado
-  351: { out: 352, xp: 0.35 },    // salmão cru → assado
   56: { out: 264, xp: 1.0 },      // minério de diamante → diamante
   129: { out: 388, xp: 1.0 },     // minério de esmeralda → esmeralda
   21: { out: 351, xp: 0.2, meta: 4 }, // lápis → lápis (corante)

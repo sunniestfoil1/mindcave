@@ -22,9 +22,9 @@ const FLINT = { id: 318 };
 const FEATHER = { id: 288 };
 const GUNPOWDER = { id: 289 };
 const SAND = { id: 12 };
-const PAPER = { id: 337 };
+const PAPER = { id: 339 };
 const LEATHER = { id: 334 };
-const BOOK = { id: 339 };
+const BOOK = { id: 340 };
 const REDSTONE = { id: 331 };
 const IRON_BLOCK = { id: 42 };
 const GOLD_BLOCK = { id: 41 };
@@ -187,10 +187,10 @@ export const BASE_RECIPES = [
   R(['PPP', 'BBB', 'PPP'], { P: { id: 5 }, B: BOOK }, { id: 47, count: 1 }),
 
   // Livro (shapeless: 3 papel + 1 couro)
-  S([{ id: 337 }, { id: 337 }, { id: 337 }, { id: 334 }], { id: 339, count: 1 }),
+  S([{ id: 339 }, { id: 339 }, { id: 339 }, { id: 334 }], { id: 340, count: 1 }),
 
   // Papel (3 canas em linha)
-  R(['CCC'], { C: { id: 83 } }, { id: 337, count: 3 }),
+  R(['CCC'], { C: { id: 83 } }, { id: 339, count: 3 }),
 
   // Bússola: 4 ferros em cruz + redstone
   R([' I ', 'IRI', ' I '], { I: IRON, R: REDSTONE }, { id: 345, count: 1 }),
@@ -233,7 +233,7 @@ export const BASE_RECIPES = [
   // Munição pesada: 2 pepitas ferro + 2 pólvoras + 1 pepita ouro → 4
   { ...S([{ id: 450 }, { id: 450 }, { id: 289 }, { id: 289 }, { id: 371 }], { id: 457, count: 4 }), station: 'gunsmith' },
   // Cartucho de escopeta: 1 papel + 1 pólvora + 3 pepitas ferro → 4
-  { ...S([{ id: 337 }, { id: 289 }, { id: 450 }, { id: 450 }, { id: 450 }], { id: 458, count: 4 }), station: 'gunsmith' },
+  { ...S([{ id: 339 }, { id: 289 }, { id: 450 }, { id: 450 }, { id: 450 }], { id: 458, count: 4 }), station: 'gunsmith' },
 
   // Armas
   // Pistola: 1 cano + 1 mecanismo + 1 empunhadura

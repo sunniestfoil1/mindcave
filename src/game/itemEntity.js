@@ -11,7 +11,7 @@ import { playPopSound, playXpOrbSound } from './sounds';
 import { addXP } from './survival';
 import { stateId } from './chunk';
 import { MC, getPackUrl } from './pack';
-import { itemIconFile, itemBlockTile } from './gui/iconNames';
+import { itemIconFile, itemBlockTile, iconKey } from './gui/iconNames';
 import { fastSin } from './fastMath';
 
 const GRAVITY = 18.0;
@@ -121,14 +121,15 @@ function crossBlockMesh(block, meta, atlas) {
 }
 
 // --- Itens comum: ícone do pacote 1.8.9 em plano; fallback de cor até carregar ---
-function iconTexture(id) {
-  const cached = iconTexCache.get(id);
+function iconTexture(id, meta = 0) {
+  const key = iconKey(id, meta);
+  const cached = iconTexCache.get(key);
   if (cached !== undefined) return cached;
   const def = getItem(id);
-  if (!def) { iconTexCache.set(id, null); return null; }
-  iconTexCache.set(id, null); // marcado como carregando (vira textura quando pronta)
+  if (!def) { iconTexCache.set(key, null); return null; }
+  iconTexCache.set(key, null); // marcado como carregando (vira textura quando pronta)
 
-  const iconName = itemIconFile(def.name);
+  const iconName = itemIconFile(def.name, meta);
   const blockTile = itemBlockTile(def.name);
   const path = blockTile
     ? MC + 'textures/blocks/' + blockTile + '.png'
@@ -139,10 +140,10 @@ function iconTexture(id) {
     new THREE.TextureLoader().load(url, (tex) => {
       tex.magFilter = THREE.NearestFilter;
       tex.minFilter = THREE.NearestFilter;
-      iconTexCache.set(id, tex);
+      iconTexCache.set(key, tex);
       // Atualiza os planos já criados com este item
       for (const e of pendingIconMeshes) {
-        if (e.itemId !== id || !e.material) continue;
+        if (e.iconKey !== key || !e.material) continue;
         e.material.map = tex;
         e.material.color.set(0xffffff);
         e.material.transparent = true;
@@ -156,8 +157,8 @@ function iconTexture(id) {
 }
 const pendingIconMeshes = new Set();
 
-function planeMatFor(id, def) {
-  const tex = iconTexCache.get(id);
+function planeMatFor(id, def, meta = 0) {
+  const tex = iconTexCache.get(iconKey(id, meta));
   if (tex) return new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide, fog: false });
   const color = def?.color || 0xffffff;
   return new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, fog: false });
@@ -190,9 +191,10 @@ export function createItemMesh(item, count = 1, atlas = null) {
         }
       }
     } else {
-      iconTexture(item.id);
-      mesh = new THREE.Mesh(PLANE_GEO, planeMatFor(item.id, itemDef));
+      iconTexture(item.id, item.meta || 0);
+      mesh = new THREE.Mesh(PLANE_GEO, planeMatFor(item.id, itemDef, item.meta || 0));
       mesh.itemId = item.id;
+      mesh.iconKey = iconKey(item.id, item.meta || 0);
       pendingIconMeshes.add(mesh);
     }
 

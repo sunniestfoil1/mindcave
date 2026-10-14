@@ -68,7 +68,7 @@ export const MOB_TYPES = {
   chicken: M('chicken', 'Galinha', {
     category: 'passive', width: 0.4, height: 0.7, eyeHeight: 0.6,
     maxHealth: 4, speed: 0.20, followRange: 10,
-    drops: [{ id: 288, min: 0, max: 2 }, { id: 366, min: 1, max: 1 }], xp: 1,
+    drops: [{ id: 288, min: 0, max: 2 }, { id: 365, min: 1, max: 1 }], xp: 1,
     breedItem: 295,
     canFly: true, fallsSlow: true,
     goals: [

@@ -107,10 +107,10 @@ export const DROP_TABLE = {
     : [{ id: 295, count: 1 }]),
   141: (tool, meta) => [{ id: 391, count: meta >= 7 ? 2 + Math.floor(Math.random() * 3) : 1 }],
   142: (tool, meta) => [{ id: 392, count: meta >= 7 ? 1 + Math.floor(Math.random() * 4) : 1 }],
-  143: () => Math.random() < 0.6 ? [{ id: 280, count: 1 + Math.floor(Math.random() * 2) }] : [], // arbusto morto → gravetos
-  47: () => [{ id: 339, count: 3 }],   // estante → 3 livros
+  32: () => Math.random() < 0.6 ? [{ id: 280, count: 1 + Math.floor(Math.random() * 2) }] : [], // arbusto morto → gravetos
+  47: () => [{ id: 340, count: 3 }],   // estante → 3 livros
   103: () => [{ id: 360, count: 3 + Math.floor(Math.random() * 5) }], // melancia → 3-7 fatias
-  82: () => [{ id: 336, count: 4 }],   // argila → 4 bolas
+  82: () => [{ id: 337, count: 4 }],   // argila → 4 bolas
   80: () => [{ id: 332, count: 4 }],   // bloco de neve → 4 bolas
   30: (tool) => (tool && tool.id === 359) ? [{ id: 30, count: 1 }] : [{ id: 287, count: 1 }], // teia → linha (ou bloco com tesoura)
   106: (tool) => (tool && tool.id === 359) ? [{ id: 106, count: 1 }] : [],  // trepadeira → só com tesoura

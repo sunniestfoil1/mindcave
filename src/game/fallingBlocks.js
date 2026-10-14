@@ -29,7 +29,7 @@ export const GROUND_SUPPORTED_BLOCKS = new Set([
   115, // Verruga do nether
   141, // Cenouras
   142, // Batatas
-  143, // Arbusto morto
+  32, // Arbusto morto
   64, 71, // Portas (a metade de cima sai junto, ver abaixo)
 ]);
 

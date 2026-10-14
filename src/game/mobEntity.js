@@ -340,7 +340,7 @@ export class MobEntity {
       for (const d of drops) {
         if (d.id === 319) d.id = 320; // porkchop → cooked
         if (d.id === 363) d.id = 364; // beef → cooked
-        if (d.id === 366) d.id = 365; // chicken → cooked
+        if (d.id === 365) d.id = 366; // chicken → cooked
       }
     }
     return drops;

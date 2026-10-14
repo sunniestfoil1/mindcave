@@ -36,7 +36,14 @@ const ITEM_AS_BLOCK_TILE = {
   daylight_sensor: 'daylight_sensor', wheat_crop: 'wheat_stage_7',
 };
 
-export function itemIconFile(name) { return ITEM_FILE[name] || name; }
+// Corante (id 351): cada cor (meta 0–15) tem o seu arquivo no pacote, dye_powder_<cor>.png
+const DYE_FILES = ['black', 'red', 'green', 'brown', 'blue', 'purple', 'cyan', 'silver', 'gray', 'pink', 'lime', 'yellow', 'light_blue', 'magenta', 'orange', 'white'];
+export function itemIconFile(name, meta = 0) {
+  if (name === 'dye') return 'dye_powder_' + DYE_FILES[(meta || 0) & 15];
+  return ITEM_FILE[name] || name;
+}
+// Chave de cache do ícone: só o corante muda de ícone por meta
+export const iconKey = (id, meta = 0) => (id === 351 ? `351:${(meta || 0) & 15}` : id);
 export function itemBlockTile(name) { return ITEM_AS_BLOCK_TILE[name] || null; }
 
 // Cor da tinta de bioma aplicada nos ícones (planície): grama e folhagem
