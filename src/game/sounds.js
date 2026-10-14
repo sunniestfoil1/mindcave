@@ -252,7 +252,7 @@ export async function playSound(relPath, opts = {}) {
 
     const gainNode = audioCtx.createGain();
     const volume = (opts.volume !== undefined ? opts.volume : 1.0);
-    gainNode.gain.value = volume;
+    gainNode.gain.value = Math.min(1, volume); // getNormalizedVolume: clamp [0, 1] (volume > 1 só amplia o alcance)
 
     const resolveChannelNode = (path, options) => {
       if (options.ambient) return ambientGain || masterGain;
@@ -293,18 +293,26 @@ export async function playSound(relPath, opts = {}) {
       dist = Math.hypot(opts.pos.x - listenerPos.x, opts.pos.y - listenerPos.y, opts.pos.z - listenerPos.z);
     }
 
-    if (opts.pos && dist > 3 && audioCtx.createPanner) {
-      const panner = audioCtx.createPanner();
-      panner.panningModel = 'equalpower';
-      panner.distanceModel = 'linear';
-      panner.refDistance = 3;
-      panner.maxDistance = 96;
-      panner.rolloffFactor = 0.8;
-      panner.setPosition(opts.pos.x, opts.pos.y, opts.pos.z);
-
-      source.connect(gainNode);
-      gainNode.connect(panner);
-      panner.connect(targetNode || audioCtx.destination);
+    // SoundManager.playSound (MCP 1.8.9): f1 = 16.0F, e se o volume pedido > 1 então f1 *= volume; atenuação LINEAR, inaudível em f1 blocos.
+    // Vale para todo som posicional do mundo (mobs, blocos, explosões). Fora desse raio o som nem é criado.
+    if (opts.pos) {
+      const range = 16 * Math.max(1, volume);
+      if (dist >= range) return null;
+      if (audioCtx.createPanner) {
+        const panner = audioCtx.createPanner();
+        panner.panningModel = 'equalpower';
+        panner.distanceModel = 'linear';
+        panner.refDistance = 0;      // ganho = 1 − dist/alcance
+        panner.maxDistance = range;
+        panner.rolloffFactor = 1;
+        panner.setPosition(opts.pos.x, opts.pos.y, opts.pos.z);
+        source.connect(gainNode);
+        gainNode.connect(panner);
+        panner.connect(targetNode || audioCtx.destination);
+      } else {
+        source.connect(gainNode);
+        gainNode.connect(targetNode || audioCtx.destination);
+      }
     } else {
       source.connect(gainNode);
       gainNode.connect(targetNode || audioCtx.destination);
@@ -521,13 +529,23 @@ const MOB_SOUND_NAME = {
   witch: 'witch', bat: 'bat',
 };
 
+// Volumes e tons do EntityLiving/EntityLivingBase do MCP 1.8.9:
+//  - getSoundVolume() = 1,0 (vaca 0,4; morcego 0,1); getSoundPitch() = (rand − rand)·0,2 + 1,0, e +1,5 em filhote (morcego ×0,95)
+//  - passos: 0,15 com tom 1,0 (zumbi, esqueleto, aranha, porco, vaca, ovelha, galinha)
+const MOB_SOUND_VOLUME = { cow: 0.4, bat: 0.1 };
+const MOB_STEP_VOLUME = 0.15;
+
 // kind: hurt | death | ambient | step | primed | teleport | scream | stare
 export function playMobSound(mob, kind) {
   const name = MOB_SOUND_NAME[mob.typeId];
   if (!name) return null;
   const generic = { primed: 'entity.creeper.primed', shoot: 'entity.arrow.shoot' };
   const event = generic[kind] || `entity.${name}.${kind}`;
-  return playEvent(event, { pos: mob.pos, volume: kind === 'step' ? 0.35 : 1 });
+  if (kind === 'step') return playEvent(event, { pos: mob.pos, volume: MOB_STEP_VOLUME, pitch: 1 });
+  if (kind === 'primed') return playEvent(event, { pos: mob.pos, volume: 1, pitch: 0.5 });
+  let pitch = (Math.random() - Math.random()) * 0.2 + (mob.isBaby ? 1.5 : 1.0);
+  if (mob.typeId === 'bat') pitch *= 0.95;
+  return playEvent(event, { pos: mob.pos, volume: MOB_SOUND_VOLUME[mob.typeId] ?? 1, pitch: Math.min(2, Math.max(0.5, pitch)) });
 }
 
 // Orbe de XP (Minecraft 1.8.9: random.orb com tom variável 0.5 a 1.0)
