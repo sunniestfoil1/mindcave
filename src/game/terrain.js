@@ -11,16 +11,16 @@ const REDSTONE_ORE = 73, LAPIS_ORE = 21, EMERALD_ORE = 129;
 
 // Distribuição de minérios (1.8.9 RF-040)
 const ORES = [
-  { id: DIRT, size: 33, count: 10, minY: 0, maxY: 255 },
-  { id: GRAVEL, size: 33, count: 8, minY: 0, maxY: 255 },
-  { id: STONE, meta: 1, size: 33, count: 10, minY: 0, maxY: 79 }, // granito
-  { id: STONE, meta: 3, size: 33, count: 10, minY: 0, maxY: 79 }, // diorito
-  { id: STONE, meta: 5, size: 33, count: 10, minY: 0, maxY: 79 }, // andesito
-  { id: COAL_ORE, size: 17, count: 20, minY: 0, maxY: 127 },
-  { id: IRON_ORE, size: 9, count: 20, minY: 0, maxY: 63 },
-  { id: GOLD_ORE, size: 9, count: 2, minY: 0, maxY: 31 },
-  { id: REDSTONE_ORE, size: 8, count: 8, minY: 0, maxY: 15 },
-  { id: DIAMOND_ORE, size: 8, count: 1, minY: 0, maxY: 15 },
+  { id: DIRT, size: 33, count: 10, minY: 0, maxY: 256 },
+  { id: GRAVEL, size: 33, count: 8, minY: 0, maxY: 256 },
+  { id: STONE, meta: 1, size: 33, count: 10, minY: 0, maxY: 80 }, // granito
+  { id: STONE, meta: 3, size: 33, count: 10, minY: 0, maxY: 80 }, // diorito
+  { id: STONE, meta: 5, size: 33, count: 10, minY: 0, maxY: 80 }, // andesito
+  { id: COAL_ORE, size: 17, count: 20, minY: 0, maxY: 128 },
+  { id: IRON_ORE, size: 9, count: 20, minY: 0, maxY: 64 },
+  { id: GOLD_ORE, size: 9, count: 2, minY: 0, maxY: 32 },
+  { id: REDSTONE_ORE, size: 7, count: 8, minY: 0, maxY: 16 },
+  { id: DIAMOND_ORE, size: 8, count: 1, minY: 0, maxY: 16 },
   { id: LAPIS_ORE, size: 7, count: 1, minY: 0, maxY: 31, triangular: true },
 ];
 
@@ -135,40 +135,43 @@ function carveCaves(data, baseX, baseZ, caveN1, caveN2, ravineN, seed) {
 }
 
 // MC14-RF-054: minérios usam o random de decoração do chunk
+// Veios iguais ao WorldGenMinable do 1.8.9: uma linha de esferas de raio variável (não bolhas redondas), contagens e faixas de Y do jogo original
 function placeOres(data, decRng) {
   for (const ore of ORES) {
     for (let i = 0; i < ore.count; i++) {
-      const rng = decRng;
-      const ox = rng.nextInt(CHUNK_SIZE);
-      let oy;
-      if (ore.triangular) {
-        oy = Math.floor(16 + (rng.nextDouble() - 0.5) * 32);
-        oy = Math.max(ore.minY, Math.min(ore.maxY, oy));
-      } else {
-        oy = ore.minY + rng.nextInt(ore.maxY - ore.minY + 1);
-      }
-      const oz = rng.nextInt(CHUNK_SIZE);
-      placeVein(data, ox, oy, oz, ore, rng);
+      const ox = decRng.nextInt(CHUNK_SIZE);
+      const oz = decRng.nextInt(CHUNK_SIZE);
+      // lapis: distribuição triangular (soma de dois sorteios), o resto uniforme entre minY e maxY
+      const oy = ore.triangular ? decRng.nextInt(16) + decRng.nextInt(16) : ore.minY + decRng.nextInt(ore.maxY - ore.minY);
+      placeVein(data, ox, oy, oz, ore, decRng);
     }
   }
 }
 
 function placeVein(data, x, y, z, ore, rng) {
-  const blobs = Math.max(1, Math.floor(ore.size / 3));
-  for (let i = 0; i < blobs; i++) {
-    const bx = x + (rng.nextDouble() - 0.5) * ore.size * 0.4;
-    const by = y + (rng.nextDouble() - 0.5) * ore.size * 0.4;
-    const bz = z + (rng.nextDouble() - 0.5) * ore.size * 0.4;
-    const r = 1 + rng.nextDouble() * 1.5;
-    const r2 = r * r;
-    for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
-      for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
-        for (let dz = -Math.ceil(r); dz <= Math.ceil(r); dz++) {
-          if (dx * dx + dy * dy + dz * dz > r2) continue;
-          const ix = Math.floor(bx + dx), iy = Math.floor(by + dy), iz = Math.floor(bz + dz);
-          if (ix < 0 || ix >= CHUNK_SIZE || iz < 0 || iz >= CHUNK_SIZE || iy < 0 || iy >= WORLD_HEIGHT) continue;
+  const size = ore.size;
+  const f = rng.nextDouble() * Math.PI;
+  const x0 = x + 8 + Math.sin(f) * size / 8, x1 = x + 8 - Math.sin(f) * size / 8;
+  const z0 = z + 8 + Math.cos(f) * size / 8, z1 = z + 8 - Math.cos(f) * size / 8;
+  const y0 = y + rng.nextInt(3) - 2, y1 = y + rng.nextInt(3) - 2;
+  const state = packState(ore.id, ore.meta || 0);
+  for (let i = 0; i < size; i++) {
+    const t = i / size;
+    const cx = x0 + (x1 - x0) * t, cy = y0 + (y1 - y0) * t, cz = z0 + (z1 - z0) * t;
+    const d = rng.nextDouble() * size / 16;
+    const r = ((Math.sin(Math.PI * t) + 1) * d + 1) / 2;
+    for (let ix = Math.floor(cx - r); ix <= Math.floor(cx + r); ix++) {
+      const dx = (ix + 0.5 - cx) / r;
+      if (dx * dx >= 1) continue;
+      for (let iy = Math.floor(cy - r); iy <= Math.floor(cy + r); iy++) {
+        const dy = (iy + 0.5 - cy) / r;
+        if (dx * dx + dy * dy >= 1) continue;
+        for (let iz = Math.floor(cz - r); iz <= Math.floor(cz + r); iz++) {
+          const dz = (iz + 0.5 - cz) / r;
+          if (dx * dx + dy * dy + dz * dz >= 1) continue;
+          if (ix < 0 || ix >= CHUNK_SIZE || iz < 0 || iz >= CHUNK_SIZE || iy < 1 || iy >= WORLD_HEIGHT) continue;
           const idx = chunkIndex(ix, iy, iz);
-          if (stateId(data[idx]) === STONE) data[idx] = packState(ore.id, ore.meta || 0);
+          if (stateId(data[idx]) === STONE) data[idx] = state;
         }
       }
     }

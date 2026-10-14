@@ -41,7 +41,7 @@ export class MobSpawnSystem {
 
     // Passivos: a cada 400 ticks (RF-010)
     this.passiveTimer++;
-    if (this.passiveTimer >= 400 && counts.passive < SPAWN_LIMITS.passive) {
+    if (this.passiveTimer >= 400 && Math.random() < 0.05 && counts.passive < SPAWN_LIMITS.passive) {
       this.passiveTimer = 0;
       this.trySpawn(world, player, mobs, 'passive', ctx);
     }
@@ -72,39 +72,55 @@ export class MobSpawnSystem {
     const ax = cx * CHUNK_SIZE + lx;
     const az = cz * CHUNK_SIZE + lz;
 
-    // Encontrar altura do terreno
-    let spawnY = -1;
+    // Como em WorldEntitySpawner: altura aleatória entre 0 e o topo da coluna (assim nasce em caverna, não só na superfície)
+    let top = -1;
     for (let y = 255; y >= 1; y--) {
-      const b = stateId(world.getBlock(ax, y, az));
-      if (isSolid(b)) { spawnY = y + 1; break; }
+      if (isSolid(stateId(world.getBlock(ax, y, az)))) { top = y; break; }
     }
-    if (spawnY < 1) return;
+    if (top < 1) return;
+    const spawnY = 1 + Math.floor(Math.random() * top);
+    if (isSolid(stateId(world.getBlock(ax, spawnY, az)))) return;
 
-    // Verificar distância mínima do jogador (RF-011)
-    const distToPlayer = Math.hypot(ax - player.pos.x, az - player.pos.z);
-    if (distToPlayer < 24) return;
+    // Distância mínima do jogador (RF-011)
+    if (Math.hypot(ax - player.pos.x, az - player.pos.z) < 24 || Math.abs(spawnY - player.pos.y) > 48) return;
 
-    // Verificar condições de spawn
-    if (!this.checkSpawnConditions(world, ax, spawnY, az, category, ctx)) return;
-
-    // Escolher tipo de mob
-    const typeId = this.pickMobType(category, ax, spawnY, az, world, ctx);
-    if (!typeId) return;
-
-    // Spawn de grupo (RF-010)
-    const groupSize = 1 + Math.floor(Math.random() * 4);
-    for (let i = 0; i < groupSize; i++) {
-      const ox = ax + Math.floor((Math.random() - 0.5) * 6);
-      const oz = az + Math.floor((Math.random() - 0.5) * 6);
-      // Verificar espaço livre (pés, cabeça) e chão embaixo — sem isso o mob nasce flutuando ou enterrado
-      const feetBlock = stateId(world.getBlock(ox, spawnY, oz));
-      const headBlock = stateId(world.getBlock(ox, spawnY + 1, oz));
-      const groundBlock = stateId(world.getBlock(ox, spawnY - 1, oz));
-      if (isSolid(feetBlock) || isSolid(headBlock) || !isSolid(groundBlock)) continue;
-
-      const mob = new MobEntity(typeId, { x: ox + 0.5, y: spawnY, z: oz + 0.5 });
-      mobs.push(mob);
+    // Cada tentativa de grupo caminha a partir do ponto inicial (x += rand(6) - rand(6)); 3 tentativas, até 4 por grupo
+    let placed = 0;
+    let typeId = null;
+    let x = ax, y = spawnY, z = az;
+    for (let n = 0; n < 4 && placed < 4; n++) {
+      x += Math.floor(Math.random() * 6) - Math.floor(Math.random() * 6);
+      z += Math.floor(Math.random() * 6) - Math.floor(Math.random() * 6);
+      if (!world.hasChunkAt(x, z)) continue;
+      if (!this.checkSpawnConditions(world, x, y, z, category, ctx)) continue;
+      if (Math.hypot(x - player.pos.x, z - player.pos.z) < 24) continue;
+      if (!typeId) { typeId = this.pickMobType(category, x, y, z, world, ctx); if (!typeId) return; }
+      mobs.push(new MobEntity(typeId, { x: x + 0.5, y, z: z + 0.5 }));
+      placed++;
     }
+  }
+
+  // População inicial determinística de um chunk (ChunkProviderGenerate/SpawnerAnimals.performWorldGenSpawning): 10% de chance por chunk,
+  // um grupo de animais na grama, tudo derivado da seed do mundo e das coordenadas — o mesmo chunk sempre recebe os mesmos animais
+  populateChunk(world, cx, cz, mobs) {
+    let h = (Math.imul(cx, 341873128) ^ Math.imul(cz, 132897987) ^ (world.seed | 0)) >>> 0;
+    const rnd = () => { h = (Math.imul(h ^ (h >>> 15), 2246822507) + 0x9e3779b9) >>> 0; h ^= h >>> 13; return (h >>> 0) / 4294967296; };
+    if (rnd() >= 0.1) return 0;
+    const kinds = ['pig', 'cow', 'sheep', 'chicken'];
+    const typeId = kinds[Math.floor(rnd() * kinds.length)];
+    let x = cx * CHUNK_SIZE + Math.floor(rnd() * CHUNK_SIZE), z = cz * CHUNK_SIZE + Math.floor(rnd() * CHUNK_SIZE);
+    let placed = 0;
+    for (let n = 0; n < 4 && placed < 4; n++) {
+      x += Math.floor(rnd() * 5) - 2; z += Math.floor(rnd() * 5) - 2;
+      if (!world.hasChunkAt(x, z)) continue;
+      let y = -1;
+      for (let yy = 255; yy >= 1; yy--) { if (isSolid(stateId(world.getBlock(x, yy, z)))) { y = yy + 1; break; } }
+      if (y < 1 || stateId(world.getBlock(x, y - 1, z)) !== 2) continue;
+      if (isSolid(stateId(world.getBlock(x, y, z))) || isSolid(stateId(world.getBlock(x, y + 1, z)))) continue;
+      mobs.push(new MobEntity(typeId, { x: x + 0.5, y, z: z + 0.5 }));
+      placed++;
+    }
+    return placed;
   }
 
   // Luz efetiva do ponto: bloco ou céu do dia (fator do ciclo dia/noite, como na 1.8)

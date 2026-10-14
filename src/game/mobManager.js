@@ -33,6 +33,7 @@ export class MobManager {
   }
 
   tick(player, ctx) {
+    this._populateNear(player, ctx);
     // Spawn natural
     this.spawnSystem.tick(this.world, player, this.mobs, ctx);
 
@@ -78,6 +79,10 @@ export class MobManager {
     const toRemove = [];
     for (const mob of this.mobs) {
       if (!mob._model) mob.ensureModel(this.scene);
+      // Como no jogo original: entidade em chunk descarregado fica congelada (sem gravidade, IA ou dano) em vez de cair no vazio
+      if (!this.world.hasChunkAt(Math.floor(mob.pos.x), Math.floor(mob.pos.z))) continue;
+      // Rede de segurança: abaixo do mundo some sem morte, partículas, drops nem som
+      if (mob.pos.y < -32) { mob.removeModel(this.scene); toRemove.push(mob); continue; }
       mob.tick(this.world, mobCtx);
 
       // Drops ao morrer
@@ -180,11 +185,29 @@ export class MobManager {
     }
   }
 
+  // Chunks carregados perto do jogador que ainda não receberam a população inicial de animais (feito uma vez por chunk, salvo no mundo)
+  _populateNear(player, ctx) {
+    if (!player) return;
+    this._popTick = (this._popTick || 0) + 1;
+    if (this._popTick % 20 !== 0) return;
+    if (!this.populated) this.populated = new Set();
+    const pcx = Math.floor(player.pos.x / 16), pcz = Math.floor(player.pos.z / 16);
+    const r = Math.max(2, Math.min(6, (this.world._lastLoadingRadius || 4) - 1));
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+      const cx = pcx + dx, cz = pcz + dz, k = cx + ',' + cz;
+      if (this.populated.has(k) || !this.world.hasChunkAt(cx * 16, cz * 16)) continue;
+      // só depois dos vizinhos existirem, para o chão do grupo estar pronto
+      if (!this.world.hasChunkAt(cx * 16 + 16, cz * 16) || !this.world.hasChunkAt(cx * 16 - 1, cz * 16) || !this.world.hasChunkAt(cx * 16, cz * 16 + 16) || !this.world.hasChunkAt(cx * 16, cz * 16 - 1)) continue;
+      this.populated.add(k);
+      this.spawnSystem.populateChunk(this.world, cx, cz, this.mobs);
+    }
+  }
+
   getEntities() { return this.mobs.filter(m => !m.isDead); }
   getMobCount() { return this.mobs.length; }
 
   serialize() {
-    return this.mobs
+    const list = this.mobs
       .filter(m => !m.isDead)
       .map(m => ({
         typeId: m.typeId,
@@ -194,6 +217,8 @@ export class MobManager {
         health: m.health,
         isBaby: !!m.isBaby,
       }));
+    if (this.populated?.size) list.push({ _populated: [...this.populated] });
+    return list;
   }
 
   deserialize(data) {
@@ -201,6 +226,7 @@ export class MobManager {
     for (const m of this.mobs) m.removeModel(this.scene);
     this.mobs = [];
     for (const item of data) {
+      if (item && Array.isArray(item._populated)) { this.populated = new Set(item._populated); continue; }
       if (!item || !item.typeId || !item.pos) continue;
       const mob = new MobEntity(item.typeId, item.pos);
       if (typeof item.yaw === 'number') mob.yaw = item.yaw;

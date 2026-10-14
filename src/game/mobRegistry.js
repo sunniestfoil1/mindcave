@@ -420,5 +420,5 @@ export function getTechZombieVariantsForDifficulty(globalDifficulty, localDiffic
 
 // Limites por categoria (RF-010) — por 17×17 chunks
 export const SPAWN_LIMITS = {
-  hostile: 20, passive: 8, ambient: 5, aquatic: 3,
+  hostile: 30, passive: 40, ambient: 5, aquatic: 3,
 };
