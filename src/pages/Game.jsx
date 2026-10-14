@@ -16,6 +16,8 @@ import Options from "@/pages/Options";
 import { settingsStore } from "@/game/settingsStore";
 import InventoryUI from "@/components/game/InventoryUI";
 import CreativeUI from "@/components/game/CreativeUI";
+import MindClientMenu from "@/components/client/MindClientMenu";
+import ClientHud from "@/components/client/ClientHud";
 import CraftingTableUI from "@/components/game/CraftingTableUI";
 import FurnaceUI from "@/components/game/FurnaceUI";
 import ChestUI from "@/components/game/ChestUI";
@@ -117,6 +119,7 @@ export default function Game() {
   const [netManager, setNetManager] = useState(null);
   const [showOpenToLAN, setShowOpenToLAN] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showClientMenu, setShowClientMenu] = useState(false);
   const [connecting, setConnecting] = useState(null); // room object when connecting
   const [playerNames, setPlayerNames] = useState([]);
   const [user, setUser] = useState(null);
@@ -130,6 +133,7 @@ export default function Game() {
   const showOptionsRef = useRef(false);
   const showOpenToLANRef = useRef(false);
   const showFeedbackRef = useRef(false);
+  const showClientMenuRef = useRef(false);
   const worldRecRef = useRef(null); // registro do mundo (pvp/maxPlayers/ajustes da tela de opções)
 
   useEffect(() => { showInventoryRef.current = showInventory; }, [showInventory]);
@@ -141,6 +145,7 @@ export default function Game() {
   useEffect(() => { showOptionsRef.current = showOptions; }, [showOptions]);
   useEffect(() => { showOpenToLANRef.current = showOpenToLAN; }, [showOpenToLAN]);
   useEffect(() => { showFeedbackRef.current = showFeedback; }, [showFeedback]);
+  useEffect(() => { showClientMenuRef.current = showClientMenu; }, [showClientMenu]);
 
   const closeAllGuis = useCallback(() => {
     setShowInventory(false);
@@ -151,6 +156,7 @@ export default function Game() {
     setShowStats(false);
     setShowOpenToLAN(false);
     setShowFeedback(false);
+    setShowClientMenu(false);
     setShowOptions(false);
     if (engineRef.current) {
       engineRef.current.paused = false;
@@ -294,6 +300,17 @@ export default function Game() {
             else setShowInventory(true);
             document.exitPointerLock?.();
           },
+          // Shift direito: menu do Mind Client (o mundo continua rodando, como no inventário)
+          onToggleClientMenu: () => {
+            const eng = engineRef.current;
+            if (!eng || eng.player?.isDead) return;
+            if (showClientMenuRef.current) { closeAllGuisRef.current(); return; }
+            if (showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current ||
+              showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current) return;
+            if (eng.paused && !eng.netManager) return; // menu de pausa (singleplayer)
+            setShowClientMenu(true);
+            document.exitPointerLock?.();
+          },
           onOpenCraftingTable: () => {
             setShowCraftingTable(true);
             document.exitPointerLock?.();
@@ -353,8 +370,8 @@ export default function Game() {
 
         engineRef.current = engine;
         if (import.meta.env.DEV) window.__mindcave = { get engine() { return engineRef.current; } }; // ganchos só para os testes de navegador
-        engine.containerOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current;
-        engine.guiOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current;
+        engine.containerOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showClientMenuRef.current;
+        engine.guiOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showClientMenuRef.current || showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current;
         await engine.start();
         console.log('[Game] Spawn:', spawn, 'Player pos:', pState.pos, 'Flying:', pState.flying, 'GameMode:', pState.gameMode);
         console.log('[Game] Chunks loaded:', cw.chunks.size, 'Render distance:', engine.renderDistance);
@@ -471,7 +488,7 @@ export default function Game() {
     safePointerLock(canvasRef.current);
   };
 
-  const isAnyGuiOpen = showInventory || showCreative || showCraftingTable || showFurnace || showChest || showStats || showOptions || showOpenToLAN || showFeedback;
+  const isAnyGuiOpen = showInventory || showCreative || showCraftingTable || showFurnace || showChest || showClientMenu || showStats || showOptions || showOpenToLAN || showFeedback;
 
   return (
     <div className="fixed inset-0 bg-black">
@@ -517,6 +534,8 @@ export default function Game() {
           onPause={handleResume}
         />
       )}
+      {/* Módulos de HUD do Mind Client (FPS, CPS, coordenadas, keystrokes, armadura...) */}
+      {hud && !showOptions && !hud.isDead && <ClientHud hud={hud} engine={engineRef.current} />}
       {/* Só depois que hud existe: o engine já chamou musicManager.start() e o rádio toma a trilha. */}
       {hud && <RadioWidget visible={!!hud.paused && !isAnyGuiOpen && !hud.chatOpen && !hud.isDead} />}
       <PerformancePanel visible={!!hud?.f3} />
@@ -535,6 +554,9 @@ export default function Game() {
       {hud?.isDead && (
         <DeathScreen hud={hud} onRespawn={() => engineRef.current?.respawn()} onTitle={handleExit} />
       )}
+
+      {/* Menu do Mind Client (Shift direito) */}
+      {showClientMenu && !hud?.isDead && <MindClientMenu onClose={closeAllGuis} />}
 
       {/* Inventário sobrevivência (PRD 06) */}
       {showInventory && !hud?.isDead && engineRef.current?.inventory && (

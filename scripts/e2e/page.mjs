@@ -15,10 +15,19 @@ await page.evaluateOnNewDocument(() => {
   Document.prototype.exitPointerLock = function () { setTimeout(() => { if (lockEl) { lockEl = null; document.dispatchEvent(new Event('pointerlockchange')); } }, 5); };
 });
 await page.setRequestInterception(true);
-page.on('request', (r) => { const u = new URL(r.url()); if (/(^|\.)(supabase\.co|crafthead\.net|vercel\.com)$/.test(u.hostname)) r.abort(); else r.continue(); });
+// Supabase "vazio": responde na hora com [] (abortar fazia o jogo repetir cada chamada por minutos e o mundo demorar a abrir)
+page.on('request', (r) => {
+  const u = new URL(r.url());
+  if (/(^|\.)(supabase\.co|crafthead\.net|vercel\.com)$/.test(u.hostname) && !u.pathname.startsWith('/storage/v1/object/public/game-assets/')) {
+    const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' };
+    if (r.method() === 'OPTIONS') r.respond({ status: 204, headers: h });
+    else r.respond({ status: 200, headers: h, contentType: 'application/json', body: '[]' });
+  } else r.continue();
+});
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') { const t = m.text(); if (!/Failed to load resource|ERR_FAILED|net::|MeshWorker|World\]/.test(t)) errors.push('console: ' + t.slice(0, 250)); } });
 const out = [];
+process.on('uncaughtException', (e) => { console.log(out.join('\n')); console.log('ERRO:', e && e.message); process.exit(1); });
 const ok = (c, m) => out.push((c ? 'OK   ' : 'FALHA') + ' ' + m);
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -29,9 +38,9 @@ const worldId = await page.evaluate(async () => {
   return w.id;
 });
 await page.goto(`http://localhost:${port}/play/${worldId}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-// espera o carregamento sumir
-for (let i = 0; i < 60; i++) { const loading = await page.evaluate(() => /Carregando|MIND-CAVE/.test(document.body.innerText) && !!document.querySelector('canvas') && /%/.test(document.body.innerText)); if (!loading) break; await sleep(1000); }
-await sleep(3000);
+// espera o motor existir e a tela de carregamento (que tem "NN%") sumir: checar só o texto falhava antes de a tela aparecer
+await page.waitForFunction(() => window.__mindcave && window.__mindcave.engine && !/\d%/.test(document.body.innerText), { timeout: 240000, polling: 500 });
+await sleep(2500);
 const text = () => page.evaluate(() => document.body.innerText);
 const hasPauseMenu = async () => /Menu do jogo/.test(await text());
 ok(!!(await page.$('canvas')), 'canvas do jogo presente');
@@ -58,8 +67,38 @@ const chatSent = await page.evaluate(() => /ola mundo/.test(document.body.innerT
 ok(chatSent, 'mensagem aparece no chat');
 // comando
 await page.keyboard.press('Slash'); await sleep(200);
+ok(await page.evaluate(() => document.querySelector('input[data-chat-input]')?.value === '/'), 'a tecla "/" abre o chat já com a barra digitada');
+ok(await page.evaluate(() => { const i = document.querySelector('input[data-chat-input]'); return !!i && i.selectionStart === 1 && !i.placeholder; }), 'o cursor fica depois da barra e o campo não tem texto de aviso');
 await page.keyboard.type('time set day'); await page.keyboard.press('Enter'); await sleep(500);
 ok(!(await hasPauseMenu()), 'após comando "/..." o menu de pausa não aparece');
+
+// ---- Shift direito: menu do Mind Client (o mundo continua rodando; Esc fecha sem abrir a pausa) ----
+{
+  await page.evaluate(() => window.localStorage.removeItem('mc.client.v1'));
+  await page.keyboard.press('ShiftRight'); await sleep(900);
+  const menuOpen = await page.evaluate(() => !!document.querySelector('[data-client-menu]'));
+  ok(menuOpen, 'Shift direito abre o menu do Mind Client');
+  if (!menuOpen) out.push('INFO estado do motor: ' + JSON.stringify(await page.evaluate(() => { const e = window.__mindcave.engine; return { paused: e.paused, chat: e.chatOpen, lock: !!document.pointerLockElement, gui: !!e.guiOpenFn?.() }; })));
+  ok(!(await hasPauseMenu()), 'com o menu do Mind Client aberto o menu de pausa não aparece');
+  if (menuOpen) {
+  const t0 = await page.evaluate(() => window.__mindcave.engine.worldTime); await sleep(1500);
+  const t1 = await page.evaluate(() => window.__mindcave.engine.worldTime);
+  ok(t1 - t0 >= 10, `com o menu aberto o mundo continua rodando (relógio +${t1 - t0} ticks em 1,5 s)`);
+  const cards = await page.evaluate(() => [...document.querySelectorAll('[data-module]')].map((c) => c.getAttribute('data-module')));
+  ok(['fps', 'cps', 'coordinates', 'keystrokes', 'armorhud', 'fullbright', 'perspective', 'hitcolor'].every((m) => cards.includes(m)), `os módulos aparecem no menu (${cards.length} cartões)`);
+  ok(!['bossbar', 'combodisplay', 'playtime', 'potioncounter', 'potioneffects', 'reachdisplay', 'oldanimations', 'timechanger', 'tnttimer', 'waveycapes'].some((m) => cards.includes(m)), 'módulos removidos a pedido não aparecem');
+  await page.click('[data-module="fps"]'); await sleep(300);
+  ok(await page.$eval('[data-module="fps"]', (c) => c.getAttribute('aria-pressed') === 'true'), 'clicar no cartão liga o módulo FPS');
+  ok(await page.evaluate(() => document.querySelectorAll('[data-client-hud] canvas').length > 0), 'o widget de FPS é desenhado no HUD');
+  await page.click('[data-module="fps"]'); await sleep(300);
+  await page.keyboard.press('Escape'); await sleep(700);
+  ok(!(await page.evaluate(() => !!document.querySelector('[data-client-menu]'))), 'Esc fecha o menu do Mind Client');
+  ok(!(await hasPauseMenu()), 'e não abre o menu de pausa');
+  }
+  await page.keyboard.press('ShiftRight'); await sleep(500);
+  await page.keyboard.press('ShiftRight'); await sleep(500);
+  ok(!(await page.evaluate(() => !!document.querySelector('[data-client-menu]'))), 'Shift direito de novo fecha o menu');
+}
 
 // ---- E: abre e fecha inventário; medir volta do HUD ----
 const hudVisible = () => page.evaluate(() => { const el = [...document.querySelectorAll('div')].find(d => d.className && typeof d.className === 'string' && d.className.includes('transition-opacity') && d.className.includes('duration-150')); return el ? !el.className.includes('opacity-0') : null; });

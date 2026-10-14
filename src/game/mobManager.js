@@ -5,6 +5,8 @@ import { applyDamage, addXP } from './survival';
 import { addItem } from './inventory';
 import { getBlock } from './blocks';
 import { stateId } from './chunk';
+import { applyHitFlash } from './hitFlash';
+import { clientStore } from './client/clientStore';
 import { canBlockDamage, getBlockedDamage } from './combat';
 
 const _mobBox = new THREE.Box3();
@@ -163,6 +165,7 @@ export class MobManager {
 
   renderUpdate(time, playerPos, frustum, partialTick = 1) {
     const px = playerPos?.x || 0, pz = playerPos?.z || 0;
+    let flash = null;
     for (const mob of this.mobs) {
       if (mob.isDead) continue;
       // 1. Distance Culling: ignora entidades a mais de 64 blocos do jogador
@@ -184,6 +187,10 @@ export class MobManager {
       }
       if (!mob._model) mob.ensureModel(this.scene);
       mob.updateModel(time, partialTick);
+      // Flash de dano (hurtTime 10 → 0): cor do módulo Hit Color
+      const hurt = mob.hurtTime > 0 && clientStore.isOn('hitcolor');
+      if (hurt && !flash) flash = clientStore.hitFlash(performance.now());
+      if (hurt || mob._model.userData._flashMeshes) applyHitFlash(mob._model, hurt, flash);
     }
   }
 

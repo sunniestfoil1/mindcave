@@ -31,6 +31,7 @@ void main() {
 const LIGHTMAP = `
 float lvl(float l) { float f = 1.0 - l; return (1.0 - f) / (f * 3.0 + 1.0); }
 vec3 lightmap(vec2 L) {
+  if (uFullbright > 0.5) return vec3(1.0);   // módulo Fullbright do Mind Client: luz máxima
   float s = lvl(L.y) * uSunBright * 0.95 + 0.05;
   float b = lvl(L.x) * 1.5;
   vec3 bc = vec3(b, b * ((b * 0.6 + 0.4) * 0.6 + 0.4), b * (b * b * 0.6 + 0.4));
@@ -52,6 +53,7 @@ uniform vec3 uFogColor;
 uniform float uFogNear;
 uniform float uFogFar;
 uniform float uBrightness;
+uniform float uFullbright;
 varying vec2 vUv;
 varying vec3 vColor;
 varying vec2 vLight;
@@ -124,6 +126,7 @@ export function createSharedUniforms() {
     uFogFar: { value: 100 },
     uWaterOpacity: { value: 0.72 },
     uBrightness: { value: 0.0 },
+    uFullbright: { value: 0.0 },
   };
 }
 

@@ -1,5 +1,6 @@
 // Sistema de partículas — estilo 1.8.9 (blocos quebrados, respingos)
 // Partículas são pequenos cubos coloridos com física (gravidade, colisão, drag).
+import { clientStore } from './client/clientStore';
 import * as THREE from 'three';
 import { getBlock } from './blocks';
 import { stateId } from './chunk';
@@ -134,7 +135,7 @@ export class ParticleManager {
 
   // Blocos quebrados — cubos pequenos com amostragem real da textura do bloco (sem partículas pretas)
   spawnBlockBreak(x, y, z, blockId) {
-    const count = 10 + Math.floor(Math.random() * 6);
+    const count = Math.round((10 + Math.floor(Math.random() * 6)) * clientStore.particleScale()); // módulo Particles do Mind Client
     for (let i = 0; i < count; i++) {
       const color = getBlockParticleColor(blockId);
       const p = this._getFreeParticle();
@@ -158,7 +159,7 @@ export class ParticleManager {
 
   // Respungos de água — partículas azul-claro ao entrar na água
   spawnSplash(x, y, z, intensity = 1) {
-    const count = Math.floor((8 + Math.floor(Math.random() * 8)) * intensity);
+    const count = Math.floor((8 + Math.floor(Math.random() * 8)) * intensity * clientStore.particleScale());
     for (let i = 0; i < count; i++) {
       const p = this._getFreeParticle();
       p.active = true;
@@ -181,7 +182,7 @@ export class ParticleManager {
 
   // Efeito clássico de morte (nuvem branca de fumaça / poof da 1.8.9)
   spawnDeathPoof(x, y, z) {
-    const count = 16;
+    const count = Math.round(16 * clientStore.particleScale());
     for (let i = 0; i < count; i++) {
       const p = this._getFreeParticle();
       p.active = true;

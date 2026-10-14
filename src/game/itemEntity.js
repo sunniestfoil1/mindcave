@@ -13,6 +13,7 @@ import { stateId } from './chunk';
 import { MC, getPackUrl, getPackCanvas } from './pack';
 import { getAtlasTileCanvas, getAtlasVersion } from './textures';
 import { extrudedGeometryFor } from './itemExtrude';
+import { clientStore } from './client/clientStore';
 import { itemIconFile, itemBlockTile, iconKey } from './gui/iconNames';
 import { fastSin } from './fastMath';
 
@@ -561,9 +562,25 @@ export class ItemEntityManager {
           e.mesh.visible = false;
         } else {
           e.mesh.visible = true;
-          const bob = fastSin(time * 0.1 + e.pos.x) * 0.05 + 0.15;
-          e.mesh.position.set(e.pos.x, e.pos.y + bob, e.pos.z);
-          e.mesh.rotation.y += 2.5 * dt; // Rotação 3D em torno do eixo Y
+          if (clientStore.isOn('itemphysics')) {
+            // Item Physics: no ar o item cai girando; no chão fica parado (sprite deitado, bloco assentado) com o ângulo que tinha
+            const g0 = e.mesh.children[0]?.geometry;
+            const flat = !!(g0 && (g0.userData?.extrudedSprite || g0.type === 'PlaneGeometry'));
+            if (e.onGround) {
+              e.mesh.position.set(e.pos.x, e.pos.y + (flat ? 0.03 : 0.125), e.pos.z);
+              e.mesh.rotation.x = flat ? -Math.PI / 2 : 0;
+              e.mesh.rotation.z = 0;
+            } else {
+              e.mesh.position.set(e.pos.x, e.pos.y + 0.15, e.pos.z);
+              e.mesh.rotation.x += 6 * dt;
+              e.mesh.rotation.y += 4 * dt;
+            }
+          } else {
+            if (e.mesh.rotation.x !== 0) { e.mesh.rotation.x = 0; e.mesh.rotation.z = 0; }
+            const bob = fastSin(time * 0.1 + e.pos.x) * 0.05 + 0.15;
+            e.mesh.position.set(e.pos.x, e.pos.y + bob, e.pos.z);
+            e.mesh.rotation.y += 2.5 * dt; // Rotação 3D em torno do eixo Y
+          }
         }
       }
 

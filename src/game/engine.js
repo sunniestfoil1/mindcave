@@ -44,6 +44,7 @@ import { onSkinChange, onCapeChange, getCapeChoice, preloadLocalSkin } from './s
 import { fetchCraftheadCape, fetchCraftheadSkin } from './crafthead';
 import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
 import { createCrosshair } from './crosshair';
+import { clientStore } from './client/clientStore';
 import { initBiomeTint } from './biomeTint';
 import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener, playPopSound } from './sounds';
 import { createNametag } from './nametag';
@@ -114,6 +115,8 @@ export class GameEngine {
     this.gameRules = opts.gameRules || {};
     this.difficulty = opts.difficulty || 'normal';
     this.onToggleInventory = opts.onToggleInventory || (() => {});
+    this.onToggleClientMenu = opts.onToggleClientMenu || (() => {});
+    this.freeLook = { on: false, yaw: 0, pitch: 0, saved: 0 };   // módulo Perspective: segurar ALT
     this.onChatMessage = opts.onChatMessage || null;
     this.onChatSend = opts.onChatSend || null;
     this.onDeath = opts.onDeath || null;
@@ -169,6 +172,9 @@ export class GameEngine {
     this.renderer.setSize(w, h, false);
     this.renderer.setClearColor(0xc0d8ff, 1); // cor do horizonte — evita tela preta antes dos chunks carregarem
     this.crosshair = createCrosshair(this.renderer);
+    // módulo Hitbox do Mind Client liga/desliga as caixas de colisão (F3 + B continua valendo)
+    this.showHitboxes = clientStore.isOn('hitbox') || this.showHitboxes;
+    this._unsubClientStore = clientStore.subscribe(() => { this.showHitboxes = clientStore.isOn('hitbox'); });
 
     this.scene = new THREE.Scene();
 
@@ -402,7 +408,7 @@ export class GameEngine {
       if (!this.paused) this.mouseBtn = {};
       this.keys = {};
     };
-    this._onBlur = () => { this.keys = {}; this.mouseBtn = {}; this.f3Held = false; };
+    this._onBlur = () => { this.keys = {}; this.mouseBtn = {}; this.f3Held = false; this.endFreeLook(); };
     this.world.onTntIgnite = (x, y, z) => this.spawnTNT(x, y, z);
     this._bgInterval = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden && this.netManager && !this.disposed) {
@@ -458,6 +464,15 @@ export class GameEngine {
 
     // Soltar uma tecla é sempre registrado, em qualquer tela: senão ela "gruda" (ou falha) depois de chat/inventário/F3
     if (!down) this.keys[e.code] = false;
+    // Perspective: segurar ALT olha em volta sem virar o corpo; soltar volta (soltar vale em qualquer tela)
+    if (e.code === 'AltLeft' || e.code === 'AltRight') {
+      if (!down) this.endFreeLook();
+      else {
+        e.preventDefault();
+        if (!e.repeat && clientStore.isOn('perspective') && !this.paused && !this.chatOpen && !this.containerOpenFn?.() && !this.player?.isDead) this.startFreeLook();
+      }
+      return;
+    }
     if (this.chatOpen) {
       if (down && e.code === 'Escape') { this.closeChat(); }
       return;
@@ -483,10 +498,16 @@ export class GameEngine {
       }
       return;
     }
+    // Shift direito: menu do Mind Client
+    if (down && !e.repeat && e.code === 'ShiftRight') {
+      e.preventDefault();
+      this.onToggleClientMenu?.();
+      return;
+    }
     const playerListKey = keys.playerList || 'Tab';
     if (e.code === playerListKey || e.code === 'Tab') {
       e.preventDefault();
-      this.playerListOpen = down;
+      this.playerListOpen = down && clientStore.isOn('tab');
       this.emitHud();
       return;
     }
@@ -593,10 +614,28 @@ export class GameEngine {
     const maxDelta = 120;
     const dx = Math.max(-maxDelta, Math.min(maxDelta, e.movementX || 0));
     const dy = Math.max(-maxDelta, Math.min(maxDelta, e.movementY || 0));
+    if (this.freeLook.on) {
+      // olhar em volta: só a câmera gira em torno do jogador (o corpo e a mira ficam onde estavam)
+      this.freeLook.yaw += dx * radPerPx;
+      this.freeLook.pitch = Math.max(-1.45, Math.min(1.45, this.freeLook.pitch + dy * radPerPx * invert));
+      return;
+    }
     this.player.yaw += dx * radPerPx;
     this.player.pitch += dy * radPerPx * invert;
     const lim = Math.PI / 2 - 0.001;
     this.player.pitch = Math.max(-lim, Math.min(lim, this.player.pitch));
+  }
+
+  startFreeLook() {
+    if (this.freeLook.on) return;
+    this.freeLook = { on: true, yaw: 0, pitch: 0, saved: this.perspective || 0 };
+    this.perspective = 1;
+  }
+
+  endFreeLook() {
+    if (!this.freeLook.on) return;
+    this.perspective = this.freeLook.saved;
+    this.freeLook = { on: false, yaw: 0, pitch: 0, saved: 0 };
   }
 
   isZooming() {
@@ -1819,6 +1858,7 @@ export class GameEngine {
     u.uSkyColor.value.setRGB(skyR, skyG, skyB);
     u.uSunBright.value = sunBrightness(this.worldTime);
     u.uBrightness.value = (settingsStore.get('device.brightness') || 0) / 100;
+    if (u.uFullbright) u.uFullbright.value = clientStore.isOn('fullbright') ? 1 : 0;
     // PRD 23 RF-021: névoa sempre ligada, de 75% a 100% de RD × 16 blocos (esconde a borda do mundo carregado)
     const rd = Math.max(2, this.renderDistance);
     const fogDist = rd * 16;
@@ -1853,6 +1893,7 @@ export class GameEngine {
     u.uSkyColor.value.setRGB(0.42, 0.3, 0.3);
     u.uSunBright.value = 1;
     u.uBrightness.value = (settingsStore.get('device.brightness') || 0) / 100;
+    if (u.uFullbright) u.uFullbright.value = clientStore.isOn('fullbright') ? 1 : 0;
     if (!this._netherFog) this._netherFog = new THREE.Color(0.2, 0.03, 0.03);
     u.uFogColor.value.copy(this._netherFog);
     const fogDist = Math.max(2, this.renderDistance) * 16;
@@ -1903,7 +1944,10 @@ export class GameEngine {
       eye.y = (this._prevPos.y + (this.player.pos.y - this._prevPos.y) * partialTick) + (this.player.sneaking ? PLAYER.eyeSneak : PLAYER.eye);
       eye.z = this._prevPos.z + (this.player.pos.z - this._prevPos.z) * partialTick;
     }
-    const dir = this.lookDir();
+    if (this.freeLook.on && (this.paused || this.chatOpen || this.containerOpenFn?.())) this.endFreeLook();
+    const dir = this.freeLook.on
+      ? lookDirFromAngles(this.player.yaw + this.freeLook.yaw, Math.max(-1.45, Math.min(1.45, this.player.pitch + this.freeLook.pitch)))
+      : this.lookDir();
     const pMode = this.perspective || 0;
     if (pMode > 0) {
       let d = 4.0;
@@ -2051,6 +2095,7 @@ export class GameEngine {
     }
     // Nametag acompanha a altura (abaixa se morto, mas sem encostar no chão)
     if (this.nametag) this.nametag.position.y = p.isDead ? 0.85 : 2.35;
+    if (this.nametag) this.nametag.visible = clientStore.isOn('nametags') && clientStore.get('nametags', 'own') && (this.perspective || 0) > 0;
     if (this.voiceIconLocal) {
       this.voiceIconLocal.position.y = (p.isDead ? 0.85 : 2.35) + 0.3;
       setVoiceIconState(this.voiceIconLocal, voiceChat.getWireState());
@@ -2208,7 +2253,10 @@ export class GameEngine {
             entry.tint = tint;
             entry.group.traverse(c => { if (c.material && c.material.color && !c.isSprite) c.material.color.setHex(tint); });
           }
-          if (entry.tag) entry.tag.position.y = rp.isDead ? 0.85 : 2.35;
+          if (entry.tag) {
+            entry.tag.position.y = rp.isDead ? 0.85 : 2.35;
+            entry.tag.visible = clientStore.isOn('nametags') && clientStore.get('nametags', 'others');
+          }
           if (entry.icon) entry.icon.position.y = (rp.isDead ? 0.85 : 2.35) + 0.3;
         }
 
@@ -2264,6 +2312,7 @@ export class GameEngine {
       fps: this.fps,
       tps: 20,
       xyz: `${p.pos.x.toFixed(3)} / ${p.pos.y.toFixed(3)} / ${p.pos.z.toFixed(3)}`,
+      px: p.pos.x, py: p.pos.y, pz: p.pos.z,
       block: `${Math.floor(p.pos.x)}, ${Math.floor(p.pos.y)}, ${Math.floor(p.pos.z)}`,
       chunk: `${chunkCoord(Math.floor(p.pos.x))}, ${chunkCoord(Math.floor(p.pos.z))}`,
       facing,
@@ -3093,6 +3142,7 @@ export class GameEngine {
     this.tntEntities = [];
     this.pendingTnt = [];
     this.crosshair?.dispose();
+    this._unsubClientStore?.();
     if (this.sky) this.sky.dispose();
     if (this.weather) this.weather.dispose();
     for (const w of Object.values(this.worlds)) if (w && w !== this.world) w.dispose(this.scene);
