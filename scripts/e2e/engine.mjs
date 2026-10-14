@@ -424,6 +424,28 @@ const result = await page.evaluate(async () => {
       ok(applied && px && px[0] === 255 && px[1] === 0, 'o modelo recebe a skin personalizada (pixel vermelho), não o Steve');
       SS.setSkinChoice(old);
     }
+
+    // ======== FOV AO CORRER: transição suave do EntityRenderer 1.8.9 (metade do caminho a cada tick, interpolada entre ticks) ========
+    {
+      reset(); engine._fovMod = engine._fovModPrev = 1; pState.sprinting = false; pState.flying = false; pState.gameMode = 'survival';
+      const baseFov = 70; const SS = (await import('/src/game/settingsStore.js')).settingsStore; const savedFov = SS.get('user.fov'); SS.set('user.fov', baseFov);
+      pState.sprinting = true;
+      const seq = [];
+      for (let i = 0; i < 6; i++) { engine._tickFovModifier(); seq.push(engine._fovMod); }
+      ok(Math.abs(seq[0] - 1.075) < 1e-9, `1º tick correndo: modificador anda metade do caminho até 1,15 (${seq[0].toFixed(4)})`);
+      ok(seq.every((v, i) => i === 0 || v > seq[i - 1]) && seq[5] > 1.14 && seq[5] < 1.15, `converge sem salto para 1,15 (${seq.map(v => v.toFixed(3)).join(' → ')})`);
+      // meio de um tick: o FOV da câmera fica entre o valor anterior e o atual
+      engine._fovMod = engine._fovModPrev = 1; engine._tickFovModifier(); engine.tickAcc = 25; // TICK_MS = 50 → metade
+      engine.updateCamera();
+      ok(Math.abs(engine.camera.fov - baseFov * (1 + 0.075 * 0.5)) < 0.01, `FOV interpolado entre ticks (${engine.camera.fov.toFixed(3)})`);
+      pState.sprinting = false;
+      for (let i = 0; i < 12; i++) engine._tickFovModifier();
+      ok(Math.abs(engine._fovMod - 1) < 0.001, 'ao parar de correr volta a 1,0 suavemente');
+      pState.flying = true; for (let i = 0; i < 12; i++) engine._tickFovModifier();
+      ok(Math.abs(engine._fovMod - 1.1) < 0.002, 'voando: alvo 1,1');
+      pState.flying = false; engine.tickAcc = 0; for (let i = 0; i < 12; i++) engine._tickFovModifier();
+      SS.set('user.fov', savedFov ?? 70);
+    }
     engine.stop?.();
   } catch (e) { out.push('ERRO ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')); }
   return out;

@@ -107,6 +107,7 @@ export class GameEngine {
     this.lastWTap = 0; this.wTapCount = 0;
     this.breakCd = 0; this.placeCd = 0;
     this.tickAcc = 0; this.lastTime = 0;
+    this._fovMod = 1; this._fovModPrev = 1; // modificador de FOV da mão/corrida (EntityRenderer.fovModifierHand)
     this.worldTime = opts.worldTime || 0;
     this.gameRules = opts.gameRules || {};
     this.difficulty = opts.difficulty || 'normal';
@@ -1200,6 +1201,7 @@ export class GameEngine {
     }
     const p = this.player;
     this._prevPos = { x: p.pos.x, y: p.pos.y, z: p.pos.z };
+    this._tickFovModifier();
 
     // Verifica fluido em toda a caixa de colisão do jogador (pés, corpo e olhos)
     const eye = this.eyePos();
@@ -1842,19 +1844,38 @@ export class GameEngine {
     this.scene.background = this._netherFog;
   }
 
+  // EntityPlayerSP.getFOVMultiplier (1.8.9): 1,1 voando; × (velocidade/velocidade-base + 1) / 2 — correr dá ×1,3 de velocidade, logo 1,15;
+  // poção de velocidade/lentidão entra na mesma conta; arco esticado encolhe até 15 % (quadrático até 20 ticks).
+  _fovTarget() {
+    const p = this.player;
+    let f = 1;
+    if (p.flying) f *= 1.1;
+    const speedRatio = (p.sprinting ? 1.3 : 1) * getSpeedModifier(p);
+    f *= (speedRatio + 1) / 2;
+    if (p.bowDrawing && this.bowChargeTicks > 0) {
+      let t = this.bowChargeTicks / 20;
+      t = t > 1 ? 1 : t * t;
+      f *= 1 - t * 0.15;
+    }
+    return Number.isFinite(f) ? f : 1;
+  }
+
+  // EntityRenderer.updateFovModifierHand: a cada tick o valor anda metade do caminho até o alvo (fica entre 0,1 e 1,5)
+  _tickFovModifier() {
+    this._fovModPrev = this._fovMod;
+    this._fovMod += (this._fovTarget() - this._fovMod) * 0.5;
+    if (this._fovMod > 1.5) this._fovMod = 1.5;
+    if (this._fovMod < 0.1) this._fovMod = 0.1;
+  }
+
   updateCamera() {
     const fov = settingsStore.get('user.fov') || 70;
     const zooming = this.isZooming();
-    let targetFov = zooming ? Math.min(fov, 30) : fov;
-    // FOV dinamico ao correr (+15% Minecraft 1.8.9 Sprint FOV)
-    if (this.player.sprinting && !zooming) {
-      targetFov *= 1.15;
-    }
-    // FOV reduz ao puxar arco (PRD 07 RF-020)
-    if (this.player.bowDrawing && this.player.bowCharge > 0) {
-      targetFov -= this.player.bowCharge * 10;
-    }
-    if (Math.abs(this.camera.fov - targetFov) > 0.1) {
+    // Interpola entre o valor do tick anterior e o atual com o progresso do tick: a transição fica contínua em qualquer taxa de quadros
+    const pt = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));
+    const mod = this._fovModPrev + (this._fovMod - this._fovModPrev) * pt;
+    const targetFov = zooming ? Math.min(fov, 30) : fov * mod;
+    if (Math.abs(this.camera.fov - targetFov) > 0.005) {
       this.camera.fov = targetFov;
       this.camera.updateProjectionMatrix();
     }
