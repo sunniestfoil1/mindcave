@@ -25,7 +25,7 @@ const res = await page.evaluate(async () => {
   const engine = new GameEngine(canvas, { world: cw, player: pState, spawn, worldTime: 1000, gameRules: {}, difficulty: 'normal', onHud: () => {}, onProgress: () => {}, onChatMessage: () => {}, onDeath: () => {}, onAutosave: async () => {} });
   await engine.start();
   engine.paused = false;
-  for (let i = 0; i < 60 && cw.chunks.size < 9; i++) await new Promise(r => setTimeout(r, 250));
+  for (let i = 0; i < 240 && cw.chunks.size < 9; i++) await new Promise(r => setTimeout(r, 250));
   await new Promise(r => setTimeout(r, 1500));
   // chão de pedra/grama em xadrez, câmera olhando para ele e mundo parado: os dois quadros só diferem pela mira
   for (let x = -2; x <= 18; x++) for (let z = -2; z <= 18; z++) { for (let y = 100; y <= 105; y++) cw.setBlock(x, y, z, 0); cw.setBlock(x, 99, z, packState((x + z) % 2 ? 2 : 1, 0)); }

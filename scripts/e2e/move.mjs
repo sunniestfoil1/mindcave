@@ -41,7 +41,8 @@ const result = await page.evaluate(async () => {
     const engine = new GameEngine(canvas, { world: cw, player: pState, spawn, worldTime: 1000, gameRules: {}, difficulty: 'normal', onHud: () => {}, onProgress: () => {}, onChatMessage: (m) => msgs.push(m), onDeath: (d) => deaths.push(d), onAutosave: async () => {} });
     await engine.start();
     engine.paused = false;
-    await new Promise(r => setTimeout(r, 3500)); // deixa o loop carregar chunks
+    for (let i = 0; i < 240 && cw.chunks.size < 9; i++) await new Promise(r => setTimeout(r, 250)); // deixa o loop carregar chunks (até 60 s: o primeiro teste da suíte roda com o Vite frio)
+    await new Promise(r => setTimeout(r, 1500));
     ok(cw.chunks.size > 0, `chunks carregados: ${cw.chunks.size}`);
 
     // plataforma de pedra 21×21 em y=99 e ar acima
