@@ -9,6 +9,8 @@ import { getSkinFaceUrl } from '@/game/skinStore';
 import { onPackReady } from '@/game/pack';
 import { useT } from '@/game/i18n';
 import SkinPage from '@/components/options/SkinPage';
+import OptimizedPackDialog from '@/components/options/OptimizedPackDialog';
+import { OPTIMIZED_PACK_ID, getSelectedPackIds } from '@/game/resourcePacks';
 
 const SPLASHES = [
   '100% puro!', 'Agora com multijogador!', 'Agora em 3D!', 'Milhões de pixels!',
@@ -23,6 +25,7 @@ function MainMenuContent({ user, onNickname, editingSkin }) {
   const t = useT();
   const [splash, setSplash] = useState('');
   const [optimized, setOptimized] = useState(false);
+  const [askPack, setAskPack] = useState(false);
   const [heads, setHeads] = useState(null);
 
   useEffect(() => {
@@ -59,6 +62,7 @@ function MainMenuContent({ user, onNickname, editingSkin }) {
     settingsStore.applyOptimized();
     setOptimized(true);
     setTimeout(() => setOptimized(false), 2000);
+    if (!getSelectedPackIds().includes(OPTIMIZED_PACK_ID)) setAskPack(true);
   };
 
   return (
@@ -130,6 +134,8 @@ function MainMenuContent({ user, onNickname, editingSkin }) {
       <div style={{ position: 'absolute', right: 2 * scale, top: 2 * scale, cursor: 'pointer' }} onClick={onNickname}>
         <GuiText text={user?.full_name || getNickname()} color="#FFFFFF" shadow />
       </div>
+
+      {askPack && <OptimizedPackDialog onClose={() => setAskPack(false)} />}
     </>
   );
 }

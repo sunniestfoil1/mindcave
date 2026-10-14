@@ -38,13 +38,9 @@ export default function GameHud({ hud, onPause }) {
       {/* Camada do HUD de jogo: Transição suave de opacidade (100% jogando, 0% ao abrir GUI) */}
       <div className={`transition-opacity duration-150 ${hideInGameHud ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <SurvivalHud hud={hud} />
-        {/* Mira */}
-        {!hud.paused && !hud.chatOpen && (
+        {/* A mira em si é desenhada pelo engine (src/game/crosshair.js); aqui ficam só os indicadores ao redor dela */}
+        {!hud.paused && !hud.chatOpen && (hud.blocking || (hud.bowDrawing && hud.bowCharge > 0)) && (
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-            <div className="relative w-4 h-4">
-              <div className="absolute left-1/2 top-0 -translate-x-1/2 w-[2px] h-4 bg-white/90 shadow-[0_0_2px_rgba(0,0,0,0.9)]" />
-              <div className="absolute top-1/2 left-0 -translate-y-1/2 h-[2px] w-4 bg-white/90 shadow-[0_0_2px_rgba(0,0,0,0.9)]" />
-            </div>
             {/* Indicador de bloqueio com espada */}
             {hud.blocking && (
               <div className="absolute -top-1 left-1/2 -translate-x-1/2 text-lg">🛡️</div>

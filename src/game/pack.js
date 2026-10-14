@@ -15,6 +15,11 @@ const _canvasCache = new Map();
 const _urlCache = new Map();
 const _jsonCache = new Map();
 
+// Pacotes de recursos extras (resourcepacks) por cima do pacote base, do mais prioritário ao menos: { id, buf, entries, prefix }.
+// Entram antes do pacote base ficar pronto (ver resourcePacks.js), então nenhum cache abaixo guarda textura "velha".
+let _overlays = [];
+const _overlayUrls = new Map();
+
 // Verifica se os primeiros 4 bytes do buffer são o cabeçalho 'PK\x03\x04' (0x04034b50)
 function isValidZipBuffer(buf) {
   if (!buf || buf.byteLength < 22) return false;
@@ -127,14 +132,14 @@ export function parseZipEntries(buf) {
     const name = dec.decode(new Uint8Array(buf, off + 46, nameLen)).replace(/\\/g, '/');
     const localNameLen = dv.getUint16(localOff + 26, true);
     const localExtraLen = dv.getUint16(localOff + 28, true);
-    entries[name] = { compMethod, compSize, dataOff: localOff + 30 + localNameLen + localExtraLen };
+    entries[name] = { compMethod, compSize, dataOff: localOff + 30 + localNameLen + localExtraLen, buf };
     off += 46 + nameLen + extraLen + commentLen;
   }
   return entries;
 }
 
 async function inflate(entry) {
-  const compressed = new Uint8Array(_buf, entry.dataOff, entry.compSize);
+  const compressed = new Uint8Array(entry.buf || _buf, entry.dataOff, entry.compSize);
   if (entry.compMethod === 0) return compressed;
   if (entry.compMethod === 8) {
     const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
@@ -143,7 +148,17 @@ async function inflate(entry) {
   throw new Error('Compressão não suportada: ' + entry.compMethod);
 }
 
+function overlayEntry(path) {
+  for (const ov of _overlays) {
+    const e = ov.entries[ov.prefix + path];
+    if (e) return e;
+  }
+  return null;
+}
+
 function resolveEntry(path) {
+  const ov = overlayEntry(path);
+  if (ov) return ov;
   if (!_entries) return null;
   if (_entries[path]) return _entries[path];
   if (_entries['minecraft-assets-1.8.9/' + path]) return _entries['minecraft-assets-1.8.9/' + path];
@@ -195,14 +210,14 @@ export function listPackFiles(prefix) {
 export function packFileCount() { return _entries ? Object.keys(_entries).length : 0; }
 
 export async function getPackBytes(path) {
-  if (!_ready) return null;
+  if (!_ready && !overlayEntry(path)) return null;
   const entry = resolveEntry(path);
   if (!entry) return null;
   return inflate(entry);
 }
 
 export function getPackCanvas(path) {
-  if (!_ready) {
+  if (!_ready && !overlayEntry(path)) {
     return new Promise((resolve) => {
       onPackReady(() => resolve(getPackCanvas(path)));
     });
@@ -224,7 +239,7 @@ export function getPackCanvas(path) {
 }
 
 export function getPackUrl(path) {
-  if (!_ready) {
+  if (!_ready && !overlayEntry(path)) {
     return new Promise((resolve) => {
       onPackReady(() => resolve(getPackUrl(path)));
     });
@@ -241,7 +256,7 @@ export function getPackUrl(path) {
 }
 
 export function getPackJson(path) {
-  if (!_ready) return Promise.resolve(null);
+  if (!_ready && !overlayEntry(path)) return Promise.resolve(null);
   const entry = resolveEntry(path);
   if (!entry) return Promise.resolve(null);
   if (_jsonCache.has(path)) return _jsonCache.get(path);
@@ -251,4 +266,34 @@ export function getPackJson(path) {
   })().catch(() => null);
   _jsonCache.set(path, p);
   return p;
+}
+// Liga os pacotes extras (do mais prioritário ao menos). Chamado no boot, antes de qualquer textura ser pedida.
+// As folhas de GUI que o jogo mostra sem esperar o pacote base (widgets, icons) já saem daqui como URL pronta.
+const SYNC_GUI_TEXTURES = ['textures/gui/widgets.png', 'textures/gui/icons.png'];
+export async function setOverlays(list) {
+  _overlays = list.map(({ id, buf }) => {
+    const entries = parseZipEntries(buf);
+    // pacotes zipados com uma pasta por fora (Pack/assets/minecraft/...)
+    let prefix = '';
+    if (!entries[MC + 'textures/blocks/stone.png'] && !Object.keys(entries).some((k) => k.startsWith('assets/'))) {
+      const hit = Object.keys(entries).find((k) => k.includes('/' + MC));
+      if (hit) prefix = hit.slice(0, hit.indexOf('/' + MC) + 1);
+    }
+    return { id, buf, entries, prefix };
+  });
+  _canvasCache.clear(); _urlCache.clear(); _jsonCache.clear();
+  for (const u of _overlayUrls.values()) URL.revokeObjectURL(u);
+  _overlayUrls.clear();
+  await Promise.all(SYNC_GUI_TEXTURES.map(async (path) => {
+    const entry = overlayEntry(MC + path);
+    if (!entry) return;
+    const bytes = await inflate(entry);
+    _overlayUrls.set(path, URL.createObjectURL(new Blob([bytes], { type: 'image/png' })));
+  }));
+}
+export function getOverlayUrlSync(path) { return _overlayUrls.get(path) || null; }
+// Lê um arquivo qualquer de um zip solto (pack.png e pack.mcmeta da tela de pacotes)
+export async function readZipFile(buf, name) {
+  const e = parseZipEntries(buf)[name];
+  return e ? inflate(e) : null;
 }

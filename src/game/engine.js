@@ -43,6 +43,7 @@ import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, 
 import { onSkinChange, onCapeChange, getCapeChoice, preloadLocalSkin } from './skinStore';
 import { fetchCraftheadCape, fetchCraftheadSkin } from './crafthead';
 import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
+import { createCrosshair } from './crosshair';
 import { initBiomeTint } from './biomeTint';
 import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener, playPopSound } from './sounds';
 import { createNametag } from './nametag';
@@ -166,6 +167,7 @@ export class GameEngine {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(w, h, false);
     this.renderer.setClearColor(0xc0d8ff, 1); // cor do horizonte — evita tela preta antes dos chunks carregarem
+    this.crosshair = createCrosshair(this.renderer);
 
     this.scene = new THREE.Scene();
 
@@ -1748,6 +1750,11 @@ export class GameEngine {
       perfMonitor.beginStage('render');
       this.renderer.render(this.scene, this.camera);
       this.updateFirstPersonHand();
+      // showCrosshair() do 1.8.9: some com o F3 (que desenha os eixos), com F1 e com qualquer tela aberta
+      this.crosshair?.render(
+        this.canvas.clientWidth, this.canvas.clientHeight,
+        !this.f3 && !this.hideHud && !this.paused && !this.chatOpen && !this.player.isDead && !this.containerOpenFn?.(),
+      );
       this.fpsFrames++;
       perfMonitor.endStage('render');
     }
@@ -3060,6 +3067,7 @@ export class GameEngine {
     }
     this.tntEntities = [];
     this.pendingTnt = [];
+    this.crosshair?.dispose();
     if (this.sky) this.sky.dispose();
     if (this.weather) this.weather.dispose();
     for (const w of Object.values(this.worlds)) if (w && w !== this.world) w.dispose(this.scene);

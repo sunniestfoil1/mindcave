@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { GuiScreen, GuiButton, GuiText, JavaButton, useGui } from "@/components/java";
 import { useSettings } from "@/game/settingsStore";
 import { QUALITY_PROFILES } from "@/game/settingsDefaults";
 import { useT } from "@/game/i18n";
+import OptimizedPackDialog from "@/components/options/OptimizedPackDialog";
+import { OPTIMIZED_PACK_ID, getSelectedPackIds } from "@/game/resourcePacks";
 
 const PROFILE_LABELS = {
   potato: 'Batata', minimum: 'Mínimo', low: 'Baixo',
@@ -22,6 +24,7 @@ function QualityProfilesContent({ onBack }) {
   const store = useSettings();
   const t = useT();
   const current = store.detectProfile();
+  const [askPack, setAskPack] = useState(false);
 
   // "Personalizado" entra no ciclo só como estado — não tem valores para aplicar
   const options = [
@@ -45,7 +48,8 @@ function QualityProfilesContent({ onBack }) {
           onChange={(v) => { if (v !== 'custom') store.applyProfile(v); }}
           width={200}
         />
-        <JavaButton label="Otimizado (máx. desempenho)" onClick={() => store.applyOptimized()} width={200} />
+        <JavaButton label="Otimizado (máx. desempenho)" width={200}
+          onClick={() => { store.applyOptimized(); if (!getSelectedPackIds().includes(OPTIMIZED_PACK_ID)) setAskPack(true); }} />
       </div>
 
       <div style={{
@@ -64,6 +68,7 @@ function QualityProfilesContent({ onBack }) {
       </div>
 
       <GuiButton x={-100} y={guiHeight - 28} width={200} label={t('gui.done')} onClick={onBack} />
+      {askPack && <OptimizedPackDialog onClose={() => setAskPack(false)} />}
     </>
   );
 }

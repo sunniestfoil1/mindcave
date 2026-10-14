@@ -11,6 +11,7 @@ import WorldSettingsPage from "@/components/options/WorldSettingsPage";
 import AboutPage from "@/components/options/AboutPage";
 import ImportExportPage from "@/components/options/ImportExportPage";
 import SkinPage from "@/components/options/SkinPage";
+import ResourcePacksPage from "@/components/options/ResourcePacksPage";
 import { VIDEO_SECTIONS, SHADERS_SECTIONS, SHADOW_SECTIONS, AUDIO_SECTIONS, CHAT_SECTIONS, ACCESSIBILITY_SECTIONS, PERFORMANCE_SECTIONS, NETWORK_SECTIONS } from "@/components/options/optionDefinitions";
 import CreditsScreen from "@/components/game/CreditsScreen";
 import DevManual from "@/components/game/DevManual";
@@ -26,7 +27,7 @@ const MENU_ITEMS = [
   { id: 'controls', key: 'options.controls' },
   { id: 'language', key: 'options.language' },
   { id: 'chat', key: 'options.chat.title' },
-  { id: 'resourcepacks', key: 'options.resourcepack', disabled: true },
+  { id: 'resourcepacks', key: 'options.resourcepack' },
   { id: 'network', key: 'options.multiplayer.title' },
   { id: 'shaders', key: 'opt.shaders' },
   { id: 'performance', key: 'opt.performance' },
@@ -145,6 +146,7 @@ export default function Options({ onClose, worldId }) {
   if (page === 'controls') return <KeybindsPage onBack={back} />;
   if (page === 'audio') return <GuiOptionPage title={t('options.sounds.title')} sections={AUDIO_SECTIONS} onBack={back} resetScope="user" />;
   if (page === 'skin') return <SkinPage onBack={back} />;
+  if (page === 'resourcepacks') return <GuiScreen><ResourcePacksPage onBack={back} /></GuiScreen>;
   if (page === 'chat') return <GuiOptionPage title={t('options.chatTitle')} sections={CHAT_SECTIONS} onBack={back} resetScope="user" />;
   if (page === 'accessibility') return <GuiOptionPage title={t('opt.accessibilityTitle')} sections={ACCESSIBILITY_SECTIONS} onBack={back} resetScope="user" />;
   if (page === 'network') return <GuiOptionPage title={t('options.multiplayerTitle')} sections={NETWORK_SECTIONS} onBack={back} resetScope="device" />;

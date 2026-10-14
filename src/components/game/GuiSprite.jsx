@@ -1,7 +1,7 @@
 // Peças comuns da GUI com as texturas oficiais do pacote (1.8.9): recorte de sprite em escala inteira e
 // posicionamento em "pixels de GUI". Todas as coordenadas dos containers são as do Minecraft; S = fator de escala.
 import React, { useEffect, useState } from 'react';
-import { getPackUrl, onPackReady, MC } from '@/game/pack';
+import { getPackUrl, onPackReady, getOverlayUrlSync, MC } from '@/game/pack';
 import { getGuiScale } from '@/game/gui/scale';
 import { settingsStore } from '@/game/settingsStore';
 import { drawMcText, measureMcText } from '@/game/gui/font';
@@ -17,7 +17,7 @@ const LOCAL_TEXTURES = {
 
 // URL (blob) de uma textura do pacote. Reaproveita o cache e tenta de novo quando o pacote termina de carregar.
 export function usePackTexture(path) {
-  const local = LOCAL_TEXTURES[path];
+  const local = getOverlayUrlSync(path) || LOCAL_TEXTURES[path];
   const [url, setUrl] = useState(urlCache.get(path) || local || null);
   useEffect(() => {
     if (local) return undefined;

@@ -13,7 +13,7 @@ const vite = spawn(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['vite', '-
 const stop = () => { try { process.platform === 'win32' ? spawn('taskkill', ['/pid', String(vite.pid), '/T', '/F']) : vite.kill(); } catch { /* já parou */ } };
 process.on('exit', stop);
 for (let i = 0; i < 60; i++) { try { const r = await fetch(`http://localhost:${port}/`); if (r.ok) break; } catch { /* ainda subindo */ } await new Promise(r => setTimeout(r, 1000)); }
-const steps = [['mining.mjs', []], ['shapes.mjs', []], ['doors.mjs', []], ['items.mjs', []], ['net.mjs', []], ['move.mjs', [port]], ['engine.mjs', [port]], ['slots.mjs', []], ['skin.mjs', [port]], ['page.mjs', [port]], ['../audit-render.mjs', [port]]];
+const steps = [['mining.mjs', []], ['shapes.mjs', []], ['doors.mjs', []], ['items.mjs', []], ['net.mjs', []], ['move.mjs', [port]], ['engine.mjs', [port]], ['slots.mjs', []], ['skin.mjs', [port]], ['packs.mjs', [port]], ['crosshair.mjs', [port]], ['page.mjs', [port]], ['../audit-render.mjs', [port]]];
 let failed = 0;
 for (const [file, extra] of steps) {
   console.log(`\n=== ${file} ===`);
