@@ -24,27 +24,43 @@ export const FLAMMABILITY = {
 };
 
 const FIRE_TICK_INTERVAL = 30;
+const fireCache = new WeakMap();
+
+function scanChunkFires(chunk) {
+  const { data, secCount } = chunk;
+  const list = [];
+  for (let sy = 0; sy < WORLD_HEIGHT / 16; sy++) {
+    if (secCount && !secCount[sy]) continue; // seção vazia
+    for (let x = 0; x < CHUNK_SIZE; x++) for (let z = 0; z < CHUNK_SIZE; z++) for (let y = sy * 16; y < sy * 16 + 16; y++) {
+      if (stateId(data[chunkIndex(x, y, z)]) === 51) list.push(x, y, z);
+    }
+  }
+  return { ver: chunk.ver, list };
+}
 
 // Tick de fogo — processa blocos de fogo carregados
 export function tickFire(world, tickCount, weather, gameRules) {
   if (gameRules.doFireTick === false) return;
   if (tickCount % FIRE_TICK_INTERVAL !== 0) return;
 
+  // Antes: varria todas as células de todos os chunks carregados a cada 30 ticks (dezenas de milhões de leituras = pico de ~50 ms).
+  // Agora cada chunk guarda a lista de fogos da última varredura e só é varrido de novo quando muda (chunk.ver);
+  // varreduras novas são limitadas por chamada, espalhando o custo inicial.
   const updates = [];
+  let budget = 8;
   for (const chunk of world.chunks.values()) {
-    const { data, baseX, baseZ } = chunk;
-    for (let x = 0; x < CHUNK_SIZE; x++) {
-      for (let z = 0; z < CHUNK_SIZE; z++) {
-        for (let y = 0; y < WORLD_HEIGHT; y++) {
-          if (stateId(data[chunkIndex(x, y, z)]) === 51) {
-            updates.push({ x: baseX + x, y, z: baseZ + z });
-          }
-        }
-      }
+    let c = fireCache.get(chunk);
+    if (!c || c.ver !== chunk.ver) {
+      if (budget <= 0 && c) { /* usa a lista antiga; cada fogo é revalidado abaixo */ }
+      else if (budget <= 0) continue;
+      else { budget--; c = scanChunkFires(chunk); fireCache.set(chunk, c); }
     }
+    const l = c.list;
+    for (let k = 0; k < l.length; k += 3) updates.push({ x: chunk.baseX + l[k], y: l[k + 1], z: chunk.baseZ + l[k + 2] });
   }
 
   for (const f of updates) {
+    if (stateId(world.getBlock(f.x, f.y, f.z)) !== 51) continue; // lista pode estar desatualizada
     processFireBlock(world, f.x, f.y, f.z, tickCount, weather, gameRules);
   }
 }

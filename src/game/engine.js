@@ -1727,12 +1727,14 @@ export class GameEngine {
       this.updateDestroyOverlay();
       this.updatePlayerModel();
       this.updateRemotePlayers();
-      if (this.itemEntities) {
+      // Pausado em singleplayer o mundo congela (como no original): não há o que animar nos itens, mobs e partículas
+      const frozen = this.paused && !isOnline && !this.chatOpen;
+      if (this.itemEntities && !frozen) {
         const inv = this.inventory || this.player.inventory;
         this.itemEntities.update(Math.min(dt, 100) / 1000, this.player, inv, this.world, this.worldTime, this._cameraFrustum, this.camera);
       }
-      if (this.mobs) this.mobs.renderUpdate(this.worldTime / 20, this.player.pos, this._cameraFrustum);
-      if (this.particles) this.particles.renderUpdate();
+      if (this.mobs && !frozen) this.mobs.renderUpdate(this.worldTime / 20, this.player.pos, this._cameraFrustum);
+      if (this.particles && !frozen) this.particles.renderUpdate();
       perfMonitor.endStage('entities');
       perfMonitor.beginStage('render');
       this.renderer.render(this.scene, this.camera);
@@ -1749,7 +1751,8 @@ export class GameEngine {
     // RF-050: HUD no máximo 10×/s
     perfMonitor.beginStage('hud');
     // Com GUI/pausa aberta o HUD quase não muda: emitir 10×/s refazia a árvore React inteira (inventário com ~100 ícones) à toa
-    if (this.frame % (this.paused && !this.chatOpen ? 30 : 6) === 0) this.emitHud();
+    // Por tempo, não por quadro: a 2000 FPS "a cada 6 quadros" eram >300 renders React por segundo (era o que derrubava o FPS)
+    if (now - (this._hudAt || 0) >= (this.paused && !this.chatOpen ? 250 : 66)) this.emitHud();
     perfMonitor.endStage('hud');
     const info = perfMonitor.info;
     if (world) {
@@ -2156,6 +2159,7 @@ export class GameEngine {
   }
 
   emitHud() {
+    this._hudAt = performance.now();
     const p = this.player;
     const yaw = ((p.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     const deg = yaw * 180 / Math.PI;
@@ -2245,7 +2249,6 @@ export class GameEngine {
       noiseEvents: this.noiseSystem ? this.noiseSystem.events.length : 0,
       gunsEnabled: this.gameRules.gunsEnabled !== false,
       biome: this.world.getBiomeAt ? (this.world.getBiomeAt(Math.floor(p.pos.x), Math.floor(p.pos.z))?.name || '—') : '—',
-      dimension: 'overworld',
       moonPhase: Math.floor((this.worldTime / 24000) % 8),
       meshQueueSize: this.world.pendingMeshCount(),
       drawCalls: this.renderer?.info?.render?.calls || 0,
