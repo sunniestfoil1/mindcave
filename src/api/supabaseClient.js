@@ -129,6 +129,12 @@ export const mindcaveApi = {
       },
       create: async (item) => {
         const payload = toRoomPayload(item);
+        // A tabela em produção ainda tem as colunas antigas em camelCase como NOT NULL (worldId, worldName, hostId, hostName, code)
+        // ao lado das minúsculas. Enquanto a migração 20261014_rooms_legacy_columns.sql não roda, preenche as duas.
+        if (payload.worldid !== undefined) payload.worldId = payload.worldid;
+        if (payload.worldname !== undefined) payload.worldName = payload.worldname;
+        if (payload.hostid !== undefined) payload.hostId = payload.hostid;
+        if (payload.hostname !== undefined) payload.hostName = payload.hostname;
         const { data, error } = await supabase.from('rooms').insert(payload).select().single();
         if (error) throw error;
         return normalizeRoom(data);

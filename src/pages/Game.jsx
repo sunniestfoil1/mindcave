@@ -6,6 +6,7 @@ import { ClientWorld } from "@/game/world";
 import { GameEngine } from "@/game/engine";
 import { getWorld, loadDeltas, loadPlayer, savePlayer, saveDirtyChunks, touchWorld } from "@/game/save";
 import { seedFromString } from "@/game/prng";
+import { preloadLocalSkin } from "@/game/skinStore";
 import { DEFAULT_HOTBAR, CREATIVE_DEFAULT_HOTBAR } from "@/game/hotbar";
 import { stateId, chunkCoord } from "@/game/chunk";
 import { isWater, getBlock } from "@/game/blocks";
@@ -193,6 +194,7 @@ export default function Game() {
         }
         worldRecRef.current = world;
         const seed = seedFromString(world.seed);
+        preloadLocalSkin(); // decodifica a skin já, em paralelo com o banco e os chunks
         const deltas = await loadDeltas(worldId);
         let genParams = {};
         try { genParams = JSON.parse(world.genParams || '{}'); } catch {}

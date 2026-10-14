@@ -201,29 +201,58 @@ export function readSkinFile(file) {
   });
 }
 
-// Canvas 64×64 da skin escolhida (ou null se o pacote ainda não carregou)
-export async function getSkinCanvas(choice = getSkinChoice()) {
+// Canvas 64×64 da skin escolhida. Fica em cache (por escolha) e há leitura síncrona: o modelo/prévia só aparece quando a skin certa
+// já existe, então não há mais o Steve piscando antes da skin personalizada. Steve e Alex vêm de arquivos locais (não esperam o pacote de 106 MB).
+const _skinCanvases = new Map();   // chave → canvas pronto
+const _skinPromises = new Map();   // chave → promessa em andamento
+const skinKey = (c) => (c.kind === 'custom' ? `custom:${c.png.length}:${c.png.slice(-48)}` : c.kind);
+
+export function getSkinCanvasSync(choice = getSkinChoice()) {
+  return _skinCanvases.get(skinKey(choice)) || null;
+}
+
+function loadImageUrl(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+async function decodeSkin(choice) {
   if (choice.kind === 'custom') {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const cv = normalizeSkinImage(img);
-        if (cv) {
-          resolve(cv);
-        } else {
-          const fallbackCv = document.createElement('canvas');
-          fallbackCv.width = 64; fallbackCv.height = 64;
-          fallbackCv.getContext('2d').drawImage(img, 0, 0);
-          resolve(fallbackCv);
-        }
-      };
-      img.onerror = () => resolve(null);
-      img.src = choice.png;
-    });
+    const img = await loadImageUrl(choice.png);
+    if (!img) return null;
+    const cv = normalizeSkinImage(img);
+    if (cv) return cv;
+    const fallbackCv = document.createElement('canvas');
+    fallbackCv.width = 64; fallbackCv.height = 64;
+    fallbackCv.getContext('2d').drawImage(img, 0, 0);
+    return fallbackCv;
   }
+  const img = await loadImageUrl(`/assets/skins/${choice.kind}.png`);
+  if (img) { const cv = normalizeSkinImage(img); if (cv) return cv; }
   const { getPackCanvas, MC } = await import('./pack');
   return getPackCanvas(MC + `textures/entity/${choice.kind}.png`);
 }
+
+export function getSkinCanvas(choice = getSkinChoice()) {
+  const key = skinKey(choice);
+  const ready = _skinCanvases.get(key);
+  if (ready) return Promise.resolve(ready);
+  if (_skinPromises.has(key)) return _skinPromises.get(key);
+  const p = decodeSkin(choice).then((cv) => {
+    if (cv) { if (_skinCanvases.size > 8) _skinCanvases.delete(_skinCanvases.keys().next().value); _skinCanvases.set(key, cv); }
+    _skinPromises.delete(key);
+    return cv;
+  });
+  _skinPromises.set(key, p);
+  return p;
+}
+
+// Começa a decodificar a skin local sem esperar ninguém (chamado ao abrir o mundo, em paralelo com pacote e chunks)
+export function preloadLocalSkin() { return getSkinCanvas().catch(() => null); }
 
 export function isSlimSkin(choice = getSkinChoice()) {
   if (choice.kind === 'alex') return true;

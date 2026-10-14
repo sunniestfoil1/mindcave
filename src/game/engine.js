@@ -40,7 +40,7 @@ import { createAchievementState, serializeAchievements, deserializeAchievements,
 import { loadRealTextures, isRealTexturesLoaded, tickTextureAnimations } from './textures';
 import { lookDirFromAngles } from './viewMath';
 import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel, setModelHeldItem, setModelCape } from './playerModel';
-import { onSkinChange, onCapeChange, getCapeChoice } from './skinStore';
+import { onSkinChange, onCapeChange, getCapeChoice, preloadLocalSkin } from './skinStore';
 import { fetchCraftheadCape, fetchCraftheadSkin } from './crafthead';
 import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
 import { initBiomeTint } from './biomeTint';
@@ -293,6 +293,11 @@ export class GameEngine {
 
     // Modelo baseado em skin 64×64 (skinview3d) — já completo, sem GLB
 
+    // Skin local: decodifica em paralelo com o pacote e os chunks e aplica ANTES do primeiro quadro (sem Steve piscando)
+    const skinReady = preloadLocalSkin().then(() => applyPackSkin(this.playerModel, this.fpsArm));
+    // Skins/capas dos jogadores da sala: todas em paralelo, enquanto o mundo carrega
+    this._prefetchRemoteSkins([...(this.netManager?.room?.playerNames || [])].filter((n) => n && n !== this.player.nomeJogador));
+
     // PRD 04: Carregar pacote de recursos de 106MB com barra de progresso em tempo real (Cache API garante 0ms nas próximas visitas)
     if (this.onProgress) this.onProgress(0, 'Carregando pacote de recursos 1.8.9...');
     await ensurePack((prog) => {
@@ -309,6 +314,7 @@ export class GameEngine {
     this.world._lastLoadingRadius = this.loadingRadius;
     // PRD 23: as malhas chegam dos workers de forma assíncrona — espera curta pela área inicial
     await this.world.warmUp(this.scene, p.x, p.z, this.loadingRadius, p.y, 4000, this.onProgress);
+    await skinReady;
     if (this.disposed) return; // a tela foi fechada durante o carregamento
     perfMonitor.detectGpu(this.renderer.getContext());
 
@@ -2027,25 +2033,14 @@ export class GameEngine {
       .catch(() => { this._remoteCapeCache.set(name, null); });
   }
 
-  // Skin remota: busca pelo nickname do jogador (cacheada) e aplica textura normalizada ao modelo 3D
-  _ensureRemoteSkin(entry, name) {
-    if (!name || name === 'Player' || name === 'Steve') return;
+  // Skin remota: busca pelo nickname (cacheada). Todas as skins da sala são baixadas em paralelo (ver _prefetchRemoteSkins) e o modelo do
+  // jogador remoto só aparece quando a skin chegou (ou falhou/estourou 2,5 s), em vez de mostrar Steve e trocar depois.
+  _fetchRemoteSkin(name) {
     if (!this._remoteSkinCache) this._remoteSkinCache = new Map();
-    if (this._remoteSkinCache.has(name)) {
-      const v = this._remoteSkinCache.get(name);
-      if (v && !entry._skinApplied) {
-        const player = entry.group?.userData?.playerObject;
-        if (player) {
-          player.setSkinTexture(v.tex);
-          player.modelType = v.slim ? 'slim' : 'default';
-          entry._skinApplied = true;
-        }
-      }
-      return;
-    }
-    this._remoteSkinCache.set(name, undefined);
-    fetchCraftheadSkin(name)
-      .then((res) => {
+    if (!this._remoteSkinPromises) this._remoteSkinPromises = new Map();
+    if (this._remoteSkinPromises.has(name)) return this._remoteSkinPromises.get(name);
+    const p = fetchCraftheadSkin(name)
+      .then((res) => new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
           const cv = document.createElement('canvas');
@@ -2055,17 +2050,43 @@ export class GameEngine {
           tex.magFilter = THREE.NearestFilter;
           tex.minFilter = THREE.NearestFilter;
           tex.needsUpdate = true;
-          this._remoteSkinCache.set(name, { tex, slim: res.slim });
-          const player = entry.group?.userData?.playerObject;
-          if (player) {
-            player.setSkinTexture(tex);
-            player.modelType = res.slim ? 'slim' : 'default';
-            entry._skinApplied = true;
-          }
+          const v = { tex, slim: res.slim };
+          this._remoteSkinCache.set(name, v);
+          resolve(v);
         };
+        img.onerror = () => { this._remoteSkinCache.set(name, null); resolve(null); };
         img.src = res.png;
-      })
-      .catch(() => { this._remoteSkinCache.set(name, null); });
+      }))
+      .catch(() => { this._remoteSkinCache.set(name, null); return null; });
+    this._remoteSkinPromises.set(name, p);
+    return p;
+  }
+
+  _prefetchRemoteSkins(names) {
+    const todo = [...new Set(names)].filter((n) => n && n !== 'Player' && n !== 'Steve');
+    for (const n of todo) { this._fetchRemoteSkin(n); }
+    return Promise.all(todo.map((n) => this._fetchRemoteSkin(n)));
+  }
+
+  _ensureRemoteSkin(entry, name) {
+    const generic = !name || name === 'Player' || name === 'Steve';
+    if (generic) { entry.group.visible = true; return; }
+    if (!this._remoteSkinCache) this._remoteSkinCache = new Map();
+    const v = this._remoteSkinCache.get(name);
+    if (v === undefined) {
+      this._fetchRemoteSkin(name);
+      if (!entry.group.visible && performance.now() - (entry.born || 0) > 2500) entry.group.visible = true; // demorou demais: mostra o padrão
+      return;
+    }
+    if (v && !entry._skinApplied) {
+      const player = entry.group?.userData?.playerObject;
+      if (player) {
+        player.setSkinTexture(v.tex);
+        player.modelType = v.slim ? 'slim' : 'default';
+        entry._skinApplied = true;
+      }
+    }
+    entry.group.visible = true;
   }
 
   updateRemotePlayers() {
@@ -2081,12 +2102,12 @@ export class GameEngine {
         let entry = this._remoteMeshes.get(id);
         if (!entry) {
           const group = buildPlayerModel();
-          group.visible = true; // buildPlayerModel esconde o modelo local em 1ª pessoa; o remoto precisa aparecer
+          group.visible = false; // fica oculto até a skin chegar (ver _ensureRemoteSkin); buildPlayerModel já nasce oculto
           const tag = createNametag(rp.name || 'Player');
           tag.position.y = 2.35;
           group.add(tag);
           this.scene.add(group);
-          entry = { group, tag };
+          entry = { group, tag, born: performance.now() };
           this._remoteMeshes.set(id, entry);
         }
 

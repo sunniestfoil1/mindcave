@@ -405,6 +405,25 @@ const result = await page.evaluate(async () => {
     engine.onKey({ code: 'Escape', repeat: false, preventDefault() {}, target: document.body }, true);
     ok(engine.paused === true, 'com inventário/opções abertos, Esc não retoma o jogo por baixo');
     engine.guiOpenFn = () => false; engine.paused = false;
+
+    // ======== SKIN: sem Steve antes da skin personalizada (cache síncrono + modelo só com a skin certa) ========
+    {
+      const SS = await import('/src/game/skinStore.js');
+      const PM = await import('/src/game/playerModel.js');
+      const old = SS.getSkinChoice();
+      const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+      const cx = c.getContext('2d'); cx.fillStyle = '#ff0000'; cx.fillRect(0, 0, 64, 64);
+      SS.setSkinChoice({ kind: 'custom', png: c.toDataURL('image/png'), slim: false });
+      ok(SS.getSkinCanvasSync() === null, 'antes de decodificar não há skin em cache (o modelo fica oculto, não mostra Steve)');
+      await SS.preloadLocalSkin();
+      const cached = SS.getSkinCanvasSync();
+      ok(!!cached, 'depois de preloadLocalSkin a skin personalizada está em cache síncrono');
+      const pm = PM.buildPlayerModel();
+      const applied = await PM.applyPackSkin(pm, null);
+      const px = pm.userData.playerObject.skin.map?.image?.getContext?.('2d')?.getImageData(10, 10, 1, 1).data;
+      ok(applied && px && px[0] === 255 && px[1] === 0, 'o modelo recebe a skin personalizada (pixel vermelho), não o Steve');
+      SS.setSkinChoice(old);
+    }
     engine.stop?.();
   } catch (e) { out.push('ERRO ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')); }
   return out;

@@ -463,22 +463,36 @@ export function buildFirstPersonArm() {
 export async function loadFirstPersonArmGlb(_oldArm, _fpsScene) { return _oldArm; }
 
 // Aplica a skin padrão (steve.png) do pacote ao modelo do jogador e à mão em 1ª pessoa (MC24 §5.2)
-export async function applyPackSkin(playerModel, fpsArm) {
-  try {
-    const { getSkinCanvas, isSlimSkin } = await import('./skinStore');
-    const cv = await getSkinCanvas();
-    if (!cv) return;
-    const tex = new THREE.CanvasTexture(cv);
+const _skinTextures = new WeakMap(); // canvas → textura (um upload à GPU por skin, compartilhado entre modelos)
+function textureForCanvas(cv) {
+  let tex = _skinTextures.get(cv);
+  if (!tex) {
+    tex = new THREE.CanvasTexture(cv);
     tex.magFilter = THREE.NearestFilter;
     tex.minFilter = THREE.NearestFilter;
     tex.needsUpdate = true;
+    _skinTextures.set(cv, tex);
+  }
+  return tex;
+}
+
+// Aplica a skin escolhida ao modelo do jogador e à mão em 1ª pessoa. Com a skin já em cache aplica de forma síncrona (antes de qualquer
+// await), então o primeiro quadro já sai com a skin certa. Devolve true se aplicou.
+export async function applyPackSkin(playerModel, fpsArm) {
+  try {
+    const { getSkinCanvas, getSkinCanvasSync, isSlimSkin } = await import('./skinStore');
+    const cv = getSkinCanvasSync() || await getSkinCanvas();
+    if (!cv) return false;
+    const tex = textureForCanvas(cv);
     const player = playerModel?.userData?.playerObject;
     if (player) {
       player.setSkinTexture(tex);
       player.modelType = isSlimSkin() ? 'slim' : 'default';
     }
     if (fpsArm?.material) { fpsArm.material.map = tex; fpsArm.material.needsUpdate = true; }
+    return true;
   } catch (e) {
     console.warn('[PlayerModel] Falha ao aplicar skin:', e.message);
+    return false;
   }
 }

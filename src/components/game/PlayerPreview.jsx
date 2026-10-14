@@ -50,12 +50,12 @@ export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisibl
     camera.position.set(0, 0, 5);
 
     const model = buildPlayerModel();
-    model.visible = true;
+    model.visible = false; // só aparece quando a skin escolhida já foi aplicada (sem Steve piscando antes da skin personalizada)
     scene.add(model);
     const body = { vel: { x: 0, y: 0, z: 0 }, sprinting: false, sneaking: false, pitch: 0, isDead: false };
     const anim = createAnimationState();
     let raf = 0, disposed = false;
-    applyPackSkin(model, null).catch(() => {});
+    applyPackSkin(model, null).finally(() => { if (!disposed) model.visible = true; });
     modelRef.current = model;
     applyCapeToModel(model, capeRef.current);
 
