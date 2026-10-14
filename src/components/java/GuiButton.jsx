@@ -41,6 +41,9 @@ export default function GuiButton({ x, y, width = 200, label, onClick, disabled,
       onMouseLeave={() => setHover(false)}
       onClick={handleClick}
       title={title}
+      role="button"
+      aria-label={typeof label === 'string' ? label.replace(/§./g, '') : undefined}
+      aria-disabled={disabled ? 'true' : undefined}
     >
       <div style={{
         position: 'absolute', left: 0, top: 0,

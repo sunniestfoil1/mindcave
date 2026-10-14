@@ -3,6 +3,7 @@ import { GuiScreen, GuiButton, GuiText, JavaButton, useGui } from "@/components/
 import { useSettings } from "@/game/settingsStore";
 import { useT } from "@/game/i18n";
 import PlayerPreview from "@/components/game/PlayerPreview";
+import { getNickname, setNickname } from "@/game/guestIdentity";
 import { getSkinChoice, setSkinChoice, readSkinFile, getCapeChoice, setCapeChoice } from "@/game/skinStore";
 import { fetchCraftheadSkin, fetchCraftheadCape, fetchSkinFromUrl } from "@/game/crafthead";
 import { useSkinDrop } from "@/components/useSkinDrop";
@@ -16,7 +17,7 @@ const PARTS = [
   { key: 'hat', label: 'Chapéu' },
 ];
 
-function SkinContent({ onBack }) {
+export function SkinContent({ onBack, onSaved }) {
   const { scale, guiHeight } = useGui();
   const store = useSettings();
   const t = useT();
@@ -42,6 +43,10 @@ function SkinContent({ onBack }) {
     e.target.value = '';
     if (file) applyFile(file);
   };
+
+  const [name, setName] = useState(getNickname());
+  const [nameMsg, setNameMsg] = useState('');
+  const saveName = () => { const clean = setNickname(name); setName(clean); setNameMsg(`Nome salvo: ${clean}`); onSaved?.(clean); };
 
   const [cape, setCape] = useState(getCapeChoice());
   const [nick, setNick] = useState('');
@@ -95,7 +100,7 @@ function SkinContent({ onBack }) {
   return (
     <>
       <div style={{ position: 'absolute', left: '50%', top: 6 * scale, transform: 'translateX(-50%)' }}>
-        <GuiText text="Personalização de skin" color="#FFFFFF" shadow scale={scale} />
+        <GuiText text="Personalizar jogador" color="#FFFFFF" shadow scale={scale} />
       </div>
 
       <div
@@ -106,6 +111,26 @@ function SkinContent({ onBack }) {
           overflowY: 'auto', overflowX: 'hidden', paddingRight: 4 * scale,
         }}
       >
+        <Section>Nome no jogo</Section>
+        <div style={{ display: 'flex', gap: 4 * scale, justifyContent: 'center', alignItems: 'center', marginBottom: 3 * scale }}>
+          <input
+            value={name}
+            onChange={(e) => { setName(e.target.value); setNameMsg(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') saveName(); }}
+            placeholder="Seu nome (3 a 16 letras, números ou _)"
+            maxLength={16}
+            style={{
+              width: 170 * scale, height: 20 * scale,
+              background: '#000000', border: `${scale}px solid #A0A0A0`,
+              color: '#E0E0E0', caretColor: '#E0E0E0',
+              fontSize: `${8 * scale}px`, fontFamily: 'monospace',
+              padding: `0 ${4 * scale}px`, boxSizing: 'border-box',
+            }}
+          />
+          <JavaButton label="Salvar nome" onClick={saveName} disabled={!name.trim()} width={90} />
+        </div>
+        <Msg text={nameMsg} color="#55FF55" />
+
         <Section>Skin</Section>
         <div style={{ display: 'flex', gap: 6 * scale, justifyContent: 'center', alignItems: 'flex-start', marginBottom: 4 * scale }}>
           <div className="relative" style={{ width: 52 * scale, height: 70 * scale, background: '#000000', border: `${2 * scale}px solid #373737`, boxSizing: 'border-box', flexShrink: 0 }}>
@@ -178,10 +203,10 @@ function SkinContent({ onBack }) {
   );
 }
 
-export default function SkinPage({ onBack }) {
+export default function SkinPage({ onBack, onSaved }) {
   return (
     <GuiScreen>
-      <SkinContent onBack={onBack} />
+      <SkinContent onBack={onBack} onSaved={onSaved} />
     </GuiScreen>
   );
 }

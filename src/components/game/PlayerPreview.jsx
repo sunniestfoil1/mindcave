@@ -18,6 +18,9 @@ export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisibl
   const CENTER_X = feet.x - box.x;     // centro do corpo, a partir da esquerda da caixa
   const canvasRef = useRef(null);
   const mouse = useRef({ x: null, y: null });
+  const modelRef = useRef(null);
+  const capeRef = useRef(capeVisible);
+  capeRef.current = capeVisible;
 
   useEffect(() => {
     const onMove = (e) => { mouse.current = { x: e.clientX, y: e.clientY }; };
@@ -53,7 +56,8 @@ export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisibl
     const anim = createAnimationState();
     let raf = 0, disposed = false;
     applyPackSkin(model, null).catch(() => {});
-    applyCapeToModel(model, capeVisible);
+    modelRef.current = model;
+    applyCapeToModel(model, capeRef.current);
 
     const draw = () => {
       if (disposed) return;
@@ -79,12 +83,19 @@ export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisibl
       disposed = true;
       cancelAnimationFrame(raf);
       renderer.dispose();
+      modelRef.current = null;
       renderer.forceContextLoss(); // sem isto cada abertura do inventário deixava um contexto WebGL vivo até estourar o limite (o do jogo era perdido)
     };
-  }, [S, preset, capeVisible]);
+  }, [S, preset]);
+
+  // Capa ligada/desligada NÃO recria o renderer: um canvas cujo contexto foi perdido não aceita outro WebGLRenderer (getContext devolve null → "reading 'precision'")
+  useEffect(() => {
+    if (modelRef.current) applyCapeToModel(modelRef.current, capeVisible);
+  }, [capeVisible]);
 
   return (
     <canvas
+      key={`${S}|${box.x}|${box.y}|${box.w}|${box.h}|${feet.x}|${feet.y}|${unit}`}
       ref={canvasRef}
       style={{ position: 'absolute', left: box.x * S, top: box.y * S, width: box.w * S, height: box.h * S, pointerEvents: 'none' }}
     />

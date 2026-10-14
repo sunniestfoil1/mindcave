@@ -63,6 +63,9 @@ export function JavaButton({ label, value, options, onChange, onClick, disabled,
       onMouseLeave={() => setHover(false)}
       onClick={handleClick}
       onContextMenu={handleContext}
+      role="button"
+      aria-label={String(displayText).replace(/§./g, '')}
+      aria-disabled={disabled ? 'true' : undefined}
     >
       <ButtonBg width={width} scale={scale} stateY={stateY} disabled={disabled} />
       <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>

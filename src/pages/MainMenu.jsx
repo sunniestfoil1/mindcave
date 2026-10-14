@@ -8,7 +8,7 @@ import { settingsStore } from '@/game/settingsStore';
 import { getSkinFaceUrl } from '@/game/skinStore';
 import { onPackReady } from '@/game/pack';
 import { useT } from '@/game/i18n';
-import NicknameModal from '@/components/NicknameModal';
+import SkinPage from '@/components/options/SkinPage';
 
 const SPLASHES = [
   '100% puro!', 'Agora com multijogador!', 'Agora em 3D!', 'Milhões de pixels!',
@@ -147,15 +147,14 @@ export default function MainMenu() {
     })();
   }, []);
 
+  // Personalizar jogador usa a mesma tela do menu de opções (Opções > Personalização de skin)
+  if (showNickname) {
+    return <SkinPage onBack={() => setShowNickname(false)} onSaved={(name) => setUser(prev => prev ? { ...prev, full_name: name } : prev)} />;
+  }
+
   return (
     <GuiScreen>
-      <MainMenuContent user={user} onNickname={() => setShowNickname(true)} editingSkin={showNickname} />
-      {showNickname && (
-        <NicknameModal
-          onClose={() => setShowNickname(false)}
-          onSaved={(name) => setUser(prev => prev ? { ...prev, full_name: name } : prev)}
-        />
-      )}
+      <MainMenuContent user={user} onNickname={() => setShowNickname(true)} editingSkin={false} />
     </GuiScreen>
   );
 }
