@@ -63,7 +63,7 @@ export function buildGlintOverlay(root) {
   const links = [];
   root.traverse((o) => {
     if (!o.isMesh) return;
-    const sprite = !!(o.material && !Array.isArray(o.material) && o.material.map && o.geometry.type === 'PlaneGeometry');
+    const sprite = !!(o.material && !Array.isArray(o.material) && o.material.map && (o.geometry.type === 'PlaneGeometry' || o.geometry.userData?.extrudedSprite));
     const mat = makeGlintMaterial(sprite);
     const g = new THREE.Mesh(o.geometry, mat);
     g.position.copy(o.position); g.quaternion.copy(o.quaternion); g.scale.copy(o.scale).multiplyScalar(sprite ? 1 : 1.012);

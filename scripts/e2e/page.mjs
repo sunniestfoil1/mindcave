@@ -46,7 +46,7 @@ ok(!(await hasPauseMenu()) || !locked, 'jogando (sem menu de pausa) depois do cl
 // ---- chat: T, digita, Enter ----
 await page.keyboard.press('KeyT');
 await sleep(300);
-const inputVisible = await page.evaluate(() => !!document.querySelector('input[placeholder*="chat"]'));
+const inputVisible = await page.evaluate(() => !!document.querySelector('input[data-chat-input]'));
 ok(inputVisible, 'T abre o campo do chat');
 await page.keyboard.type('ola mundo');
 await page.keyboard.press('Enter');

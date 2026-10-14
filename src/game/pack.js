@@ -269,7 +269,7 @@ export function getPackJson(path) {
 }
 // Liga os pacotes extras (do mais prioritário ao menos). Chamado no boot, antes de qualquer textura ser pedida.
 // As folhas de GUI que o jogo mostra sem esperar o pacote base (widgets, icons) já saem daqui como URL pronta.
-const SYNC_GUI_TEXTURES = ['textures/gui/widgets.png', 'textures/gui/icons.png'];
+const SYNC_GUI_TEXTURES = ['textures/gui/widgets.png', 'textures/gui/icons.png', 'textures/font/ascii.png'];
 export async function setOverlays(list) {
   _overlays = list.map(({ id, buf }) => {
     const entries = parseZipEntries(buf);

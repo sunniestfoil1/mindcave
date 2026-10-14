@@ -1,5 +1,5 @@
 // Mão em 1ª pessoa — pose do braço como no ItemRenderer da 1.8.9, com o item na frente.
-// Decisão de jogo: o braço fica visível atrás do item segurado (pedido do jogador).
+// Com item na mão o braço não é desenhado (igual ao jogo original); só de mão vazia aparece o braço.
 import * as THREE from 'three';
 import { buildFirstPersonArm } from './playerModel';
 import { fastSin, fastCos } from './fastMath';
@@ -86,10 +86,9 @@ export function armMatrix(anim, partialTick = 0) {
   return M;
 }
 
-// Item segurado: cadeia exata do ItemRenderer.renderItemInFirstPerson da 1.8.9, com os valores "display.firstperson" dos modelos oficiais
-// (models/item/iron_sword.json etc.: rotação (0,-135,25), translação (0,4,2)/16, escala 1,7). Bloco não tem transform próprio (escala 1).
-// Ordem GL: golpe → posição base → equipar → giro de 45° → balanço do golpe → escala 0,4 → transform do modelo → escala 0,5 do RenderItem.
-// O mesh do item é normalizado para 1×1(×1) centrado; o "−0,5" do RenderItem já está embutido nisso.
+// Item segurado: cadeia do ItemRenderer.renderItemInFirstPerson. Ordem GL: golpe → posição base → equipar → giro de 45° → balanço do
+// golpe → escala 0,4 → transform do modelo. Item plano usa o transform do jogo original (1.7, ver abaixo); bloco segue o da 1.8.9
+// (sem transform próprio, escala 0,5 do RenderItem). O mesh do item é normalizado para 1×1(×1) centrado.
 export function itemMatrix(out, anim, heldDef, style, partialTick, time) {
   const pt = Math.min(1, Math.max(0, partialTick));
   const lerp = (a, b) => (a ?? b) + (b - (a ?? b)) * pt;
@@ -126,18 +125,26 @@ export function itemMatrix(out, anim, heldDef, style, partialTick, time) {
   if (anim.bowDrawing) m.multiply(T(0, 0, 0.04 * (anim.bowCharge || 0)));
   m.multiply(TMP.makeScale(0.4, 0.4, 0.4));
   if (style === 'sprite') {
+    // Item 2D na mão como no jogo original (animações 1.7: ItemRenderer.renderItem, caminho de item plano), medido nos prints do original
+    // (espada, cenoura e sementes, IoU ≈ 0,85–0,9 com estas constantes): translação (0, −0,3, 0), escala 1,5, giro Y 50°, giro Z 335°
+    // e o sprite de 1×1 com a origem num canto, deslocado (−0,9375, −0,0625, 0). A frente do sprite sai espelhada em x.
+    // O mesh daqui é centrado, tem a frente em +z e vem espelhado pelo engine (escala x negativa): centro (0,5, 0,5, −1/32) no espaço do sprite.
     const rod = heldDef && heldDef.name === 'fishing_rod';
-    m.multiply(T(0, 4 / 16, 2 / 16));
-    m.multiply(TMP.makeRotationY((rod ? 45 : -135) * DEG));
-    m.multiply(TMP.makeRotationZ(25 * DEG));
-    m.multiply(TMP.makeScale(1.7, 1.7, 1.7));
+    if (rod) m.multiply(TMP.makeRotationY(180 * DEG));
+    m.multiply(T(0, -0.3, 0));
+    m.multiply(TMP.makeScale(1.5, 1.5, 1.5));
+    m.multiply(TMP.makeRotationY(50 * DEG));
+    m.multiply(TMP.makeRotationZ(335 * DEG));
+    m.multiply(T(-0.9375 + 0.5, -0.0625 + 0.5, -1 / 32));
+    return m;
   }
   m.multiply(TMP.makeScale(0.5, 0.5, 0.5));
   return m;
 }
 
 export function poseHand(rig, anim, player, heldDef, hasItem, time, partialTick = 0, style = 'sprite') {
-  rig.arm.visible = true;
+  // ItemRenderer.renderItemInFirstPerson: com item na mão só o item é desenhado; o braço (renderPlayerArm) só aparece de mão vazia
+  rig.arm.visible = !hasItem;
   rig.arm.matrix.copy(armMatrix(anim, partialTick));
   if (hasItem) {
     rig.itemRoot.matrixAutoUpdate = false;

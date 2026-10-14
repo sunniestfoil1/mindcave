@@ -2,6 +2,7 @@
 // Overlay de chat com formatação §, histórico, autocomplete, links.
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { parseMcCodes, extractLinks, autocompleteChat, CHAT_COMMANDS, checkMention } from '@/game/net/chatSystem';
+import { useGuiScaleValue } from './GuiSprite';
 
 function McSpan({ part }) {
   const style = {
@@ -64,6 +65,7 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
   const [showHistory, setShowHistory] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
   const messagesRef = useRef([]);
 
   // Register callback for incoming messages
@@ -100,11 +102,21 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
     const interval = setInterval(() => {
       if (engine.chatOpen !== chatOpen) {
         setChatOpen(engine.chatOpen);
-        if (engine.chatOpen) setShowHistory(true);
+        if (engine.chatOpen) {
+          setShowHistory(true);
+          setInput(engine.chatPrefill || ''); // "/" abre o chat já com a barra
+          engine.chatPrefill = '';
+        }
       }
     }, 50);
     return () => clearInterval(interval);
   }, [engine, chatOpen]);
+
+  // Com a barra já digitada o cursor tem de ficar depois dela
+  useEffect(() => {
+    const el = inputRef.current;
+    if (chatOpen && el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  }, [chatOpen]);
 
   // Auto-scroll
   useEffect(() => {
@@ -173,26 +185,35 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
   }, [handleSend, history, historyIdx, input, playerNames, engine]);
 
   const myName = engine?.player?.nomeJogador || '';
+  const S = useGuiScaleValue();
+  // Canto inferior direito. Se a janela é estreita e a hotbar ocuparia o mesmo espaço, o chat sobe para acima da vida/hotbar
+  const free = Math.floor((window.innerWidth - 182 * S) / 2) - 16;
+  const narrow = free < 260;
+  const width = Math.min(440, narrow ? Math.floor(window.innerWidth * 0.5) : free);
+  const bottom = narrow ? 52 * S : 12;
 
   return (
     <>
-      {/* Container de Chat posicionado no canto superior direito e maior */}
-      <div className="fixed top-12 right-3 w-[440px] max-w-[90vw] z-50 flex flex-col gap-1.5 pointer-events-auto">
-        {/* Message display */}
+      <div className="fixed right-3 z-50 flex flex-col gap-1.5 pointer-events-auto" style={{ width, maxWidth: '90vw', bottom }}>
+        {/* Mensagens: as mais novas ficam coladas na caixa de digitação */}
         <div
           ref={scrollRef}
-          className={`w-full overflow-y-auto transition-all duration-200 ${chatOpen || showHistory ? 'max-h-[50vh] opacity-100' : 'max-h-48 opacity-80 pointer-events-none'}`}
+          className={`w-full overflow-y-auto flex flex-col transition-all duration-200 ${chatOpen || showHistory ? 'max-h-[50vh] opacity-100' : 'max-h-48 opacity-80 pointer-events-none'}`}
           style={{ scrollbarWidth: 'thin' }}
         >
-          {messages.slice(showHistory ? 0 : -12).map((msg, i) => (
-            <ChatLine key={i} msg={msg} myName={myName} />
-          ))}
+          <div className="mt-auto">
+            {messages.slice(showHistory ? 0 : -12).map((msg, i) => (
+              <ChatLine key={i} msg={msg} myName={myName} />
+            ))}
+          </div>
         </div>
 
-        {/* Input box */}
+        {/* Caixa de digitação */}
         {chatOpen && (
           <div className="w-full">
             <input
+              data-chat-input
+              ref={inputRef}
               autoFocus
               value={input}
               onChange={(e) => setInput(e.target.value.slice(0, 100))}
@@ -204,7 +225,6 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
                   setChatOpen(false);
                 }
               }}
-              placeholder="Digite no chat (Enter envia, Esc fecha)..."
               className="w-full bg-black/90 text-white text-sm px-3.5 py-2.5 rounded border border-emerald-500/50 shadow-xl outline-none font-mono"
             />
           </div>

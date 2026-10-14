@@ -15,9 +15,10 @@ export default function SurvivalHud({ hud }) {
         <div className="absolute inset-0 bg-orange-600/15 pointer-events-none" />
       )}
 
-      {/* Indicador de corrida alternada: só o texto, branco com sombra, na fonte e no tamanho do jogo (escala da GUI) */}
+      {/* Indicador de corrida alternada: só o texto, branco com sombra, na fonte e no tamanho do jogo (escala da GUI).
+          Posição medida no print do jogo original: caixa de 9 px de GUI com a base 3 px acima do rodapé, 4 px da esquerda */}
       {hud.sprintToggled && !hud.paused && (
-        <div style={{ position: 'absolute', left: 4 * S, bottom: 22 * S, width: 160 * S, height: 10 * S, pointerEvents: 'none' }}>
+        <div style={{ position: 'absolute', left: 5 * S, bottom: 3 * S, width: 160 * S, height: 9 * S, pointerEvents: 'none' }}>
           <McText text="[Sprinting (Toggled)]" x={0} y={0} S={S} color="#FFFFFF" shadow />
         </div>
       )}

@@ -10,7 +10,9 @@ import { addItem } from './inventory';
 import { playPopSound, playXpOrbSound } from './sounds';
 import { addXP } from './survival';
 import { stateId } from './chunk';
-import { MC, getPackUrl } from './pack';
+import { MC, getPackUrl, getPackCanvas } from './pack';
+import { getAtlasTileCanvas, getAtlasVersion } from './textures';
+import { extrudedGeometryFor } from './itemExtrude';
 import { itemIconFile, itemBlockTile, iconKey } from './gui/iconNames';
 import { fastSin } from './fastMath';
 
@@ -86,6 +88,18 @@ function crossBlockMesh(block, meta, atlas) {
   const rgb = (t) => (t ? new THREE.Color(t[0], t[1], t[2]) : new THREE.Color(0xffffff));
 
   if (tiles && atlas?.texture && tiles[tileName]) {
+    const tileCv = getAtlasTileCanvas(tileName);
+    if (tileCv) {
+      // flor, muda, grama alta, tocha...: sprite extrudado a partir do ladrilho do atlas (a tinta de bioma vai na cor do material)
+      const key = 'tile:' + tileName + ':' + getAtlasVersion();
+      let tex = iconTexCache.get(key);
+      if (!tex) {
+        tex = new THREE.CanvasTexture(tileCv);
+        tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
+        iconTexCache.set(key, tex);
+      }
+      return new THREE.Mesh(extrudedGeometryFor(key, tileCv, 0.32), spriteMaterial(key, tex, rgb(tint)));
+    }
     const t = tiles[tileName];
     const geo = new THREE.PlaneGeometry(0.32, 0.32);
     applyTileToFace(geo, 0, t);
@@ -135,27 +149,54 @@ function iconTexture(id, meta = 0) {
     ? MC + 'textures/blocks/' + blockTile + '.png'
     : MC + 'textures/items/' + iconName + '.png';
 
-  getPackUrl(path).then((url) => {
-    if (!url) return;
-    new THREE.TextureLoader().load(url, (tex) => {
-      tex.magFilter = THREE.NearestFilter;
-      tex.minFilter = THREE.NearestFilter;
-      iconTexCache.set(key, tex);
-      // Atualiza os planos já criados com este item
-      for (const e of pendingIconMeshes) {
-        if (e.iconKey !== key || !e.material) continue;
-        e.material.map = tex;
-        e.material.color.set(0xffffff);
-        e.material.transparent = true;
-        e.material.needsUpdate = true;
-        pendingIconMeshes.delete(e);
-      }
-    });
+  getPackCanvas(path).then((cv) => {
+    if (!cv) return;
+    spriteCanvasCache.set(key, cv);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    iconTexCache.set(key, tex);
+    // Os planos que já estavam na cena viram o item extrudado
+    for (const e of pendingIconMeshes) {
+      if (e.iconKey !== key || !e.material) continue;
+      applySprite(e, key, 0.3);
+      pendingIconMeshes.delete(e);
+    }
   }).catch(() => {});
 
   return null;
 }
 const pendingIconMeshes = new Set();
+const spriteCanvasCache = new Map();   // iconKey -> canvas do ícone (para a malha extrudada)
+const spriteMatCache = new Map();
+
+// Item 2D com espessura (frente, verso e laterais), iluminado pela cena
+function spriteMaterial(key, tex, tint) {
+  const k = key + '|' + (tint ? tint.getHex() : 'x');
+  let m = spriteMatCache.get(k);
+  if (!m) {
+    m = new THREE.MeshLambertMaterial({ map: tex, color: tint || 0xffffff, alphaTest: 0.1, side: THREE.DoubleSide, fog: false });
+    spriteMatCache.set(k, m);
+  }
+  return m;
+}
+
+function applySprite(mesh, key, size) {
+  const cv = spriteCanvasCache.get(key);
+  const tex = iconTexCache.get(key);
+  if (!cv || !tex) return false;
+  mesh.geometry = extrudedGeometryFor(key, cv, size);
+  mesh.material = spriteMaterial(key, tex);
+  return true;
+}
+
+// O ícone do item já está carregado (a malha extrudada pode ser montada)?
+export function isItemSpriteReady(item) {
+  const block = item.id < 256 ? BLOCKS[item.id] : null;
+  if (block && block.id > 0) return true;
+  return spriteCanvasCache.has(iconKey(item.id, item.meta || 0));
+}
 
 function planeMatFor(id, def, meta = 0) {
   const tex = iconTexCache.get(iconKey(id, meta));
@@ -195,7 +236,7 @@ export function createItemMesh(item, count = 1, atlas = null) {
       mesh = new THREE.Mesh(PLANE_GEO, planeMatFor(item.id, itemDef, item.meta || 0));
       mesh.itemId = item.id;
       mesh.iconKey = iconKey(item.id, item.meta || 0);
-      pendingIconMeshes.add(mesh);
+      if (!applySprite(mesh, mesh.iconKey, 0.3)) pendingIconMeshes.add(mesh);
     }
 
     // Deslocamento sutil para o efeito de pilha

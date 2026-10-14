@@ -48,7 +48,7 @@ import { initBiomeTint } from './biomeTint';
 import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener, playPopSound } from './sounds';
 import { createNametag } from './nametag';
 import { ParticleManager } from './particles';
-import { ItemEntityManager, createItemMesh } from './itemEntity';
+import { ItemEntityManager, createItemMesh, isItemSpriteReady } from './itemEntity';
 import { perfMonitor } from './perfMonitor';
 import { musicManager } from './musicManager';
 import { voiceChat } from './net/voiceChat';
@@ -470,7 +470,8 @@ export class GameEngine {
         this.wakeUp();
         return;
       }
-      if (down && (e.code === chatKey || e.code === cmdKey)) {
+      if (down && (e.code === chatKey || e.code === cmdKey || e.key === '/')) {
+        this.chatPrefill = e.code === chatKey ? '' : '/';
         this.chatOpen = true;
         document.exitPointerLock?.();
         this.emitHud();
@@ -497,7 +498,10 @@ export class GameEngine {
       return;
     }
     if (down && !this.paused) {
-      if (e.code === chatKey || e.code === cmdKey) {
+      // "/" abre o chat já com a barra digitada (GuiChat do 1.8.9). A barra vem por tecla física (Slash, teclado US) ou pelo
+      // caractere, que cobre o ABNT2, onde ela fica numa tecla diferente
+      if (e.code === chatKey || e.code === cmdKey || e.key === '/') {
+        this.chatPrefill = e.code === chatKey ? '' : '/';
         this.chatOpen = true;
         document.exitPointerLock?.();
         this.emitHud();
@@ -2849,14 +2853,18 @@ export class GameEngine {
       const blk = heldItem.id < 256 ? BLOCKS[heldItem.id] : null;
       const cutout = blk && (blk.model === 'cross' || blk.model === 'torch' || blk.model === 'crop' || !blk.solid);
       handStyle = blk && !cutout ? 'block' : 'sprite';
-      if (!this.fpsItem || this.fpsItem._itemId !== heldItem.id || this.fpsItem._glint !== glintOn) {
+      const spriteNow = isItemSpriteReady(heldItem);
+      if (!this.fpsItem || this.fpsItem._itemId !== heldItem.id || this.fpsItem._meta !== (heldItem.meta || 0) || this.fpsItem._glint !== glintOn || this.fpsItem._spriteReady !== spriteNow) {
         // Materiais são cacheados/partilhados — só remove do grupo, sem dispose
         if (this.fpsItem) this.fpsItemGroup.remove(this.fpsItem);
         if (this.fpsGlint) { this.fpsItemGroup.remove(this.fpsGlint.group); this.fpsGlint = null; }
         this.fpsItem = createItemMesh({ id: heldItem.id, meta: heldItem.meta || 0 }, 1, this.world?.atlas);
         this.fpsItem._itemId = heldItem.id;
+        this.fpsItem._meta = heldItem.meta || 0;
         this.fpsItem._glint = glintOn;
+        this.fpsItem._spriteReady = spriteNow;
         this.fpsItem.scale.setScalar(handStyle === 'block' ? 4 : 1 / (blk ? 0.32 : 0.3));
+        if (handStyle === 'sprite') this.fpsItem.scale.x *= -1; // a frente do item plano sai espelhada em x (ver itemMatrix)
         this.fpsItemGroup.add(this.fpsItem);
         if (glintOn) {
           this.fpsGlint = buildGlintOverlay(this.fpsItem);
