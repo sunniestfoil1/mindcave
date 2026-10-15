@@ -73,6 +73,8 @@ export class ClientWorld {
       { tiles: this.atlas.tiles, seed: this.seed, genOpts: this.generatorOpts },
       (slot, msg) => { msg.slot = slot; this.inbox.push(msg); },
     );
+    this._batchDepth = 0;
+    this._immediateDirtySecs = new Map();
   }
 
   getBiomeAt(x, z) {
@@ -177,32 +179,69 @@ export class ClientWorld {
     c.lightData[idx] = (maxSky << 4) | maxBlk;
   }
 
+  beginBatch() {
+    this._batchDepth = (this._batchDepth || 0) + 1;
+  }
+
+  endBatch() {
+    if (this._batchDepth > 0) this._batchDepth--;
+    if (this._batchDepth === 0) {
+      this.flushImmediateRebuilds();
+    }
+  }
+
+  _queueImmediateSection(c, sy) {
+    if (!c || sy < 0 || sy >= SECTIONS_PER_CHUNK) return;
+    if (!this._immediateDirtySecs) this._immediateDirtySecs = new Map();
+    this._immediateDirtySecs.set(`${c.k}:${sy}`, { c, sy });
+  }
+
+  // Se foram poucas seções (jogador minerando ou explosão contida), reconstrói na hora (0ms).
+  // Se foi uma explosão em massa (> 12 seções simultâneas), delega aos Web Workers em paralelo sem congelar o frame!
+  flushImmediateRebuilds() {
+    if (!this._immediateDirtySecs || this._immediateDirtySecs.size === 0) return;
+    const count = this._immediateDirtySecs.size;
+
+    if (count <= 12 && this.scene) {
+      const touchedChunks = new Set();
+      for (const { c, sy } of this._immediateDirtySecs.values()) {
+        if (this.chunks.get(c.k) !== c) continue;
+        if (c.secCount[sy] === 0) {
+          c.secOpaqueData[sy] = null;
+          c.secWaterData[sy] = null;
+        } else {
+          const yBase = sy * SECTION_SIZE;
+          const getBlockLocal = (lx, ly, lz) => c.data[chunkIndex(lx, yBase + ly, lz)];
+          const getBlockAbs = (wx, wy, wz) => this.getBlock(wx, wy, wz);
+          const getLightAbs = (wx, wy, wz) => this.getLight(wx, wy, wz);
+          const res = buildSectionMesh(
+            getBlockLocal,
+            sy,
+            c.baseX,
+            c.baseZ,
+            getBlockAbs,
+            getLightAbs,
+            this.atlas.tiles,
+            c.tint
+          );
+          c.secOpaqueData[sy] = res.opaque;
+          c.secWaterData[sy] = res.water;
+        }
+        touchedChunks.add(c);
+      }
+      for (const c of touchedChunks) {
+        c.colOpaqueMesh = rebuildChunkColumnMesh(this.scene, c.colOpaqueMesh, c.secOpaqueData, this.opaqueMat, 0, c.cx, c.cz, 0);
+        c.colWaterMesh = rebuildChunkColumnMesh(this.scene, c.colWaterMesh, c.secWaterData, this.waterMat, 1000, c.cx, c.cz, 0);
+      }
+    }
+
+    this._immediateDirtySecs.clear();
+  }
+
   // Reconstroi a seção 16³ sincronicamente na hora (0ms de latência visual ao quebrar/colocar blocos)
   _rebuildSectionImmediate(c, sy) {
-    if (!this.scene || sy < 0 || sy >= SECTIONS_PER_CHUNK) return;
-    if (c.secCount[sy] === 0) {
-      c.secOpaqueData[sy] = null;
-      c.secWaterData[sy] = null;
-    } else {
-      const yBase = sy * SECTION_SIZE;
-      const getBlockLocal = (lx, ly, lz) => c.data[chunkIndex(lx, yBase + ly, lz)];
-      const getBlockAbs = (wx, wy, wz) => this.getBlock(wx, wy, wz);
-      const getLightAbs = (wx, wy, wz) => this.getLight(wx, wy, wz);
-      const res = buildSectionMesh(
-        getBlockLocal,
-        sy,
-        c.baseX,
-        c.baseZ,
-        getBlockAbs,
-        getLightAbs,
-        this.atlas.tiles,
-        c.tint
-      );
-      c.secOpaqueData[sy] = res.opaque;
-      c.secWaterData[sy] = res.water;
-    }
-    c.colOpaqueMesh = rebuildChunkColumnMesh(this.scene, c.colOpaqueMesh, c.secOpaqueData, this.opaqueMat, 0, c.cx, c.cz, 0);
-    c.colWaterMesh = rebuildChunkColumnMesh(this.scene, c.colWaterMesh, c.secWaterData, this.waterMat, 1000, c.cx, c.cz, 0);
+    this._queueImmediateSection(c, sy);
+    if (!this._batchDepth) this.flushImmediateRebuilds();
   }
 
   setBlock(x, y, z, state) {
@@ -219,8 +258,10 @@ export class ClientWorld {
       if (old === 0) c.secCount[sy]++;
       else if (state === 0) c.secCount[sy]--;
 
-      // Atualiza a luz local imediatamente
-      this._patchImmediateLight(c, lx, y, lz, state);
+      // Em modo normal (1 bloco), atualiza a luz local na hora; em lote (explosão), os workers calculam juntos
+      if (!this._batchDepth) {
+        this._patchImmediateLight(c, lx, y, lz, state);
+      }
 
       if (!this._unsent.has(c)) {
         let list = this._blockUpdates.get(c);
@@ -228,17 +269,17 @@ export class ClientWorld {
         list.push(idx, state);
       }
 
-      // Se a alteração é perto do jogador (<= 2 chunks), reconstrói a malha NA HORA (0 ms de delay!)
+      // Se a alteração é perto do jogador (<= 2 chunks), enfileira para reconstrução imediata
       const isNearPlayer = Math.abs(cx - this._pcx) <= 2 && Math.abs(cz - this._pcz) <= 2;
       if (isNearPlayer && this.scene) {
-        this._rebuildSectionImmediate(c, sy);
+        this._queueImmediateSection(c, sy);
         const ly = y % SECTION_SIZE;
-        if (ly === 0 && sy > 0) this._rebuildSectionImmediate(c, sy - 1);
-        if (ly === SECTION_SIZE - 1 && sy < SECTIONS_PER_CHUNK - 1) this._rebuildSectionImmediate(c, sy + 1);
-        if (lx === 0) { const nc = this.chunks.get(chunkKey(cx - 1, cz)); if (nc) this._rebuildSectionImmediate(nc, sy); }
-        if (lx === CHUNK_SIZE - 1) { const nc = this.chunks.get(chunkKey(cx + 1, cz)); if (nc) this._rebuildSectionImmediate(nc, sy); }
-        if (lz === 0) { const nc = this.chunks.get(chunkKey(cx, cz - 1)); if (nc) this._rebuildSectionImmediate(nc, sy); }
-        if (lz === CHUNK_SIZE - 1) { const nc = this.chunks.get(chunkKey(cx, cz + 1)); if (nc) this._rebuildSectionImmediate(nc, sy); }
+        if (ly === 0 && sy > 0) this._queueImmediateSection(c, sy - 1);
+        if (ly === SECTION_SIZE - 1 && sy < SECTIONS_PER_CHUNK - 1) this._queueImmediateSection(c, sy + 1);
+        if (lx === 0) { const nc = this.chunks.get(chunkKey(cx - 1, cz)); if (nc) this._queueImmediateSection(nc, sy); }
+        if (lx === CHUNK_SIZE - 1) { const nc = this.chunks.get(chunkKey(cx + 1, cz)); if (nc) this._queueImmediateSection(nc, sy); }
+        if (lz === 0) { const nc = this.chunks.get(chunkKey(cx, cz - 1)); if (nc) this._queueImmediateSection(nc, sy); }
+        if (lz === CHUNK_SIZE - 1) { const nc = this.chunks.get(chunkKey(cx, cz + 1)); if (nc) this._queueImmediateSection(nc, sy); }
       }
 
       // Continua agendando nos workers em segundo plano para recalcular a iluminação global exata
@@ -250,9 +291,13 @@ export class ClientWorld {
       if (lx === CHUNK_SIZE - 1) this._markNeighbor(cx + 1, cz, sy);
       if (lz === 0) this._markNeighbor(cx, cz - 1, sy);
       if (lz === CHUNK_SIZE - 1) this._markNeighbor(cx, cz + 1, sy);
+
+      if (!this._batchDepth) {
+        this.flushImmediateRebuilds();
+      }
     }
     c.changes.set(idx, state);
-    if (this.onBlockChange) this.onBlockChange(x, y, z);
+    if (this.onBlockChange && !this._batchDepth) this.onBlockChange(x, y, z);
     return old;
   }
 

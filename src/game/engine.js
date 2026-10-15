@@ -31,9 +31,8 @@ import { GunController } from './guns/shooting';
 import { NoiseSystem } from './guns/noiseSystem';
 import { getGunDef, getGunState, createGunState, GUNS, isGunItem, isAccessoryItem } from './guns/registry';
 import { DEFAULT_GAME_RULES } from './constants';
-import { isGun, isAccessory } from './items';
 import { RedstoneSystem } from './redstone';
-import { explode, getExplosionDamage } from './explosions';
+import { explode, getExplosionDamage, canPlayExplosionSound } from './explosions';
 import { tickAgriculture, applyBonemeal, trampleFarmland, harvestCrop } from './agriculture';
 import { createStats, serializeStats, deserializeStats, addStat, addStatByType } from './stats';
 import { createAchievementState, serializeAchievements, deserializeAchievements, tryUnlock, checkStatAchievements } from './achievements';
@@ -3322,12 +3321,38 @@ export class GameEngine {
   }
 
   detonate(pos, power) {
-    playExplodeSound(pos);
+    if (canPlayExplosionSound()) {
+      playExplodeSound(pos);
+    }
     const result = explode(this.world, pos, power, {
       fire: false,
       breakBlocks: this.gameRules.explosionsBreakBlocks !== false,
       dropItems: this.gameRules.doTileDrops !== false,
     });
+
+    // Partículas de explosão controladas (estilo 1.8.9)
+    if (this.particles) {
+      this.particles.spawnNamed?.('hugeexplosion', pos.x, pos.y, pos.z, 1);
+      this.particles.spawnNamed?.('smoke', pos.x, pos.y, pos.z, 8);
+    }
+
+    // Desova drops agrupados (máximo 64 por entidade — zero lag de centenas de 3D meshes)
+    if (this.itemEntities && result.droppedItems && result.droppedItems.length > 0) {
+      for (const d of result.droppedItems) {
+        const vel = {
+          x: (Math.random() - 0.5) * 1.5,
+          y: 1.5 + Math.random() * 1.5,
+          z: (Math.random() - 0.5) * 1.5,
+        };
+        this.itemEntities.spawnItem(
+          { id: d.id, count: d.count || 1, meta: d.meta || 0 },
+          { x: d.x, y: d.y, z: d.z },
+          vel,
+          10
+        );
+      }
+    }
+
     // Dano ao jogador
     const p = this.player;
     const pDmg = getExplosionDamage(p.pos, pos, power);
