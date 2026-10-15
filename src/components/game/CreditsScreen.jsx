@@ -1,63 +1,86 @@
 import React, { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { GuiScreen, GuiButton, GuiText, useGui } from '@/components/java';
 
 const DEVS = ['Junior', 'Deyvid'];
 const LIBS = [
-  { name: 'Three.js', license: 'MIT', url: 'https://threejs.org' },
-  { name: 'React', license: 'MIT', url: 'https://react.dev' },
-  { name: 'Tailwind CSS', license: 'MIT', url: 'https://tailwindcss.com' },
-  { name: 'shadcn/ui', license: 'MIT', url: 'https://ui.shadcn.com' },
-  { name: 'lucide-react', license: 'ISC', url: 'https://lucide.dev' },
-  { name: 'Supabase JS', license: 'MIT', url: 'https://supabase.com' },
-  { name: 'date-fns', license: 'MIT', url: 'https://date-fns.org' },
-  { name: 'recharts', license: 'MIT', url: 'https://recharts.org' },
-  { name: 'framer-motion', license: 'MIT', url: 'https://www.framer.com/motion' },
-  { name: 'react-leaflet', license: 'MIT', url: 'https://react-leaflet.js.org' },
+  { name: 'Three.js', license: 'MIT' },
+  { name: 'React', license: 'MIT' },
+  { name: 'Tailwind CSS', license: 'MIT' },
+  { name: 'shadcn/ui', license: 'MIT' },
+  { name: 'Supabase JS', license: 'MIT' },
 ];
 
-export default function CreditsScreen({ onClose }) {
+function CreditsContent({ onClose }) {
+  const { guiHeight, scale } = useGui();
   const [scrollY, setScrollY] = useState(0);
 
   useEffect(() => {
     const id = setInterval(() => {
-      setScrollY(y => {
-        if (y > 600) return -100;
-        return y + 0.5;
-      });
+      setScrollY((y) => (y > 420 ? -80 : y + 0.5));
     }, 30);
-    return () => clearInterval(id);
-  }, []);
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
+  const Line = ({ text, color = '#FFFFFF', s = scale, gap = 6 }) => (
+    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: gap * scale }}>
+      <GuiText text={text} color={color} shadow scale={s} />
+    </div>
+  );
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center overflow-hidden">
-      <button onClick={onClose} className="absolute top-4 right-4 text-white/40 hover:text-white z-10">
-        <X size={24} />
-      </button>
-      <div className="text-center" style={{ transform: `translateY(${-scrollY}px)`, marginTop: '100vh' }}>
-        <h1 className="text-4xl font-bold text-white mb-2" style={{ fontFamily: 'monospace' }}>MIND CAVE</h1>
-        <p className="text-yellow-300 text-sm mb-8">dev-build</p>
+    <>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          bottom: 36 * scale,
+          overflow: 'hidden',
+          display: 'flex',
+          justifyContent: 'center',
+        }}
+      >
+        <div style={{ transform: `translateY(${(guiHeight - 40 - scrollY) * scale}px)`, textAlign: 'center' }}>
+          <Line text="=== MIND CAVE ===" color="#FFFF55" s={scale * 1.5} gap={10} />
+          <Line text="Minecraft 1.8.9 Web Edition" color="#A0A0A0" gap={16} />
 
-        <h2 className="text-xl text-white/80 font-semibold mb-4">Desenvolvedores</h2>
-        {DEVS.map(d => <p key={d} className="text-white/60 text-sm mb-1">{d}</p>)}
+          <Line text="Desenvolvedores" color="#55FFFF" gap={6} />
+          {DEVS.map((d) => (
+            <Line key={d} text={d} color="#FFFFFF" gap={4} />
+          ))}
 
-        <div className="h-8" />
-        <h2 className="text-xl text-white/80 font-semibold mb-4">Bibliotecas</h2>
-        {LIBS.map(l => (
-          <div key={l.name} className="mb-2">
-            <span className="text-white/70 text-sm">{l.name}</span>
-            <span className="text-white/40 text-xs ml-2">{l.license}</span>
-          </div>
-        ))}
+          <div style={{ height: 14 * scale }} />
+          <Line text="Tecnologias & Bibliotecas" color="#55FFFF" gap={6} />
+          {LIBS.map((l) => (
+            <Line key={l.name} text={`${l.name} (${l.license})`} color="#CCCCCC" gap={4} />
+          ))}
 
-        <div className="h-8" />
-        <h2 className="text-xl text-white/80 font-semibold mb-4">Atribuições de Assets</h2>
-        <p className="text-white/50 text-sm">Interface, texturas e modelos oficiais do Minecraft 1.8.9 (pacote de assets); demais texturas e sons próprios, gerados proceduralmente.</p>
-        <p className="text-white/40 text-xs mt-2">Atribuições específicas são geradas automaticamente a partir das licenças cadastradas no Studio.</p>
+          <div style={{ height: 14 * scale }} />
+          <Line text="Atribuições de Assets" color="#55FFFF" gap={6} />
+          <Line text="Interface, texturas e modelos baseados no Minecraft 1.8.9" color="#A0A0A0" gap={4} />
+          <Line text="Trilha sonora original por C418" color="#A0A0A0" gap={16} />
 
-        <div className="h-8" />
-        <p className="text-white/30 text-xs">Obrigado por jogar Mind Cave.</p>
-        <div className="h-[100vh]" />
+          <Line text="Obrigado por jogar Mind Cave!" color="#55FF55" gap={12} />
+        </div>
       </div>
+
+      <GuiButton x={-100} y={guiHeight - 28} width={200} label="Concluído" onClick={onClose} />
+    </>
+  );
+}
+
+export default function CreditsScreen({ onClose }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
+      <GuiScreen background="dirt">
+        <CreditsContent onClose={onClose} />
+      </GuiScreen>
     </div>
   );
 }

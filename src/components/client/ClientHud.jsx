@@ -3,6 +3,7 @@ import { McText, useGuiScaleValue } from '@/components/game/GuiSprite';
 import ItemSlot from '@/components/game/ItemSlot';
 import { ITEMS } from '@/game/items';
 import { clientStore, useClientStore } from '@/game/client/clientStore';
+import { getSelectedPackIds } from '@/game/resourcePacks';
 
 // Widgets de HUD dos módulos do Mind Client (FPS, CPS, Coordinates, Direction, Keystrokes, Memory, Ping, Armor HUD).
 // Texto na fonte do jogo, em px de GUI como o resto do HUD; só os módulos ligados são desenhados.
@@ -13,18 +14,26 @@ function Keystrokes({ engine, S }) {
   const showMouse = clientStore.get('keystrokes', 'mouse');
   const showSpace = clientStore.get('keystrokes', 'space');
   useEffect(() => {
-    // as teclas mudam mais rápido que o HUD (10 Hz): lê direto do motor a cada quadro, só com o módulo ligado
-    let raf;
     let last = '';
-    const loop = () => {
+    const update = () => {
       const k = engine?.keys || {};
       const m = engine?.mouseBtn || {};
       const sig = [k.KeyW, k.KeyA, k.KeyS, k.KeyD, k.Space, m[0], m[2]].map((v) => (v ? 1 : 0)).join('');
-      if (sig !== last) { last = sig; tick((n) => n + 1); }
-      raf = requestAnimationFrame(loop);
+      if (sig !== last) {
+        last = sig;
+        tick((n) => n + 1);
+      }
     };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    window.addEventListener('keydown', update);
+    window.addEventListener('keyup', update);
+    window.addEventListener('mousedown', update);
+    window.addEventListener('mouseup', update);
+    return () => {
+      window.removeEventListener('keydown', update);
+      window.removeEventListener('keyup', update);
+      window.removeEventListener('mousedown', update);
+      window.removeEventListener('mouseup', update);
+    };
   }, [engine]);
   const keys = engine?.keys || {};
   const mouse = engine?.mouseBtn || {};
@@ -101,6 +110,27 @@ export default function ClientHud({ hud, engine }) {
   if (clientStore.isOn('ping') && hud.pings && hud.pings.length > 1) {
     const me = hud.pings.find((p) => p.name === hud.selfName);
     if (me && me.pingMs != null) out.push(txt(`Ping: ${Math.round(me.pingMs)} ms`, { right: 4 * S, top: (clientStore.isOn('memory') ? 16 : 4) * S }, 'ping'));
+  }
+  if (clientStore.isOn('packoverlay')) {
+    const packs = getSelectedPackIds();
+    const activePackName = packs.length > 0 ? packs[0].replace('.zip', '') : 'Padrão 1.8.9';
+    const pos = clientStore.get('packoverlay', 'position') || 'top-right';
+    const style = pos === 'top-left'
+      ? { left: 4 * S, top: (clientStore.isOn('direction') ? 28 : (clientStore.isOn('coordinates') ? 16 : 4)) * S }
+      : pos === 'bottom-left'
+      ? { left: 4 * S, bottom: 44 * S }
+      : { right: 4 * S, top: ((clientStore.isOn('memory') ? 12 : 0) + (clientStore.isOn('ping') ? 12 : 0) + 4) * S };
+
+    out.push(
+      <div key="packoverlay" style={{
+        position: 'absolute', pointerEvents: 'none', ...style,
+        display: 'flex', alignItems: 'center', gap: 3 * S,
+        background: 'rgba(0, 0, 0, 0.45)', border: `${Math.max(1, S / 2)}px solid rgba(255, 255, 255, 0.25)`,
+        padding: `${2 * S}px ${4 * S}px`, boxSizing: 'border-box',
+      }}>
+        <McText text={`[${activePackName}]`} x={0} y={0} S={S} color="#FFFFA0" shadow />
+      </div>
+    );
   }
   return (
     <div className="pointer-events-none fixed inset-0 select-none" data-client-hud>

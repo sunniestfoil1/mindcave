@@ -44,6 +44,7 @@ import { onSkinChange, onCapeChange, getCapeChoice, preloadLocalSkin } from './s
 import { fetchCraftheadCape, fetchCraftheadSkin } from './crafthead';
 import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
 import { createCrosshair } from './crosshair';
+import { createMotionBlur } from './motionBlur';
 import { clientStore } from './client/clientStore';
 import { initBiomeTint } from './biomeTint';
 import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener, playPopSound } from './sounds';
@@ -172,6 +173,7 @@ export class GameEngine {
     this.renderer.setSize(w, h, false);
     this.renderer.setClearColor(0xc0d8ff, 1); // cor do horizonte — evita tela preta antes dos chunks carregarem
     this.crosshair = createCrosshair(this.renderer);
+    this.motionBlur = createMotionBlur(this.renderer);
     // módulo Hitbox do Mind Client liga/desliga as caixas de colisão (F3 + B continua valendo)
     this.showHitboxes = clientStore.isOn('hitbox') || this.showHitboxes;
     this._unsubClientStore = clientStore.subscribe(() => { this.showHitboxes = clientStore.isOn('hitbox'); });
@@ -1796,7 +1798,19 @@ export class GameEngine {
       if (this.particles && !frozen) this.particles.renderUpdate();
       perfMonitor.endStage('entities');
       perfMonitor.beginStage('render');
-      this.renderer.render(this.scene, this.camera);
+      const mbOn = clientStore.isOn('motionblur');
+      const mbAmount = mbOn ? clientStore.get('motionblur', 'amount') || 4 : 0;
+      if (mbOn && this.motionBlur && !this.paused) {
+        this.motionBlur.renderWithBlur(
+          () => this.renderer.render(this.scene, this.camera),
+          mbAmount,
+          this.canvas.clientWidth,
+          this.canvas.clientHeight,
+          this.renderer.getPixelRatio()
+        );
+      } else {
+        this.renderer.render(this.scene, this.camera);
+      }
       this.updateFirstPersonHand();
       // showCrosshair() do 1.8.9: some com o F3 (que desenha os eixos), com F1 e com qualquer tela aberta
       this.crosshair?.render(
@@ -3142,6 +3156,7 @@ export class GameEngine {
     this.tntEntities = [];
     this.pendingTnt = [];
     this.crosshair?.dispose();
+    this.motionBlur?.dispose();
     this._unsubClientStore?.();
     if (this.sky) this.sky.dispose();
     if (this.weather) this.weather.dispose();

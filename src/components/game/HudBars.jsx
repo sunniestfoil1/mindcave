@@ -1,8 +1,8 @@
-// Hotbar, vida, armadura, fome, bolhas de ar e barra de XP com widgets.png e icons.png, em escala inteira e nas posições do
-// GuiIngame da 1.8.9. Coordenadas locais em px de GUI: y = 0 é 49 px acima da base da tela (i = centro da tela).
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import ItemSlot from './ItemSlot';
 import { Sprite, McText, usePackTexture, useGuiScaleValue } from './GuiSprite';
+import { ITEMS } from '@/game/items';
+import { BLOCKS, blockDisplayName } from '@/game/blocks';
 
 const BAR_H = 49;
 
@@ -16,7 +16,17 @@ function useViewportWidth() {
   return w;
 }
 
-// Texto verde do nível de XP com contorno preto (4 cópias pretas deslocadas, como no jogo)
+function getHeldItemName(item) {
+  if (!item || !item.id || item.id <= 0) return '';
+  if (item.customName || item.name) return item.customName || item.name;
+  if (item.id < 256) {
+    const b = BLOCKS[item.id];
+    return (b && blockDisplayName(item.id, item.meta)) || b?.namePt || b?.name || '';
+  }
+  const it = ITEMS[item.id];
+  return it?.namePt || it?.name || '';
+}
+
 function XpLevel({ level, x, y, S }) {
   const t = String(level);
   return (
@@ -34,77 +44,163 @@ export default function HudBars({ hud }) {
   const vw = useViewportWidth();
   const widgets = usePackTexture('textures/gui/widgets.png');
   const icons = usePackTexture('textures/gui/icons.png');
+
+  const [heldLabel, setHeldLabel] = useState('');
+  const [heldAlpha, setHeldAlpha] = useState(0);
+  const lastKeyRef = useRef('');
+
+  const slots = hud?.hotbar || [];
+  const selectedSlot = hud?.selectedSlot ?? 0;
+  const currentItem = slots[selectedSlot];
+  const currentKey = `${selectedSlot}:${currentItem?.id || 0}:${currentItem?.meta || 0}`;
+
+  useEffect(() => {
+    if (currentKey === lastKeyRef.current) return undefined;
+    lastKeyRef.current = currentKey;
+    const label = getHeldItemName(currentItem);
+    if (!label) {
+      setHeldAlpha(0);
+      return undefined;
+    }
+    setHeldLabel(label);
+    setHeldAlpha(1);
+    const fadeStart = setTimeout(() => setHeldAlpha(0), 2000);
+    return () => clearTimeout(fadeStart);
+  }, [currentKey, currentItem]);
+
   if (!hud) return null;
 
   const left = Math.floor((vw - 182 * S) / 2);
-  const slots = hud.hotbar || [];
   const isCreative = hud.gamemode === 'creative';
   const isSpectator = hud.gamemode === 'spectator';
   const showStats = !isCreative && !isSpectator;
 
-  // Vida, absorção, armadura e fome em meios pontos
+  const effects = hud.effects || [];
+  const hasPoison = effects.some((e) => e.type === 'poison');
+  const hasWither = effects.some((e) => e.type === 'wither');
+  const hasRegen = effects.some((e) => e.type === 'regeneration');
+  const hasHungerEffect = effects.some((e) => e.type === 'hunger');
+
+  const heartV = hud.isHardcore ? 45 : 0;
+  const heartBaseU = hasWither ? 124 : hasPoison ? 88 : 52;
+
   const health = Math.max(0, hud.health || 0);
-  const hearts = [];
   const absorption = hud.absorption || 0;
+  const hearts = [];
   for (let i = 0; i < 10; i++) {
-    const full = health >= (i + 1) * 2, half = !full && health === i * 2 + 1;
-    hearts.push({ i, kind: full ? 'full' : half ? 'half' : 'empty', abs: i < Math.floor(absorption / 2) });
+    const full = health >= (i + 1) * 2;
+    const half = !full && health === i * 2 + 1;
+    hearts.push({
+      i,
+      kind: full ? 'full' : half ? 'half' : 'empty',
+      abs: i < Math.floor(absorption / 2),
+    });
   }
+
   const hungerPts = Math.max(0, hud.hunger ?? 20);
   const armorPts = hud.armor || 0;
-  const hurtBlink = hud.hurtTime > 0 && Math.floor(hud.hurtTime / 3) % 2 === 1; // contorno branco piscando ao tomar dano
+  const hurtBlink = hud.hurtTime > 0 && Math.floor(hud.hurtTime / 3) % 2 === 1;
   const lowHealthShake = health <= 4 && showStats;
+  const regenBounceIdx = hasRegen ? Math.floor((hud.worldTime || 0) / 2) % 25 : -1;
 
   return (
     <div
       className="pointer-events-none select-none"
-      style={{ position: 'fixed', left, bottom: 0, width: 182 * S, height: BAR_H * S, zIndex: 30, imageRendering: 'pixelated' }}
+      style={{
+        position: 'fixed',
+        left,
+        bottom: 0,
+        width: 182 * S,
+        height: BAR_H * S,
+        zIndex: 30,
+        imageRendering: 'pixelated',
+      }}
     >
+      {/* Nome do item selecionado acima da Hotbar (1.8.9) */}
+      {heldLabel && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: (showStats ? -12 : 12) * S,
+            opacity: heldAlpha,
+            transition: heldAlpha === 0 ? 'opacity 400ms linear' : 'none',
+            pointerEvents: 'none',
+          }}
+        >
+          <McText text={heldLabel} x={91} y={0} S={S} color="#FFFFFF" shadow align="center" />
+        </div>
+      )}
+
       {showStats && (
         <>
-          {/* Armadura (acima da vida): fundo (16,9), meio (25,9), cheio (34,9) */}
-          {armorPts > 0 && Array.from({ length: 10 }).map((_, i) => {
-            const full = armorPts >= (i + 1) * 2, half = !full && armorPts === i * 2 + 1;
-            return (
-              <React.Fragment key={'ar' + i}>
-                <Sprite url={icons} u={16} v={9} w={9} h={9} S={S} x={i * 8} y={0} />
-                {(full || half) && <Sprite url={icons} u={full ? 34 : 25} v={9} w={9} h={9} S={S} x={i * 8} y={0} />}
-              </React.Fragment>
-            );
-          })}
+          {/* Armadura */}
+          {armorPts > 0 &&
+            Array.from({ length: 10 }).map((_, i) => {
+              const full = armorPts >= (i + 1) * 2;
+              const half = !full && armorPts === i * 2 + 1;
+              return (
+                <React.Fragment key={'ar' + i}>
+                  <Sprite url={icons} u={16} v={9} w={9} h={9} S={S} x={i * 8} y={0} />
+                  {(full || half) && <Sprite url={icons} u={full ? 34 : 25} v={9} w={9} h={9} S={S} x={i * 8} y={0} />}
+                </React.Fragment>
+              );
+            })}
 
-          {/* Vida: fundo (16,0) [piscando: (25,0)], cheio (52,0), meio (61,0); absorção (160,0)/(169,0) */}
+          {/* Corações (Normal / Hardcore / Veneno / Wither / Absorção / Regeneração) */}
           {hearts.map((h) => {
-            const y = 10 + (lowHealthShake && (h.i + Math.floor((hud.worldTime || 0) / 3)) % 5 === 0 ? -1 : 0);
+            const shakeY = lowHealthShake && (h.i + Math.floor((hud.worldTime || 0) / 3)) % 5 === 0 ? -1 : 0;
+            const regenY = h.i === regenBounceIdx ? -2 : 0;
+            const y = 10 + shakeY + regenY;
             return (
               <React.Fragment key={'h' + h.i}>
-                <Sprite url={icons} u={hurtBlink ? 25 : 16} v={0} w={9} h={9} S={S} x={h.i * 8} y={y} />
-                {h.kind !== 'empty' && !h.abs && <Sprite url={icons} u={h.kind === 'full' ? 52 : 61} v={0} w={9} h={9} S={S} x={h.i * 8} y={y} />}
-                {h.abs && <Sprite url={icons} u={160} v={0} w={9} h={9} S={S} x={h.i * 8} y={y} />}
+                <Sprite url={icons} u={hurtBlink ? 25 : 16} v={heartV} w={9} h={9} S={S} x={h.i * 8} y={y} />
+                {h.kind !== 'empty' && !h.abs && (
+                  <Sprite
+                    url={icons}
+                    u={h.kind === 'full' ? heartBaseU : heartBaseU + 9}
+                    v={heartV}
+                    w={9}
+                    h={9}
+                    S={S}
+                    x={h.i * 8}
+                    y={y}
+                  />
+                )}
+                {h.abs && <Sprite url={icons} u={160} v={heartV} w={9} h={9} S={S} x={h.i * 8} y={y} />}
               </React.Fragment>
             );
           })}
 
-          {/* Fome: da direita para a esquerda; fundo (16,27), cheio (52,27), meio (61,27) */}
+          {/* Fome */}
           {Array.from({ length: 10 }).map((_, k) => {
-            const full = hungerPts >= (k + 1) * 2, half = !full && hungerPts === k * 2 + 1;
+            const full = hungerPts >= (k + 1) * 2;
+            const half = !full && hungerPts === k * 2 + 1;
             const x = 182 - 9 - k * 8;
+            const containerU = hasHungerEffect ? 133 : 16;
+            const fillBaseU = hasHungerEffect ? 88 : 52;
             return (
               <React.Fragment key={'f' + k}>
-                <Sprite url={icons} u={16} v={27} w={9} h={9} S={S} x={x} y={10} />
-                {(full || half) && <Sprite url={icons} u={full ? 52 : 61} v={27} w={9} h={9} S={S} x={x} y={10} />}
+                <Sprite url={icons} u={containerU} v={27} w={9} h={9} S={S} x={x} y={10} />
+                {(full || half) && (
+                  <Sprite url={icons} u={full ? fillBaseU : fillBaseU + 9} v={27} w={9} h={9} S={S} x={x} y={10} />
+                )}
               </React.Fragment>
             );
           })}
 
-          {/* Bolhas de ar (acima da fome): cheia (16,18), estourando (25,18) */}
-          {hud.air !== undefined && hud.air < 300 && hud.air >= 0 && Array.from({ length: Math.ceil(hud.air / 30) }).map((_, k) => (
-            <Sprite key={'b' + k} url={icons} u={16} v={18} w={9} h={9} S={S} x={182 - 9 - k * 8} y={0} />
-          ))}
+          {/* Bolhas de ar debaixo d'água */}
+          {hud.air !== undefined &&
+            hud.air < 300 &&
+            hud.air >= 0 &&
+            Array.from({ length: Math.ceil(hud.air / 30) }).map((_, k) => (
+              <Sprite key={'b' + k} url={icons} u={16} v={18} w={9} h={9} S={S} x={182 - 9 - k * 8} y={0} />
+            ))}
         </>
       )}
 
-      {/* Barra de XP: fundo (0,64) 182×5, preenchimento (0,69) até progresso × 183 */}
+      {/* Barra de XP */}
       {!isSpectator && !isCreative && (
         <>
           <Sprite url={icons} u={0} v={64} w={182} h={5} S={S} x={0} y={20} />
@@ -115,11 +211,21 @@ export default function HudBars({ hud }) {
         </>
       )}
 
-      {/* Hotbar: fundo (0,0) 182×22, seleção (0,22) 24×24 */}
+      {/* Hotbar */}
       <Sprite url={widgets} u={0} v={0} w={182} h={22} S={S} x={0} y={27} />
-      <Sprite url={widgets} u={0} v={22} w={24} h={24} S={S} x={-1 + hud.selectedSlot * 20} y={26} z={2} />
+      <Sprite url={widgets} u={0} v={22} w={24} h={24} S={S} x={-1 + selectedSlot * 20} y={26} z={2} />
       {slots.map((s, i) => (
-        <div key={i} style={{ position: 'absolute', left: (3 + i * 20) * S, top: (27 + 3) * S, width: 16 * S, height: 16 * S, zIndex: 3 }}>
+        <div
+          key={i}
+          style={{
+            position: 'absolute',
+            left: (3 + i * 20) * S,
+            top: (27 + 3) * S,
+            width: 16 * S,
+            height: 16 * S,
+            zIndex: 3,
+          }}
+        >
           <ItemSlot item={s} size={16 * S} transparent fill guiScale={S} />
         </div>
       ))}

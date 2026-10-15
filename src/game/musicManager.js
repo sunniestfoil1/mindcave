@@ -58,7 +58,7 @@ class MusicManager {
   }
 
   start() {
-    if (this._started) return;
+    if (this._started || this.disabled) return;
     this._started = true;
     this._scheduleNextSong(2500); // Inicia primeira faixa 2.5s após entrar no jogo
   }

@@ -78,6 +78,8 @@ export const ITEMS = {
   405: I(405, 'netherbrick', 'Tijolo do Nether', { color: 0x402020, category: 'materials' }),
   409: I(409, 'prismarine_shard', 'Fragmento de Prism.', { color: 0x60a080, category: 'materials' }),
   410: I(410, 'prismarine_crystals', 'Cristais de Prism.', { color: 0x60c0a0, category: 'materials' }),
+  373: I(373, 'potion', 'Poção', { maxStack: 1, color: 0x385dc6, category: 'misc', potion: true }),
+  438: I(438, 'splash_potion', 'Poção Arremessável', { maxStack: 1, color: 0x385dc6, category: 'misc', potion: true }),
   374: I(374, 'glass_bottle', 'Garrafa de Vidro', { color: 0xc0e0f0, category: 'misc' }),
   384: I(384, 'experience_bottle', 'Garrafa de XP', { color: 0x80ff40, rarity: 'rare', category: 'misc' }),
   372: I(372, 'nether_wart', 'Verruga do Nether', { color: 0xc02020, category: 'materials' }),

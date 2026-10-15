@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { MODULES } from '@/game/client/modules';
 import { clientStore, useClientStore } from '@/game/client/clientStore';
+import SkinPage from '@/components/options/SkinPage';
 
 // Menu do Mind Client (Shift direito): painel azul-marinho com barra lateral, busca e cartões de módulo no estilo do cliente de
 // referência. Clicar no cartão liga/desliga; a engrenagem abre os ajustes do módulo. Módulos "em breve" ficam apagados.
@@ -86,12 +87,22 @@ function Card({ module, onOpenSettings }) {
   const soon = module.kind === 'soon';
   const on = clientStore.isOn(module.id);
   const Icon = ICONS[module.icon];
+
+  const handleClick = () => {
+    if (soon) return;
+    if (module.id === 'skins') {
+      onOpenSettings(module);
+      return;
+    }
+    clientStore.toggle(module.id);
+  };
+
   return (
     <div
       role="button" aria-pressed={on} aria-disabled={soon} data-module={module.id} tabIndex={0}
       title={module.desc}
-      onClick={() => { if (!soon) clientStore.toggle(module.id); }}
-      onKeyDown={(e) => { if (!soon && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); clientStore.toggle(module.id); } }}
+      onClick={handleClick}
+      onKeyDown={(e) => { if (!soon && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); handleClick(); } }}
       style={{
         position: 'relative', height: 70, borderRadius: 22, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 14, padding: '0 18px',
         border: `2px solid ${on ? C.onBorder : C.border}`, background: on ? C.on : 'transparent', cursor: soon ? 'not-allowed' : 'pointer',
@@ -144,7 +155,13 @@ export default function MindClientMenu({ onClose }) {
   }, [query]);
 
   const content = open
-    ? <ModuleSettings module={open} onBack={() => setOpen(null)} />
+    ? (open.id === 'skins'
+        ? (
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            <SkinPage onBack={() => setOpen(null)} />
+          </div>
+        )
+        : <ModuleSettings module={open} onBack={() => setOpen(null)} />)
     : view === 'about'
       ? (
         <div style={{ padding: '32px 48px', color: C.text, fontSize: 17, lineHeight: 1.6 }}>

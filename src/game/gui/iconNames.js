@@ -22,6 +22,8 @@ const ITEM_FILE = {
   slime_ball: 'slimeball',
   fishing_rod: 'fishing_rod_uncast',
   glass_bottle: 'potion_bottle_empty',
+  potion: 'potion_bottle_drinkable',
+  splash_potion: 'potion_bottle_splash',
   fermented_spider_eye: 'spider_eye_fermented',
   speckled_melon: 'melon_speckled',
   firework_charge: 'fireworks_charge',

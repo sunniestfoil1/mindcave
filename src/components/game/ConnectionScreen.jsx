@@ -1,16 +1,17 @@
-// Tela de conexão — PRD 15 MC15-RF-030..032
 import React, { useState, useEffect } from 'react';
 import { roomManager } from '@/game/net/roomManager';
 import { NetClient } from '@/game/net/netManager';
+import { GuiScreen, GuiButton, GuiText, useGui } from '@/components/java';
 
 const STEPS = [
-  'Conectando ao host…',
-  'Negociando conexão…',
-  'Fazendo login…',
-  'Carregando terreno…',
+  'Conectando ao servidor...',
+  'Negociando conexão...',
+  'Fazendo login...',
+  'Baixando terreno...',
 ];
 
-export default function ConnectionScreen({ room, user, world, engine, onSuccess, onCancel, onError }) {
+function ConnectionContent({ room, user, world, engine, onSuccess, onCancel }) {
+  const { guiHeight, scale } = useGui();
   const [step, setStep] = useState(0);
   const [route, setRoute] = useState(null);
   const [error, setError] = useState(null);
@@ -20,121 +21,183 @@ export default function ConnectionScreen({ room, user, world, engine, onSuccess,
   const startConnection = async (pwd) => {
     setError(null);
     setStep(0);
-
     try {
-      // Verifica se a sala ainda está aberta
       const fresh = await roomManager.getRoom(room.id);
       if (!fresh || fresh.status === 'closed') {
         throw new Error('Este mundo não está mais aberto.');
       }
-
-      // Verifica senha
       if (fresh.passwordHash) {
         const valid = await roomManager.verifyPassword(fresh, pwd);
         if (!valid) throw new Error('Senha incorreta.');
       }
-
-      // Verifica se está cheio
       if (fresh.playerCount >= fresh.maxPlayers) {
-        throw new Error(`O mundo está cheio (${fresh.maxPlayers}/${fresh.maxPlayers}).`);
+        throw new Error(`O servidor está cheio (${fresh.maxPlayers}/${fresh.maxPlayers}).`);
       }
-
-      // Verifica banimento
       const banned = roomManager.getBannedList(fresh);
-      if (banned.find(b => b.userId === user.id)) {
-        throw new Error('Você foi banido deste mundo: ' + (banned.find(b => b.userId === user.id)?.reason || ''));
+      if (banned.find((b) => b.userId === user.id)) {
+        throw new Error('Você foi banido deste mundo: ' + (banned.find((b) => b.userId === user.id)?.reason || ''));
       }
-
-      // Verifica whitelist
       if (fresh.whitelistEnabled && !(fresh.whitelist || []).includes(user.id)) {
-        throw new Error('Você não está na lista de permitidos deste mundo.');
+        throw new Error('Você não está na whitelist deste mundo.');
       }
-
       setStep(1);
-
       const client = new NetClient({
-        engine, world, user, room: fresh,
+        engine,
+        world,
+        user,
+        room: fresh,
         onStateChange: (s) => {
-          if (s === 'connected') { setStep(2); setTimeout(() => { setStep(3); onSuccess(fresh, client); }, 500); }
-          if (s === 'failed') setError('Não foi possível conectar ao host. Tente novamente ou verifique o servidor TURN nas Opções → Multijogador.');
-          if (s === 'closed' && step < 3) setError('A conexão caiu durante a negociação.');
+          if (s === 'connected') {
+            setStep(2);
+            setTimeout(() => {
+              setStep(3);
+              onSuccess(fresh, client);
+            }, 500);
+          }
+          if (s === 'failed') {
+            setError('Falha ao conectar ao servidor: Tempo limite esgotado.');
+          }
+          if (s === 'closed' && step < 3) {
+            setError('Conexão perdida durante a negociação.');
+          }
         },
         onRouteChange: (r) => setRoute(r),
         onChatMessage: () => {},
       });
-
       await client.connect(pwd);
-
-      // Timeout de 15s
       const timeout = setTimeout(() => {
-        if (step < 2) setError('Não foi possível conectar ao host. Tente novamente ou verifique o servidor TURN nas Opções → Multijogador.');
+        if (step < 2) setError('Falha ao conectar ao servidor: Tempo limite esgotado.');
       }, 15000);
-
       return () => clearTimeout(timeout);
     } catch (e) {
       setError(e.message || 'Erro ao conectar.');
     }
   };
 
-  // Auto-start se não tem senha
   useEffect(() => {
     if (!showPassword) startConnection('');
   }, []);
 
+  const midY = Math.floor(guiHeight / 2);
+
   if (error) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/95 text-white">
-        <div className="text-center max-w-md">
-          <p className="text-red-400 text-lg mb-4">{error}</p>
-          <div className="flex gap-2 justify-center">
-            {showPassword && <button onClick={() => { setError(null); setShowPassword(true); }} className="px-4 py-2 bg-white/10 rounded hover:bg-white/20">Tentar senha novamente</button>}
-            <button onClick={onCancel} className="px-4 py-2 bg-white/10 rounded hover:bg-white/20">Voltar</button>
-          </div>
+      <>
+        <div style={{ position: 'absolute', left: '50%', top: (midY - 36) * scale, transform: 'translateX(-50%)' }}>
+          <GuiText text="Falha ao conectar ao servidor" color="#AAAAAA" shadow scale={scale} />
         </div>
-      </div>
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: (midY - 16) * scale,
+            transform: 'translateX(-50%)',
+            maxWidth: 320 * scale,
+            textAlign: 'center',
+          }}
+        >
+          <GuiText text={error} color="#FFFFFF" shadow scale={scale} />
+        </div>
+        {showPassword && (
+          <GuiButton
+            x={-100}
+            y={midY + 12}
+            width={200}
+            label="Tentar senha novamente"
+            onClick={() => {
+              setError(null);
+              setShowPassword(true);
+            }}
+          />
+        )}
+        <GuiButton
+          x={-100}
+          y={midY + (showPassword ? 36 : 16)}
+          width={200}
+          label="Voltar à lista de servidores"
+          onClick={onCancel}
+        />
+      </>
     );
   }
 
   if (showPassword && step === 0 && !error) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/95 text-white">
-        <div className="text-center max-w-md">
-          <p className="text-lg mb-4">Este mundo requer senha:</p>
-          <input
-            type="password" autoFocus value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && password) { setShowPassword(false); startConnection(password); } }}
-            className="w-64 px-3 py-2 bg-white/10 rounded border border-white/20 text-center mb-3 outline-none focus:border-emerald-400/50"
-            placeholder="Senha do mundo"
-          />
-          <div className="flex gap-2 justify-center">
-            <button onClick={() => { if (password) { setShowPassword(false); startConnection(password); } }} disabled={!password} className="px-4 py-2 bg-emerald-600 rounded hover:bg-emerald-500 disabled:opacity-50">Entrar</button>
-            <button onClick={onCancel} className="px-4 py-2 bg-white/10 rounded hover:bg-white/20">Cancelar</button>
-          </div>
+      <>
+        <div style={{ position: 'absolute', left: '50%', top: (midY - 40) * scale, transform: 'translateX(-50%)' }}>
+          <GuiText text="Este mundo requer senha:" color="#FFFFFF" shadow scale={scale} />
         </div>
-      </div>
+        <div style={{ position: 'absolute', left: '50%', top: (midY - 18) * scale, transform: 'translateX(-50%)' }}>
+          <input
+            type="password"
+            autoFocus
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && password) {
+                setShowPassword(false);
+                startConnection(password);
+              }
+            }}
+            placeholder="Senha"
+            style={{
+              width: 200 * scale,
+              height: 20 * scale,
+              background: '#000000',
+              border: `${scale}px solid #A0A0A0`,
+              color: '#E0E0E0',
+              fontFamily: "'Minecraft', monospace",
+              fontSize: `${8 * scale}px`,
+              padding: `0 ${4 * scale}px`,
+              boxSizing: 'border-box',
+              outline: 'none',
+            }}
+          />
+        </div>
+        <GuiButton
+          x={-100}
+          y={midY + 10}
+          width={200}
+          label="Entrar no Servidor"
+          disabled={!password}
+          onClick={() => {
+            if (password) {
+              setShowPassword(false);
+              startConnection(password);
+            }
+          }}
+        />
+        <GuiButton x={-100} y={midY + 34} width={200} label="Cancelar" onClick={onCancel} />
+      </>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/95 text-white">
-      <div className="text-center max-w-md">
-        <div className="w-12 h-12 border-4 border-white/20 border-t-emerald-400 rounded-full animate-spin mx-auto mb-6" />
-        <p className="text-lg mb-4">{STEPS[step]}</p>
-        {route && (
-          <p className="text-sm text-white/50 mb-2">
-            Rota: <span className={route === 'direct' ? 'text-emerald-400' : route === 'stun' ? 'text-yellow-400' : 'text-orange-400'}>
-              {route === 'direct' ? 'Direta' : route === 'stun' ? 'STUN' : 'TURN (relay)'}
-            </span>
-          </p>
-        )}
-        <div className="flex gap-1 justify-center mb-4">
-          {STEPS.map((_, i) => (
-            <div key={i} className={`w-2 h-2 rounded-full ${i <= step ? 'bg-emerald-400' : 'bg-white/20'}`} />
-          ))}
-        </div>
-        <button onClick={() => { onCancel(); }} className="text-sm text-white/40 hover:text-white/70">Cancelar</button>
+    <>
+      <div style={{ position: 'absolute', left: '50%', top: (midY - 24) * scale, transform: 'translateX(-50%)' }}>
+        <GuiText text={STEPS[step] || STEPS[0]} color="#FFFFFF" shadow scale={scale} />
       </div>
+      {route && (
+        <div style={{ position: 'absolute', left: '50%', top: (midY - 8) * scale, transform: 'translateX(-50%)' }}>
+          <GuiText
+            text={`Rota: ${route === 'direct' ? 'Direta' : route === 'stun' ? 'STUN' : 'TURN (Relay)'}`}
+            color="#808080"
+            shadow
+            scale={scale}
+          />
+        </div>
+      )}
+      <GuiButton x={-100} y={midY + 24} width={200} label="Cancelar" onClick={onCancel} />
+    </>
+  );
+}
+
+export default function ConnectionScreen(props) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
+      <GuiScreen background="dirt">
+        <ConnectionContent {...props} />
+      </GuiScreen>
     </div>
   );
 }

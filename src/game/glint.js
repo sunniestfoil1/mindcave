@@ -1,13 +1,15 @@
-// Brilho de encantamento (RenderItem.renderEffect da 1.8.9): textura misc/enchanted_item_glint.png em duas camadas que correm em direções
-// opostas, cor (0,5; 0,25; 0,8), mistura SRC_COLOR+ONE, e só sobre os pixels opacos do item.
 import * as THREE from 'three';
 import { MC, getPackUrl } from './pack';
+import { clientStore } from './client/clientStore';
 
-// Itens que brilham sempre, mesmo sem encantamento (livro encantado, maçã dourada encantada, garrafa de XP)
+// Itens que brilham sempre, mesmo sem encantamento (livro encantado, maçã dourada encantada, garrafa de XP, e poções com Shiny Pots ativo)
 export function hasGlint(item) {
   if (!item) return false;
   if (item.enchants && Object.keys(item.enchants).length > 0) return true;
-  return item.id === 403 || item.id === 384 || (item.id === 322 && (item.meta || 0) === 1);
+  if (item.id === 403 || item.id === 384 || (item.id === 322 && (item.meta || 0) === 1)) return true;
+  // Módulo Shiny Pots do Mind Client: brilho nas poções 1.8.9 (id 373 e 438)
+  if (clientStore.isOn('shinypots') && (item.id === 373 || item.id === 438)) return true;
+  return false;
 }
 
 let glintTex = null, glintLoading = false;

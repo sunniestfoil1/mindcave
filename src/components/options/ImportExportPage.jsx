@@ -1,11 +1,14 @@
 import React, { useState, useRef } from "react";
-import SettingsLayout from "./SettingsLayout";
+import { GuiScreen, GuiButton, GuiText, JavaButton, useGui } from "@/components/java";
 import { useSettings } from "@/game/settingsStore";
 import { exportOptionsTxt, parseOptionsTxt } from "@/game/optionsTxt";
-import { Download, Upload, Check } from "lucide-react";
+import { useT } from "@/game/i18n";
 
-export default function ImportExportPage({ onBack }) {
+function ImportExportContent({ onBack }) {
+  const { guiHeight, scale } = useGui();
+  const t = useT();
   const store = useSettings();
+
   const [importText, setImportText] = useState('');
   const [diff, setDiff] = useState(null);
   const [applyUser, setApplyUser] = useState(true);
@@ -26,7 +29,9 @@ export default function ImportExportPage({ onBack }) {
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'options.txt'; a.click();
+    a.href = url;
+    a.download = 'options.txt';
+    a.click();
     URL.revokeObjectURL(url);
     setTxtError('');
     setTxtNote(skipped.length ? `${skipped.length} opções só existem no Mind Cave e ficaram de fora do arquivo.` : '');
@@ -41,7 +46,9 @@ export default function ImportExportPage({ onBack }) {
         setTxtApplied(false);
         setTxtNote('');
         setTxtError(r.changes.length ? '' : 'Nenhuma diferença em relação às configurações atuais.');
-      } catch (e) { setTxtError(e.message); }
+      } catch (e) {
+        setTxtError(e.message);
+      }
     };
     reader.readAsText(file);
   };
@@ -62,7 +69,9 @@ export default function ImportExportPage({ onBack }) {
     const blob = new Blob([store.exportSettings()], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'mindcave-settings.json'; a.click();
+    a.href = url;
+    a.download = 'mindcave-settings.json';
+    a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -76,15 +85,21 @@ export default function ImportExportPage({ onBack }) {
       try {
         const parsed = JSON.parse(text);
         const d = { user: [], device: [] };
-        if (parsed.user) for (const k of Object.keys(parsed.user)) {
-          if (JSON.stringify(store.get('user.' + k)) !== JSON.stringify(parsed.user[k])) d.user.push(k);
+        if (parsed.user) {
+          for (const k of Object.keys(parsed.user)) {
+            if (JSON.stringify(store.get('user.' + k)) !== JSON.stringify(parsed.user[k])) d.user.push(k);
+          }
         }
-        if (parsed.device) for (const k of Object.keys(parsed.device)) {
-          if (JSON.stringify(store.get('device.' + k)) !== JSON.stringify(parsed.device[k])) d.device.push(k);
+        if (parsed.device) {
+          for (const k of Object.keys(parsed.device)) {
+            if (JSON.stringify(store.get('device.' + k)) !== JSON.stringify(parsed.device[k])) d.device.push(k);
+          }
         }
         setDiff(d);
         setApplied(false);
-      } catch { setDiff({ error: 'JSON inválido' }); }
+      } catch {
+        setDiff({ error: 'JSON inválido' });
+      }
     };
     reader.readAsText(file);
   };
@@ -93,102 +108,194 @@ export default function ImportExportPage({ onBack }) {
     try {
       store.importSettings(importText, { user: applyUser, device: applyDevice });
       setApplied(true);
-    } catch (e) { setDiff({ error: e.message }); }
+    } catch (e) {
+      setDiff({ error: e.message });
+    }
   };
 
   return (
-    <SettingsLayout title="Importar / Exportar configurações" onBack={onBack}>
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div className="bg-card border border-border rounded-lg p-4">
-          <h2 className="text-sm font-semibold mb-2">Exportar</h2>
-          <p className="text-xs text-muted-foreground mb-3">Exporta todas as configurações (usuário + dispositivo + teclas) para um arquivo JSON.</p>
-          <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded text-sm">
-            <Download className="w-4 h-4" /> Baixar configurações
-          </button>
-        </div>
+    <>
+      {/* Título */}
+      <div style={{ position: 'absolute', left: '50%', top: 8 * scale, transform: 'translateX(-50%)' }}>
+        <GuiText text="Importar / Exportar Opções" color="#FFFFFF" shadow scale={scale} />
+      </div>
 
-        <div className="bg-card border border-border rounded-lg p-4">
-          <h2 className="text-sm font-semibold mb-2">Importar</h2>
-          <input ref={fileRef} type="file" accept=".json" onChange={handleFile} className="hidden" />
-          <button onClick={() => fileRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded text-sm mb-3">
-            <Upload className="w-4 h-4" /> Escolher arquivo
-          </button>
+      {/* Painel rolável 1.8.9 */}
+      <div
+        className="mc-scrollbar"
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: 24 * scale,
+          bottom: 34 * scale,
+          width: 312 * scale,
+          transform: 'translateX(-50%)',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          paddingRight: 4 * scale,
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10 * scale,
+        }}
+      >
+        {/* Bloco 1: options.txt Minecraft Vanilla 1.8.9 */}
+        <div style={{
+          background: 'rgba(0, 0, 0, 0.45)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          padding: 8 * scale,
+        }}>
+          <div style={{ marginBottom: 4 * scale }}>
+            <GuiText text="Arquivo options.txt (Vanilla 1.8.9)" color="#FFFF55" shadow scale={scale} />
+          </div>
+          <div style={{ marginBottom: 6 * scale }}>
+            <GuiText text="Importe ou exporte o arquivo options.txt real do seu .minecraft." color="#A0A0A0" shadow scale={scale} />
+          </div>
 
-          {diff && !diff.error && (
-            <div className="space-y-3">
-              <div className="text-xs text-muted-foreground">{diff.user.length + diff.device.length} diferenças encontradas:</div>
-              <div className="flex gap-4 text-sm">
-                <label className="flex items-center gap-1">
-                  <input type="checkbox" checked={applyUser} onChange={e => setApplyUser(e.target.checked)} />
-                  Aplicar usuário ({diff.user.length})
-                </label>
-                <label className="flex items-center gap-1">
-                  <input type="checkbox" checked={applyDevice} onChange={e => setApplyDevice(e.target.checked)} />
-                  Aplicar dispositivo ({diff.device.length})
-                </label>
-              </div>
-              <details className="text-xs">
-                <summary className="cursor-pointer text-muted-foreground">Ver diferenças</summary>
-                <div className="mt-2 space-y-1">
-                  {diff.user.map(k => <div key={'u'+k} className="text-yellow-500">user.{k}</div>)}
-                  {diff.device.map(k => <div key={'d'+k} className="text-blue-500">device.{k}</div>)}
-                </div>
-              </details>
-              <button onClick={handleApply} className="px-4 py-2 bg-primary text-primary-foreground rounded text-sm">
-                Aplicar selecionadas
-              </button>
-            </div>
-          )}
-          {diff?.error && <p className="text-red-500 text-sm">{diff.error}</p>}
-          {applied && <p className="text-green-500 text-sm flex items-center gap-1"><Check className="w-4 h-4" /> Configurações aplicadas!</p>}
-        </div>
-
-        <div
-          className="bg-card border border-border rounded-lg p-4"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) readTxt(f); }}
-        >
-          <h2 className="text-sm font-semibold mb-2">options.txt (Minecraft 1.8.9)</h2>
-          <p className="text-xs text-muted-foreground mb-3">
-            Usa o arquivo de opções real da vanilla (key:valor). Chaves que não existem no Mind Cave são ignoradas, sem forçar nada.
-            Arraste o arquivo aqui ou escolha abaixo.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={handleTxtExport} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded text-sm">
-              <Download className="w-4 h-4" /> Exportar options.txt
-            </button>
-            <input ref={txtFileRef} type="file" accept=".txt,text/plain" onChange={handleTxtFile} className="hidden" />
-            <button onClick={() => txtFileRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded text-sm">
-              <Upload className="w-4 h-4" /> Importar options.txt
-            </button>
+          <div style={{ display: 'grid', gridTemplateColumns: `${146 * scale}px ${146 * scale}px`, gap: `${4 * scale}px` }}>
+            <JavaButton
+              label="Exportar options.txt"
+              onClick={handleTxtExport}
+              width={146}
+            />
+            <input ref={txtFileRef} type="file" accept=".txt,text/plain" onChange={handleTxtFile} style={{ display: 'none' }} />
+            <JavaButton
+              label="Importar options.txt"
+              onClick={() => txtFileRef.current?.click()}
+              width={146}
+            />
           </div>
 
           {txtDiff && txtDiff.changes.length > 0 && (
-            <div className="mt-3 space-y-3">
-              <div className="text-xs text-muted-foreground">{txtDiff.changes.length} mudanças; {txtDiff.ignored.length} chaves ignoradas{txtDiff.invalid.length ? `; ${txtDiff.invalid.length} inválidas` : ''}</div>
-              <details className="text-xs" open>
-                <summary className="cursor-pointer text-muted-foreground">Ver diferenças</summary>
-                <div className="mt-2 space-y-1">
-                  {txtDiff.changes.map((c) => (
-                    <div key={c.path} className="text-yellow-500">{c.path}: {String(c.from)} → {String(c.to)}</div>
-                  ))}
-                </div>
-              </details>
-              <button onClick={handleTxtApply} className="px-4 py-2 bg-primary text-primary-foreground rounded text-sm">
-                Aplicar mudanças
-              </button>
+            <div style={{ marginTop: 6 * scale, background: 'rgba(0, 0, 0, 0.3)', padding: 6 * scale }}>
+              <div style={{ marginBottom: 4 * scale }}>
+                <GuiText text={`${txtDiff.changes.length} alterações detectadas:`} color="#55FF55" shadow scale={scale} />
+              </div>
+              <div style={{ maxHeight: 60 * scale, overflowY: 'auto', marginBottom: 6 * scale }}>
+                {txtDiff.changes.slice(0, 8).map((c) => (
+                  <div key={c.path} style={{ marginBottom: 1 * scale }}>
+                    <GuiText text={`${c.path}: ${String(c.from)} -> ${String(c.to)}`} color="#FFAA00" shadow scale={scale} />
+                  </div>
+                ))}
+                {txtDiff.changes.length > 8 && (
+                  <GuiText text={`... e mais ${txtDiff.changes.length - 8} opções`} color="#888888" shadow scale={scale} />
+                )}
+              </div>
+              <JavaButton
+                label="Aplicar Alterações"
+                onClick={handleTxtApply}
+                width={146}
+              />
             </div>
           )}
-          {txtError && <p className="text-red-500 text-sm mt-2">{txtError}</p>}
-          {txtNote && <p className="text-yellow-500 text-xs mt-2">{txtNote}</p>}
-          {txtApplied && <p className="text-green-500 text-sm flex items-center gap-1 mt-2"><Check className="w-4 h-4" /> options.txt aplicado!</p>}
 
-          <p className="text-xs text-muted-foreground mt-4">
-            Onde encontrar: pressione Win+R, digite <code>%appdata%\.minecraft</code> e abra o arquivo <code>options.txt</code>.
-            No TLauncher o caminho costuma ser o mesmo; confira o diretório do jogo nas configurações do launcher.
-          </p>
+          {txtError && (
+            <div style={{ marginTop: 4 * scale }}>
+              <GuiText text={txtError} color="#FF5555" shadow scale={scale} />
+            </div>
+          )}
+          {txtNote && (
+            <div style={{ marginTop: 4 * scale }}>
+              <GuiText text={txtNote} color="#FFAA00" shadow scale={scale} />
+            </div>
+          )}
+          {txtApplied && (
+            <div style={{ marginTop: 4 * scale }}>
+              <GuiText text="Configurações do options.txt aplicadas!" color="#55FF55" shadow scale={scale} />
+            </div>
+          )}
+        </div>
+
+        {/* Bloco 2: Backup Completo JSON do Mind Cave */}
+        <div style={{
+          background: 'rgba(0, 0, 0, 0.45)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          padding: 8 * scale,
+        }}>
+          <div style={{ marginBottom: 4 * scale }}>
+            <GuiText text="Backup JSON Mind Cave" color="#55FF55" shadow scale={scale} />
+          </div>
+          <div style={{ marginBottom: 6 * scale }}>
+            <GuiText text="Backup integral de controles, perfis e ajustes de vídeo." color="#A0A0A0" shadow scale={scale} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: `${146 * scale}px ${146 * scale}px`, gap: `${4 * scale}px` }}>
+            <JavaButton
+              label="Baixar Backup JSON"
+              onClick={handleExport}
+              width={146}
+            />
+            <input ref={fileRef} type="file" accept=".json" onChange={handleFile} style={{ display: 'none' }} />
+            <JavaButton
+              label="Carregar JSON"
+              onClick={() => fileRef.current?.click()}
+              width={146}
+            />
+          </div>
+
+          {diff && !diff.error && (
+            <div style={{ marginTop: 6 * scale, background: 'rgba(0, 0, 0, 0.3)', padding: 6 * scale }}>
+              <div style={{ marginBottom: 4 * scale }}>
+                <GuiText text={`${diff.user.length + diff.device.length} configurações diferentes:`} color="#55FF55" shadow scale={scale} />
+              </div>
+              <div style={{ display: 'flex', gap: 6 * scale, marginBottom: 6 * scale }}>
+                <JavaButton
+                  label={`Usuário: ${applyUser ? 'SIM' : 'NÃO'}`}
+                  onClick={() => setApplyUser(!applyUser)}
+                  width={140}
+                />
+                <JavaButton
+                  label={`Dispositivo: ${applyDevice ? 'SIM' : 'NÃO'}`}
+                  onClick={() => setApplyDevice(!applyDevice)}
+                  width={140}
+                />
+              </div>
+              <JavaButton
+                label="Aplicar Selecionadas"
+                onClick={handleApply}
+                width={146}
+              />
+            </div>
+          )}
+
+          {diff?.error && (
+            <div style={{ marginTop: 4 * scale }}>
+              <GuiText text={diff.error} color="#FF5555" shadow scale={scale} />
+            </div>
+          )}
+          {applied && (
+            <div style={{ marginTop: 4 * scale }}>
+              <GuiText text="Backup aplicado com sucesso!" color="#55FF55" shadow scale={scale} />
+            </div>
+          )}
+        </div>
+
+        {/* Dica de pasta .minecraft */}
+        <div style={{
+          background: 'rgba(0, 0, 0, 0.35)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          padding: 6 * scale,
+        }}>
+          <GuiText text="Dica: No Windows, pressione Win+R e digite %appdata%\\.minecraft para localizar seu options.txt oficial." color="#888888" shadow scale={scale} />
         </div>
       </div>
-    </SettingsLayout>
+
+      {/* Botão Concluído */}
+      <GuiButton
+        x={-100}
+        y={guiHeight - 28}
+        width={200}
+        label={t('gui.done')}
+        onClick={onBack}
+      />
+    </>
+  );
+}
+
+export default function ImportExportPage({ onBack }) {
+  return (
+    <GuiScreen background="dirt">
+      <ImportExportContent onBack={onBack} />
+    </GuiScreen>
   );
 }

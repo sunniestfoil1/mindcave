@@ -1,14 +1,12 @@
-// Abrir para LAN — PRD 15 MC15-RF-010..013
-// Dialog do menu de pausa para abrir/configurar/fechar o mundo para outros.
 import React, { useState, useEffect } from 'react';
 import { roomManager } from '@/game/net/roomManager';
 import { NetHost } from '@/game/net/netManager';
-import { X, Lock, Globe, KeyRound, Wifi } from 'lucide-react';
+import { GuiScreen, GuiButton, GuiText, JavaButton, JavaSlider, useGui } from '@/components/java';
 
 const VIS_OPTIONS = [
-  { value: 'public', label: 'Aberto para todos', desc: 'Aparece na lista de mundos online', icon: Globe },
-  { value: 'code', label: 'Somente com código', desc: 'Não aparece na lista, entra pelo código', icon: KeyRound },
-  { value: 'private', label: 'Privado', desc: 'Mundo não é aberto', icon: Lock },
+  { value: 'public', label: 'Público (Lista)' },
+  { value: 'code', label: 'Apenas Código' },
+  { value: 'private', label: 'Privado' },
 ];
 
 const GAME_MODES = [
@@ -18,7 +16,8 @@ const GAME_MODES = [
   { value: 'spectator', label: 'Espectador' },
 ];
 
-export default function OpenToLANDialog({ engine, world, user, netHost, onNetHostChange, onClose }) {
+function OpenToLANContent({ engine, world, user, netHost, onNetHostChange, onClose }) {
+  const { guiHeight, scale } = useGui();
   const [settings, setSettings] = useState({
     visibility: 'public',
     password: '',
@@ -31,10 +30,8 @@ export default function OpenToLANDialog({ engine, world, user, netHost, onNetHos
   const [isOpen, setIsOpen] = useState(false);
   const [room, setRoom] = useState(null);
   const [code, setCode] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Check if room already open
   useEffect(() => {
     if (netHost?.room) {
       setRoom(netHost.room);
@@ -50,29 +47,42 @@ export default function OpenToLANDialog({ engine, world, user, netHost, onNetHos
         maxPlayers: netHost.room.maxPlayers,
       });
     }
-  }, []);
+  }, [netHost]);
 
   const handleOpen = async () => {
     setLoading(true);
     try {
       const host = new NetHost({
-        engine, world, user,
-        onChatMessage: (msg) => { engine.onChatMessage?.(msg); },
+        engine,
+        world,
+        user,
+        onChatMessage: (msg) => {
+          engine.onChatMessage?.(msg);
+        },
       });
       const r = await host.start(settings);
       onNetHostChange(host);
       setRoom(r);
       setCode(r.code);
       setIsOpen(true);
-      engine.onChatMessage?.({ type: 'system', text: '§aMundo aberto. Código: §e§l' + r.code + '§r§a — visível para todos', timestamp: Date.now() });
+      engine.onChatMessage?.({
+        type: 'system',
+        text: '§aMundo aberto para LAN. Código: §e§l' + r.code,
+        timestamp: Date.now(),
+      });
+      onClose();
     } catch (e) {
       console.error(e);
-      alert('Erro ao abrir mundo: ' + e.message);
+      engine.onChatMessage?.({
+        type: 'system',
+        text: '§cErro ao abrir mundo: ' + e.message,
+        timestamp: Date.now(),
+      });
     }
     setLoading(false);
   };
 
-  const handleClose = async () => {
+  const handleCloseRoom = async () => {
     if (!netHost) return;
     setLoading(true);
     try {
@@ -80,8 +90,15 @@ export default function OpenToLANDialog({ engine, world, user, netHost, onNetHos
       onNetHostChange(null);
       setIsOpen(false);
       setRoom(null);
-      engine.onChatMessage?.({ type: 'system', text: '§7Mundo fechado para outros jogadores.', timestamp: Date.now() });
-    } catch (e) { console.error(e); }
+      engine.onChatMessage?.({
+        type: 'system',
+        text: '§7Mundo fechado para outros jogadores.',
+        timestamp: Date.now(),
+      });
+      onClose();
+    } catch (e) {
+      console.error(e);
+    }
     setLoading(false);
   };
 
@@ -90,130 +107,183 @@ export default function OpenToLANDialog({ engine, world, user, netHost, onNetHos
     setLoading(true);
     try {
       await roomManager.updateSettings(room.id, settings);
-      engine.onChatMessage?.({ type: 'system', text: '§7Configurações da sala atualizadas.', timestamp: Date.now() });
-    } catch (e) { console.error(e); }
+      engine.onChatMessage?.({
+        type: 'system',
+        text: '§7Configurações da sala atualizadas.',
+        timestamp: Date.now(),
+      });
+      onClose();
+    } catch (e) {
+      console.error(e);
+    }
     setLoading(false);
   };
 
-  const update = (key, val) => setSettings(prev => ({ ...prev, [key]: val }));
+  const update = (key, val) => setSettings((prev) => ({ ...prev, [key]: val }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-white/10 rounded-xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto text-white">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold">{isOpen ? 'Configurações da sala' : 'Abrir para LAN'}</h2>
-          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded"><X className="w-5 h-5" /></button>
-        </div>
-
-        {isOpen && code && (
-          <div className="mb-4 p-3 bg-emerald-900/30 border border-emerald-500/30 rounded-lg text-center">
-            <p className="text-xs text-white/50 mb-1">Código do mundo</p>
-            <button
-              onClick={() => { navigator.clipboard?.writeText(code); engine.onChatMessage?.({ type: 'system', text: '§7Código copiado: ' + code, timestamp: Date.now() }); }}
-              className="text-2xl font-bold font-mono tracking-widest text-emerald-400 hover:text-emerald-300"
-            >
-              {code}
-            </button>
-          </div>
-        )}
-
-        {/* Visibility */}
-        <div className="mb-4">
-          <label className="block text-xs font-medium text-white/60 mb-2">Visibilidade</label>
-          <div className="space-y-1.5">
-            {VIS_OPTIONS.map(v => {
-              const Icon = v.icon;
-              return (
-                <button
-                  key={v.value}
-                  onClick={() => update('visibility', v.value)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm border transition-all ${settings.visibility === v.value ? 'bg-emerald-600/30 border-emerald-400/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-                >
-                  <Icon className="w-4 h-4 text-emerald-400" />
-                  <div>
-                    <div className="font-semibold">{v.label}</div>
-                    <div className="text-xs text-white/40">{v.desc}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* MOTD */}
-        <div className="mb-4">
-          <label className="block text-xs font-medium text-white/60 mb-1.5">Mensagem do mundo (MOTD)</label>
-          <input
-            value={settings.motd}
-            onChange={(e) => update('motd', e.target.value)}
-            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm outline-none focus:border-emerald-400/50"
-            placeholder="§aBem-vindo!"
-          />
-        </div>
-
-        {/* Guest game mode + commands */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div>
-            <label className="block text-xs font-medium text-white/60 mb-1.5">Modo dos convidados</label>
-            <select
-              value={settings.guestGameMode}
-              onChange={(e) => update('guestGameMode', e.target.value)}
-              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm outline-none"
-            >
-              {GAME_MODES.map(g => <option key={g.value} value={g.value} className="bg-slate-800">{g.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-white/60 mb-1.5">Máx. jogadores</label>
-            <input
-              type="number" min={1} max={16}
-              value={settings.maxPlayers}
-              onChange={(e) => update('maxPlayers', parseInt(e.target.value) || 8)}
-              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-2 mb-5">
-          <button
-            onClick={() => update('allowCommands', !settings.allowCommands)}
-            className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border ${settings.allowCommands ? 'bg-emerald-600/25 border-emerald-400/40' : 'bg-white/5 border-white/10'}`}
-          >Permitir comandos</button>
-          <button
-            onClick={() => update('pvp', !settings.pvp)}
-            className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border ${settings.pvp ? 'bg-red-600/25 border-red-400/40' : 'bg-white/5 border-white/10'}`}
-          >PVP (FOGO AMIGO)</button>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2">
-          {!isOpen ? (
-            <>
-              <button
-                onClick={handleOpen}
-                disabled={loading || settings.visibility === 'private'}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg font-semibold text-sm"
-              >
-                <Wifi className="w-4 h-4" /> Abrir mundo
-              </button>
-              <button onClick={onClose} className="px-4 py-3 bg-white/5 hover:bg-white/10 rounded-lg text-sm">Cancelar</button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={handleUpdate}
-                disabled={loading}
-                className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/15 rounded-lg font-semibold text-sm"
-              >Atualizar configurações</button>
-              <button
-                onClick={handleClose}
-                disabled={loading}
-                className="flex-1 px-4 py-3 bg-red-600/80 hover:bg-red-500 rounded-lg font-semibold text-sm"
-              >Fechar para outros</button>
-            </>
-          )}
-        </div>
+    <>
+      <div style={{ position: 'absolute', left: '50%', top: 20 * scale, transform: 'translateX(-50%)' }}>
+        <GuiText text={isOpen ? 'Configurações do Mundo LAN' : 'Mundo em Rede Local (LAN)'} color="#FFFFFF" shadow scale={scale} />
       </div>
+
+      <div style={{ position: 'absolute', left: '50%', top: 42 * scale, transform: 'translateX(-50%)' }}>
+        <GuiText text="Configurações para Outros Jogadores" color="#A0A0A0" shadow scale={scale} />
+      </div>
+
+      {isOpen && code && (
+        <div
+          onClick={() => {
+            navigator.clipboard?.writeText(code);
+            engine.onChatMessage?.({ type: 'system', text: '§7Código copiado: ' + code, timestamp: Date.now() });
+          }}
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: 56 * scale,
+            transform: 'translateX(-50%)',
+            cursor: 'pointer',
+          }}
+          title="Clique para copiar o código"
+        >
+          <GuiText text={`Código da Sala: §e${code} §7(Clique para copiar)`} color="#55FF55" shadow scale={scale} />
+        </div>
+      )}
+
+      <div
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: 76 * scale,
+          width: 310 * scale,
+          transform: 'translateX(-50%)',
+          display: 'grid',
+          gridTemplateColumns: `${150 * scale}px ${150 * scale}px`,
+          gap: `${4 * scale}px ${10 * scale}px`,
+          justifyContent: 'center',
+        }}
+      >
+        <JavaButton
+          label="Modo de Jogo"
+          value={settings.guestGameMode}
+          options={GAME_MODES}
+          onChange={(v) => update('guestGameMode', v)}
+          width={150}
+        />
+        <JavaButton
+          label="Permitir Cheats"
+          value={!!settings.allowCommands}
+          options={[
+            { value: true, label: 'Ligado' },
+            { value: false, label: 'Desligado' },
+          ]}
+          onChange={(v) => update('allowCommands', v)}
+          width={150}
+        />
+        <JavaButton
+          label="Visibilidade"
+          value={settings.visibility}
+          options={VIS_OPTIONS}
+          onChange={(v) => update('visibility', v)}
+          width={150}
+        />
+        <JavaButton
+          label="PvP"
+          value={!!settings.pvp}
+          options={[
+            { value: true, label: 'Ligado' },
+            { value: false, label: 'Desligado' },
+          ]}
+          onChange={(v) => update('pvp', v)}
+          width={150}
+        />
+        <JavaSlider
+          label="Máx. Jogadores"
+          value={settings.maxPlayers}
+          min={2}
+          max={16}
+          step={1}
+          format={(v) => `${v}`}
+          onChange={(v) => update('maxPlayers', v)}
+          width={150}
+        />
+      </div>
+
+      {/* Campo MOTD estilo 1.8.9 */}
+      <div
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: 152 * scale,
+          width: 310 * scale,
+          transform: 'translateX(-50%)',
+        }}
+      >
+        <div style={{ marginBottom: 3 * scale }}>
+          <GuiText text="Mensagem do Mundo (MOTD):" color="#A0A0A0" shadow scale={scale} />
+        </div>
+        <input
+          value={settings.motd}
+          onChange={(e) => update('motd', e.target.value)}
+          placeholder="§aBem-vindo!"
+          style={{
+            width: '100%',
+            height: 20 * scale,
+            background: '#000000',
+            border: `${scale}px solid #A0A0A0`,
+            color: '#E0E0E0',
+            fontFamily: "'Minecraft', monospace",
+            fontSize: `${8 * scale}px`,
+            padding: `0 ${4 * scale}px`,
+            boxSizing: 'border-box',
+            outline: 'none',
+          }}
+        />
+      </div>
+
+      {!isOpen ? (
+        <>
+          <GuiButton
+            x={-155}
+            y={guiHeight - 28}
+            width={150}
+            label={loading ? 'Abrindo...' : 'Iniciar Mundo LAN'}
+            disabled={loading || settings.visibility === 'private'}
+            onClick={handleOpen}
+          />
+          <GuiButton x={5} y={guiHeight - 28} width={150} label="Cancelar" onClick={onClose} />
+        </>
+      ) : (
+        <>
+          <GuiButton
+            x={-155}
+            y={guiHeight - 52}
+            width={150}
+            label="Salvar Alterações"
+            disabled={loading}
+            onClick={handleUpdate}
+          />
+          <GuiButton
+            x={5}
+            y={guiHeight - 52}
+            width={150}
+            label="Fechar Sala LAN"
+            disabled={loading}
+            onClick={handleCloseRoom}
+          />
+          <GuiButton x={-100} y={guiHeight - 28} width={200} label="Concluído" onClick={onClose} />
+        </>
+      )}
+    </>
+  );
+}
+
+export default function OpenToLANDialog(props) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
+      <GuiScreen background="gradient">
+        <OpenToLANContent {...props} />
+      </GuiScreen>
     </div>
   );
 }
