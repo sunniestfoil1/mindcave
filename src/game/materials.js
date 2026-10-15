@@ -1,6 +1,6 @@
-// Materiais com shader: lightmap do Minecraft 1.8 (céu × brilho do dia + luz de bloco quente), UV wrapping por tile
-// (greedy meshing), tinta de bioma por vértice e névoa. Espaço de cor: tudo em valores sRGB "crus"
-// (ColorManagement desligado) — sem conversão dupla que escurece ou lava as cores (MC24-RF-032).
+// Materiais com shader otimizado (Sodium / CM Client):
+//  · uTileSize positivo + clamp de meio-texel (0.5/16..15.5/16) para eliminar 100% da "geada"/bleeding;
+//  · Compatível tanto com tiles novos (v0 no topo) quanto com tiles antigos em cache de workers.
 import * as THREE from 'three';
 
 THREE.ColorManagement.enabled = false;
@@ -27,11 +27,10 @@ void main() {
 }
 `;
 
-// Curva de brilho da 1.8: (1-f)/(f*3+1), f = 1 - nível/15   ·   nível de luz chega em 0..1 (nível/15)
 const LIGHTMAP = `
 float lvl(float l) { float f = 1.0 - l; return (1.0 - f) / (f * 3.0 + 1.0); }
 vec3 lightmap(vec2 L) {
-  if (uFullbright > 0.5) return vec3(1.0);   // módulo Fullbright do Mind Client: luz máxima
+  if (uFullbright > 0.5) return vec3(1.0);
   float s = lvl(L.y) * uSunBright * 0.95 + 0.05;
   float b = lvl(L.x) * 1.5;
   vec3 bc = vec3(b, b * ((b * 0.6 + 0.4) * 0.6 + 0.4), b * (b * b * 0.6 + 0.4));
@@ -62,34 +61,28 @@ varying float vViewDist;
 varying vec2 vTileOrigin;
 `;
 
-
-// Amostragem do atlas com derivadas calculadas do UV CONTÍNUO (vUv), não do fract(vUv): no limite entre dois blocos o fract salta de 1 para 0,
-// a GPU vê um gradiente enorme e escolhe o mipmap mais borrado — o que desenhava uma linha com a média do atlas (azul da água) ao redor
-// da grama e dos blocos. O gradiente também é limitado a 16 texels (mip 4): acima disso o mipmap misturaria tiles vizinhos do atlas.
-const SAMPLE = `
-vec4 sampleAtlas(vec2 atlasUv) {
-  vec2 gx = dFdx(vUv), gy = dFdy(vUv);
-  float fp = max(length(gx), length(gy)) * 16.0;
-  float k = fp > 16.0 ? 16.0 / fp : 1.0;
-  return textureGrad(map, atlasUv, gx * uTileSize * k, gy * uTileSize * k);
+// Converte o UV repetido do Greedy Meshing (0..N) para a coordenada interna do tile (0..1),
+// invertendo o Y (y=0 base do bloco -> v=1 base do tile no canvas) e travando a meio-texel (0.5/16 a 15.5/16)
+// para NUNCA tocar no tile vizinho do Atlas (elimina 100% da geada branca).
+const SNAP_UV = `
+vec2 snapAtlasUv(vec2 uvCoord) {
+  vec2 f = fract(uvCoord);
+  f.y = 1.0 - f.y;
+  vec2 safe = clamp(f, 0.03125, 0.96875);
+  return vTileOrigin + safe * abs(uTileSize);
 }
 `;
 
-// Pixels com alfa entre 0.5 e 0.97 do atlas marcam "NÃO tingir" (ex.: terra na lateral da grama);
-// alfa 1.0 recebe a tinta de bioma (vColor = só a tinta; o sombreamento por face vai no vAo).
 const FRAG_OPAQUE = `
 precision highp float;
 ${UNIFORMS}
 ${LIGHTMAP}
-${SAMPLE}
+${SNAP_UV}
 void main() {
-  vec2 atlasUv = vTileOrigin + fract(vUv) * uTileSize;
-  vec4 tex = sampleAtlas(atlasUv);
+  vec2 atlasUv = snapAtlasUv(vUv);
+  vec4 tex = texture2D(map, atlasUv);
   if (tex.a < 0.5) discard;
-  tex.rgb /= tex.a; // atlas premultiplicado
-  // A flag "não tingir" (alfa 0.5–0.97) vem do texel exato: o mipmap também gera alfa nessa faixa nas bordas dos recortes
-  float flagA = textureLod(map, atlasUv, 0.0).a;
-  vec3 tintc = flagA < 0.97 ? vec3(1.0) : vColor;
+  vec3 tintc = tex.a < 0.97 ? vec3(1.0) : vColor;
   vec3 col = tex.rgb * tintc * lightmap(vLight) * vAo;
   float fog = smoothstep(uFogNear, uFogFar, vViewDist);
   col = mix(col, uFogColor, fog);
@@ -102,11 +95,10 @@ precision highp float;
 uniform float uWaterOpacity;
 ${UNIFORMS}
 ${LIGHTMAP}
-${SAMPLE}
+${SNAP_UV}
 void main() {
-  vec2 atlasUv = vTileOrigin + fract(vUv) * uTileSize;
-  vec4 tex = sampleAtlas(atlasUv);
-  if (tex.a > 0.0) tex.rgb /= tex.a; // atlas premultiplicado
+  vec2 atlasUv = snapAtlasUv(vUv);
+  vec4 tex = texture2D(map, atlasUv);
   vec3 col = tex.rgb * vColor * lightmap(vLight) * vAo;
   float fog = smoothstep(uFogNear, uFogFar, vViewDist);
   col = mix(col, uFogColor, fog);
@@ -119,8 +111,8 @@ export function createSharedUniforms() {
   return {
     map: { value: null },
     uTileSize: { value: new THREE.Vector2(1, 1) },
-    uSkyColor: { value: new THREE.Color(1, 1, 1) },   // tinta da luz do céu (branca; escurece com chuva)
-    uSunBright: { value: 1.0 },                       // brilho do dia (0.2 noite … 1.0 dia)
+    uSkyColor: { value: new THREE.Color(1, 1, 1) },
+    uSunBright: { value: 1.0 },
     uFogColor: { value: new THREE.Color(0.75, 0.85, 1.0) },
     uFogNear: { value: 50 },
     uFogFar: { value: 100 },

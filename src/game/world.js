@@ -9,7 +9,7 @@ import { getLight } from './lighting';
 import { createSharedUniforms, makeOpaqueMaterial, makeWaterMaterial } from './materials';
 import { MeshPool } from './meshPool';
 import { computeChunkTint } from './biomeTint';
-import { fillSectionMesh, disposeMesh } from './sectionMesh';
+import { rebuildChunkColumnMesh, disposeMesh } from './sectionMesh';
 
 const CLEAN = 0, DIRTY = 1, SENT = 2;
 const TASK_TIMEOUT_MS = 5000;   // tarefa sem resposta é cancelada e reenviada depois, pelo agendador normal
@@ -136,6 +136,10 @@ export class ClientWorld {
       secTries: new Uint8Array(SECTIONS_PER_CHUNK),
       secCount: new Uint16Array(SECTIONS_PER_CHUNK),
       sectionMeshes: new Array(SECTIONS_PER_CHUNK).fill(null),
+      secOpaqueData: new Array(SECTIONS_PER_CHUNK).fill(null),
+      secWaterData: new Array(SECTIONS_PER_CHUNK).fill(null),
+      colOpaqueMesh: null,
+      colWaterMesh: null,
     };
     for (let i = 0; i < data.length; i++) if (data[i] !== 0) c.secCount[i >> 12]++;
     this.chunks.set(k, c);
@@ -466,42 +470,40 @@ export class ClientWorld {
 
   // ----- upload à GPU -----
 
-  // No máximo UPLOAD_MAX malhas (ou 2 ms) por quadro, reaproveitando Mesh/BufferGeometry/buffers WebGL
+  // No máximo UPLOAD_MAX chunks atualizados (ou 2 ms) por quadro
   uploadMeshes() {
     if (this.uploadMap.size === 0 || !this.scene) return 0;
     const t0 = performance.now();
+    const dirtyColumns = new Set();
     let n = 0;
+
     for (const [key, u] of this.uploadMap) {
       this.uploadMap.delete(key);
-      if (this.chunks.get(u.c.k) === u.c) {
-        this._applySection(u.c, u.sy, u.opaque, u.water);
-        this.stats.uploaded++;
-        n++;
+      const c = u.c;
+      if (this.chunks.get(c.k) === c) {
+        c.secOpaqueData[u.sy] = u.opaque || null;
+        c.secWaterData[u.sy] = u.water || null;
+        dirtyColumns.add(c);
       }
-      if (n >= UPLOAD_MAX || performance.now() - t0 > UPLOAD_BUDGET_MS) break;
+      if (dirtyColumns.size >= UPLOAD_MAX) break;
+    }
+
+    for (const c of dirtyColumns) {
+      c.colOpaqueMesh = rebuildChunkColumnMesh(this.scene, c.colOpaqueMesh, c.secOpaqueData, this.opaqueMat, 0, c.cx, c.cz);
+      c.colWaterMesh = rebuildChunkColumnMesh(this.scene, c.colWaterMesh, c.secWaterData, this.waterMat, 1, c.cx, c.cz);
+      this.stats.uploaded++;
+      n++;
+      if (performance.now() - t0 > UPLOAD_BUDGET_MS) break;
     }
     return n;
   }
 
-  _applySection(c, sy, opaque, water) {
-    let m = c.sectionMeshes[sy];
-    if (!opaque && !water) { if (m) this._disposeSection(c, sy); return; }
-    if (!m) m = c.sectionMeshes[sy] = { opaque: null, water: null };
-    m.opaque = fillSectionMesh(this.scene, m.opaque, opaque, this.opaqueMat, 0, c.cx, sy, c.cz);
-    m.water = fillSectionMesh(this.scene, m.water, water, this.waterMat, 1, c.cx, sy, c.cz);
-  }
-
-  _disposeSection(c, sy) {
-    const m = c.sectionMeshes[sy];
-    if (!m) return;
-    disposeMesh(this.scene, m.opaque);
-    disposeMesh(this.scene, m.water);
-    c.sectionMeshes[sy] = null;
-  }
-
   _disposeChunkMeshes(c) {
     if (!this.scene) return;
-    for (let sy = 0; sy < SECTIONS_PER_CHUNK; sy++) this._disposeSection(c, sy);
+    if (c.colOpaqueMesh) { disposeMesh(this.scene, c.colOpaqueMesh); c.colOpaqueMesh = null; }
+    if (c.colWaterMesh) { disposeMesh(this.scene, c.colWaterMesh); c.colWaterMesh = null; }
+    if (c.secOpaqueData) c.secOpaqueData.fill(null);
+    if (c.secWaterData) c.secWaterData.fill(null);
   }
 
   // ===== Estado / diagnóstico =====

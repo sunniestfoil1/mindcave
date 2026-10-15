@@ -21,7 +21,6 @@ const DRAWERS = {
   stone: (x, y, r) => shade([127, 127, 127], 12, r),
   dirt: (x, y, r) => shade([134, 96, 67], 14, r),
   grass_top: (x, y, r) => shade([102, 156, 60], 16, r),
-  // alfa 255 = franja de grama (recebe a tinta de bioma) · alfa 230 = terra (não tingida) — ver materials.js
   grass_side: (x, y, r) => {
     if (y < 3 + (Math.floor((x * 13) % 4))) { const v = shade([170, 170, 170], 14, r); return [v[0], v[1], v[2], 255]; }
     const d = shade([134, 96, 67], 14, r);
@@ -171,8 +170,7 @@ const DRAWERS = {
     return tool;
   },
   bookshelf: (x, y, r) => {
-    // Tábuas de fundo com lombadas de livros coloridas
-    if (y < 2 || y > 13) return shade([160, 130, 75], 8, r); // top/bottom: planks
+    if (y < 2 || y > 13) return shade([160, 130, 75], 8, r);
     const bookColors = [[180, 50, 50], [50, 80, 160], [180, 160, 50], [60, 140, 60], [140, 80, 160], [180, 120, 40]];
     const col = Math.floor(x / 3);
     const c = bookColors[col % bookColors.length];
@@ -207,7 +205,6 @@ const DRAWERS = {
     const line = y % 4 === 0 ? -20 : 0;
     return shade([200, 180, 60], 8, r).map((c, i) => (i < 3 ? clamp255(c + line) : c));
   },
-  // Cruz / plantas
   grass_plant: (x, y, r) => {
     const cx = x - 7.5;
     if (Math.abs(cx) > 5 + r() * 2) return [0, 0, 0, 0];
@@ -247,9 +244,9 @@ const DRAWERS = {
   },
   torch: (x, y, r) => {
     const cx = x - 7.5;
-    if (y > 12) return shade([255, 220, 100], 20, r); // chama
+    if (y > 12) return shade([255, 220, 100], 20, r);
     if (Math.abs(cx) > 1) return [0, 0, 0, 0];
-    return shade([150, 110, 60], 6, r); // haste
+    return shade([150, 110, 60], 6, r);
   },
   fire: (x, y, r) => {
     if (r() > 0.6) return [255, 200, 50, 255];
@@ -276,7 +273,6 @@ const TILE_ORDER = [
   'slime', 'hay', 'tnt_top', 'bookshelf', 'grass_plant', 'flower_dandelion', 'flower_rose', 'mushroom_brown',
   'mushroom_red', 'sugarcane', 'lilypad', 'torch', 'fire',
   'cactus_side', 'cactus_top', 'cactus_bottom', 'dead_bush', 'vine',
-  // lajes e escadas
   'stone_slab_top', 'stone_slab_side', 'quartz_top', 'quartz_bottom', 'planks_spruce', 'planks_birch', 'planks_jungle',
   'planks_acacia', 'planks_dark_oak', 'red_sandstone_top', 'red_sandstone_bottom', 'red_sandstone_side',
   'bed_head_top', 'bed_feet_top', 'bed_head_side', 'bed_feet_side', 'bed_head_end', 'bed_feet_end',
@@ -309,35 +305,30 @@ export function makeAtlas() {
         ctx.fillRect(x0 + x, y0 + y, 1, 1);
       }
     }
-    const inset = 0.5;
-    // V invertido: v0 = base do tile (canvas y maior), v1 = topo do tile (canvas y menor)
-    // Com flipY=false, GPU UV v → canvas y = v * height, então v0→base, v1→topo.
-    // O mesher mapeia y=0 do bloco → v0 (base) e y=1 → v1 (topo): orientação correta.
+    // u0, v0 = canto superior esquerdo EXATO do tile no canvas (0..1);
+    // u1, v1 = canto inferior direito EXATO do tile no canvas (0..1).
+    // O shader faz (1.0 - localV) e clampa a meia-texel dentro do tile, impedindo 100% da "geada"/bleeding.
     tiles[name] = {
-      u0: (x0 + inset) / ATLAS,
-      v0: (y0 + TILE - inset) / canvas.height,
-      u1: (x0 + TILE - inset) / ATLAS,
-      v1: (y0 + inset) / canvas.height,
+      u0: x0 / ATLAS,
+      v0: y0 / canvas.height,
+      u1: (x0 + TILE) / ATLAS,
+      v1: (y0 + TILE) / canvas.height,
     };
   });
 
   const texture = new THREE.CanvasTexture(canvas);
-  texture.flipY = false; // V do tiles dict já está em coordenadas de canvas (v=0 = topo)
+  texture.flipY = false;
   texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestMipmapNearestFilter;
-  texture.generateMipmaps = true;
-  // Alfa premultiplicado: o mipmap mistura cor ponderada pelo alfa. Sem isso o preto dos texels transparentes
-  // escurece a borda de grama alta, flores e folhas (contorno escuro). O shader desfaz a premultiplicação.
-  texture.premultiplyAlpha = true;
-  texture.anisotropy = 4; // sem colorSpace: valores sRGB crus (ColorManagement desligado — ver materials.js)
+  texture.minFilter = THREE.NearestFilter;
+  texture.generateMipmaps = false;
+  texture.premultiplyAlpha = false;
+  texture.anisotropy = 1;
   texture.needsUpdate = true;
 
   _cache = { texture, tiles, canvas, ctx };
   return _cache;
 }
 
-// === Texturas reais do pacote "Old Default 1.8.9" (MC24 §5) ===
-// A lógica de zip/imagens vive em pack.js; aqui só se liga cada tile do atlas ao arquivo do pacote.
 const MC_TEXTURE_MAP = {
   'stone': 'stone', 'dirt': 'dirt', 'grass_top': 'grass_top', 'grass_side': 'grass_side',
   'cobblestone': 'cobblestone', 'planks': 'planks_oak', 'bedrock': 'bedrock', 'water': 'water_still',
@@ -371,12 +362,8 @@ const MC_TEXTURE_MAP = {
   'bed_head_top': 'bed_head_top', 'bed_feet_top': 'bed_feet_top', 'bed_head_side': 'bed_head_side',
   'bed_feet_side': 'bed_feet_side', 'bed_head_end': 'bed_head_end', 'bed_feet_end': 'bed_feet_end',
   'red_sandstone_top': 'red_sandstone_top', 'red_sandstone_bottom': 'red_sandstone_bottom', 'red_sandstone_side': 'red_sandstone_normal',
-  'bed_head_top': 'bed_head_top', 'bed_feet_top': 'bed_feet_top',
-  'bed_head_side': 'bed_head_side', 'bed_feet_side': 'bed_feet_side',
-  'bed_head_end': 'bed_head_end', 'bed_feet_end': 'bed_feet_end',
 };
 
-// Ladrilhos extras (texturas oficiais do pacote 1.8.9): estágios de plantação, abóbora/melancia, circuitos, lâmpada, funil, terra arada...
 const EXTRA_TILES = { sapling_oak: 'sapling_oak' };
 for (let i = 0; i < 8; i++) EXTRA_TILES['wheat_stage_' + i] = 'wheat_stage_' + i;
 for (let i = 0; i < 4; i++) { EXTRA_TILES['carrots_stage_' + i] = 'carrots_stage_' + i; EXTRA_TILES['potatoes_stage_' + i] = 'potatoes_stage_' + i; }
@@ -391,13 +378,12 @@ Object.assign(MC_TEXTURE_MAP, EXTRA_TILES);
 let _realLoaded = false;
 let _loadingPromise = null;
 let _atlasVersion = 0;
-const _anims = []; // texturas animadas: { idx, strip, w, order, frametime, cur }
+const _anims = [];
 
 function tileRect(idx) {
   return { x0: (idx % COLS) * TILE, y0: Math.floor(idx / COLS) * TILE };
 }
 
-// Desenha o 1º quadro de uma imagem (tira vertical de animação → só o quadro 0)
 function drawFrame(ctx, cv, frame, idx) {
   const { x0, y0 } = tileRect(idx);
   const w = cv.width;
@@ -405,8 +391,6 @@ function drawFrame(ctx, cv, frame, idx) {
   ctx.drawImage(cv, 0, frame * w, w, w, x0, y0, TILE, TILE);
 }
 
-// Lateral da grama = grass_side (terra) + grass_side_overlay (franja). Pixels da terra recebem alfa 230 (= não tingir);
-// pixels da franja ficam opacos (cinza do pacote) e o shader os multiplica pela tinta de bioma da coluna.
 async function composeGrassSide(ctx) {
   const base = await getPackCanvas(MC + 'textures/blocks/grass_side.png');
   const ovl = await getPackCanvas(MC + 'textures/blocks/grass_side_overlay.png');
@@ -433,8 +417,6 @@ async function composeGrassSide(ctx) {
   ctx.drawImage(tmp, x0, y0);
 }
 
-// O baú do 1.8.9 é uma entidade: as faces vêm de textures/entity/chest/normal.png (layout de caixa 64×64). Monta 3 ladrilhos:
-// tampa (topo), lateral (tampa + corpo) e frente (com o fecho).
 async function composeChest(ctx) {
   const src = await getPackCanvas(MC + 'textures/entity/chest/normal.png');
   if (!src) return;
@@ -447,7 +429,7 @@ async function composeChest(ctx) {
     fn(c);
     ctx.drawImage(t, x0, y0);
   };
-  const lidH = TILE * 5 / 15, bodyH = TILE - lidH; // 5 px de tampa + 10 de corpo = 15
+  const lidH = TILE * 5 / 15, bodyH = TILE - lidH;
   draw('chest_top', (c) => c.drawImage(src, 14, 0, 14, 14, 0, 0, TILE, TILE));
   draw('chest_side', (c) => { c.drawImage(src, 0, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 0, 33, 14, 10, 0, lidH, TILE, bodyH); });
   draw('chest_front', (c) => { c.drawImage(src, 14, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 14, 33, 14, 10, 0, lidH, TILE, bodyH); c.drawImage(src, 1, 1, 2, 4, 7, lidH - 1, 2, 4); });
@@ -502,7 +484,6 @@ export async function reloadRealTextures() {
   return loadRealTextures(true);
 }
 
-// Animação por .mcmeta (ex.: water_still, 32 quadros, frametime 2): chamada a cada quadro com o tempo em ticks
 export function tickTextureAnimations(tick) {
   if (!_realLoaded || _anims.length === 0 || !_cache) return;
   let dirty = false;
@@ -516,7 +497,6 @@ export function tickTextureAnimations(tick) {
   if (dirty) _cache.texture.needsUpdate = true;
 }
 
-// Recorte do atlas atual de um tile (ícones de bloco do HUD)
 export function getAtlasTileCanvas(name) {
   if (!_cache) makeAtlas();
   const idx = TILE_ORDER.indexOf(name);
