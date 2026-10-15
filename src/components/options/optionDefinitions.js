@@ -66,6 +66,7 @@ export const VIDEO_SECTIONS = (store) => [
       ], tooltip: 'Desligar mostra a borda de chunks.', perfImpact: 'none' },
       { type: 'slider', key: 'device.fogStart', label: 'Início da névoa', min: 20, max: 80, step: 5, format: v => `${v}%`, tooltip: 'Distância onde a névoa começa.', perfImpact: 'none' },
       { type: 'toggle', key: 'device.sky', label: 'Céu', tooltip: 'Renderiza o céu.', perfImpact: 'low' },
+      { type: 'toggle', key: 'device.customSky', label: 'Céu personalizado', tooltip: 'Usa o céu do pacote de textura (OptiFine/CEU.zip). Se desativado, usa o céu padrão procedural.', perfImpact: 'low' },
       { type: 'toggle', key: 'device.sun', label: 'Sol e lua', tooltip: 'Renderiza sol e lua.', perfImpact: 'low' },
       { type: 'toggle', key: 'device.stars', label: 'Estrelas', tooltip: 'Renderiza estrelas à noite.', perfImpact: 'low' },
       { type: 'button', key: 'device.animatedTextures', label: 'Texturas animadas', options: [

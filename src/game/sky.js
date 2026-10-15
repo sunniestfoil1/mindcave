@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { mulberry32 } from './prng';
 import { getSunPosition, getSkyColor, getFogColor } from './lighting';
 import { getPackCanvas, MC } from './pack';
+import { settingsStore } from './settingsStore';
 
 const DOME_VERT = `
 varying vec3 vDir;
@@ -209,6 +210,11 @@ export class Sky {
   setVisible(v) {
     this._hidden = !v;
     for (const o of [this.dome, this.sun, this.moon, this.stars, this.clouds]) if (o) o.visible = v;
+    if (this.customLayers) {
+      for (const layer of this.customLayers) {
+        if (layer.mesh) layer.mesh.visible = v && (layer.mat?.uniforms?.uFade?.value > 0.005);
+      }
+    }
   }
 
   constructor(scene, seed) {
@@ -382,6 +388,28 @@ export class Sky {
   }
 
   update(time, camera) {
+    if (this._hidden) return;
+
+    const skyEnabled = settingsStore.get('device.sky') !== false;
+    const customSkyEnabled = settingsStore.get('device.customSky') !== false;
+    const sunEnabled = settingsStore.get('device.sun') !== false;
+    const starsEnabled = settingsStore.get('device.stars') !== false;
+
+    // Se a opção Céu estiver desligada nas configurações
+    if (!skyEnabled) {
+      if (this.dome) this.dome.visible = false;
+      if (this.sun) this.sun.visible = false;
+      if (this.moon) this.moon.visible = false;
+      if (this.stars) this.stars.visible = false;
+      if (this.clouds) this.clouds.visible = false;
+      if (this.customLayers) {
+        for (const layer of this.customLayers) {
+          if (layer.mesh) layer.mesh.visible = false;
+        }
+      }
+      return;
+    }
+
     const sun = getSunPosition(time);
     const sky = getSkyColor(time);
     const fog = getFogColor(time);
@@ -393,51 +421,86 @@ export class Sky {
 
     const camX = camera.position.x, camY = camera.position.y, camZ = camera.position.z;
     const dist = 400;
-    this.sun.position.set(camX + sun.x * dist, camY + sun.y * dist, camZ);
-    this.sun.lookAt(camera.position);
-    this.moon.position.set(camX - sun.x * dist, camY - sun.y * dist, camZ);
-    this.moon.lookAt(camera.position);
 
-    const dayFactor = clamp01(sun.y * 2);
-    this.sun.visible = sun.y > -0.1;
-    this.sun.material.opacity = Math.min(0.9, 0.9 * Math.max(0, sun.y + 0.15) / 0.15);
-    this.moon.visible = sun.y < 0.1;
-    this.moon.material.opacity = Math.min(0.8, 0.8 * Math.max(0, -sun.y + 0.15) / 0.15);
+    // Sol e Lua
+    if (sunEnabled) {
+      this.sun.position.set(camX + sun.x * dist, camY + sun.y * dist, camZ);
+      this.sun.lookAt(camera.position);
+      this.moon.position.set(camX - sun.x * dist, camY - sun.y * dist, camZ);
+      this.moon.lookAt(camera.position);
 
-    // Fase da lua = dia do mundo mod 8
-    if (this.moonTex) {
-      const phase = Math.floor(time / 24000) % 8;
-      if (phase !== this.moonPhase) {
-        this.moonPhase = phase;
-        this.moonTex.offset.set((phase % 4) * 0.25, 1 - (Math.floor(phase / 4) + 1) * 0.5);
+      this.sun.visible = sun.y > -0.1;
+      this.sun.material.opacity = Math.min(0.9, 0.9 * Math.max(0, sun.y + 0.15) / 0.15);
+      this.moon.visible = sun.y < 0.1;
+      this.moon.material.opacity = Math.min(0.8, 0.8 * Math.max(0, -sun.y + 0.15) / 0.15);
+
+      // Fase da lua = dia do mundo mod 8
+      if (this.moonTex) {
+        const phase = Math.floor(time / 24000) % 8;
+        if (phase !== this.moonPhase) {
+          this.moonPhase = phase;
+          this.moonTex.offset.set((phase % 4) * 0.25, 1 - (Math.floor(phase / 4) + 1) * 0.5);
+        }
       }
+    } else {
+      this.sun.visible = false;
+      this.moon.visible = false;
     }
 
-    const nightFactor = clamp01(-sun.y * 2 + 0.3);
-    this.stars.material.opacity = nightFactor * 0.8;
-    this.stars.position.copy(camera.position);
-
-    // Atualiza camadas de Céu Personalizado (CEU.zip - OptiFine / MCPatcher)
+    // Camadas de Céu Personalizado (OptiFine / MCPatcher - CEU.zip)
     const tDay = ((((time % 24000) + 24000) % 24000) / 24000) % 1.0;
     let starfield = 0, cover = 0;
-    if (this.customLayers) {
+
+    if (customSkyEnabled && this.customLayers && this.customLayers.length > 0) {
       this.customLayers.forEach((layer) => {
         const p = layer.props;
         const alpha = getSkyFadeAlpha(tDay, p.startFadeIn, p.endFadeIn, p.startFadeOut, p.endFadeOut);
         layer.mat.uniforms.uFade.value = alpha;
-        if (/star/i.test(p.source)) starfield = Math.max(starfield, alpha);
-        if (p.blend === 'replace') cover = Math.max(cover, alpha); // céu pintado de dia esconde as estrelas vanilla
-        layer.mesh.visible = alpha > 0.001;
+        const isVis = alpha > 0.005;
+        layer.mesh.visible = isVis;
         layer.mesh.position.copy(camera.position);
+
+        if (isVis) {
+          if (/star/i.test(p.source)) starfield = Math.max(starfield, alpha);
+          if (p.blend === 'replace') cover = Math.max(cover, alpha);
+        }
 
         if (p.rotate) {
           const angle = tDay * Math.PI * 2;
           layer.mesh.quaternion.setFromAxisAngle(layer.axis, angle);
         }
       });
+    } else if (this.customLayers) {
+      // Céu personalizado desativado: desliga todas as camadas OptiFine
+      for (const layer of this.customLayers) {
+        if (layer.mesh) layer.mesh.visible = false;
+      }
     }
 
-    this.stars.material.opacity = nightFactor * 0.8 * (1 - starfield) * (1 - cover); // com o campo de estrelas pintado, some o ponto vanilla
+    // Controle da Cúpula Base:
+    // Se o Céu Personalizado estiver desativado, o Céu Padrão (cúpula gradiente zênite/horizonte) fica 100% ativo!
+    // Se o Céu Personalizado estiver ativo e substituindo tudo (cover >= 0.99), oculta a cúpula base para não conflitar.
+    this.dome.visible = !customSkyEnabled || cover < 0.99;
+
+    // Estrelas:
+    // Se Céu Personalizado estiver desligado, renderiza as estrelas procedurais do céu padrão com brilho total.
+    // Se Céu Personalizado estiver ligado, apaga as estrelas procedurais apenas se o starfield customizado estiver ativo.
+    if (starsEnabled) {
+      const nightFactor = clamp01(-sun.y * 2 + 0.3);
+      const starsAlpha = customSkyEnabled
+        ? nightFactor * 0.8 * (1.0 - starfield) * (1.0 - cover)
+        : nightFactor * 0.8;
+
+      if (starsAlpha > 0.01) {
+        this.stars.visible = true;
+        this.stars.material.opacity = starsAlpha;
+        this.stars.position.copy(camera.position);
+      } else {
+        this.stars.visible = false;
+      }
+    } else {
+      this.stars.visible = false;
+    }
 
     // Nuvens: deriva de 0,03 bloco por tick; cor escurece à noite
     this.cloudMat.uniforms.uOffset.value.set(time * 0.03, 0);
@@ -445,6 +508,7 @@ export class Sky {
     this.cloudMat.uniforms.uColor.value.setRGB(cb, cb, cb);
     this.clouds.position.x = camX;
     this.clouds.position.z = camZ;
+    this.clouds.visible = true;
     void dayFactor;
   }
 

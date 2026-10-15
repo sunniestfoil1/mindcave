@@ -77,7 +77,7 @@ export function normalizeSkinImage(img) {
 
   const cv = document.createElement('canvas');
   cv.width = 64; cv.height = 64;
-  const ctx = cv.getContext('2d');
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingEnabled = false;
 
   // Espelha uma caixa cubóide de membro de um canvas de origem para o canvas de destino 64×64
@@ -102,7 +102,7 @@ export function normalizeSkinImage(img) {
 
   const hasVisiblePixels = (c, x, y, w, h) => {
     try {
-      const data = c.getContext('2d').getImageData(x, y, w, h).data;
+      const data = c.getContext('2d', { willReadFrequently: true }).getImageData(x, y, w, h).data;
       for (let i = 3; i < data.length; i += 4) {
         if (data[i] > 10) return true;
       }
@@ -114,7 +114,7 @@ export function normalizeSkinImage(img) {
   if (img.width === img.height * 2 || (img.width === 64 && img.height === 32)) {
     const tempCv = document.createElement('canvas');
     tempCv.width = 64; tempCv.height = 32;
-    const tempCtx = tempCv.getContext('2d');
+    const tempCtx = tempCv.getContext('2d', { willReadFrequently: true });
     tempCtx.imageSmoothingEnabled = false;
     tempCtx.drawImage(img, 0, 0, 64, 32);
 
@@ -135,7 +135,7 @@ export function normalizeSkinImage(img) {
     // Cria snapshot estático para ler pixels de origem sem risco de sobreposição
     const snap = document.createElement('canvas');
     snap.width = 64; snap.height = 64;
-    const sctx = snap.getContext('2d');
+    const sctx = snap.getContext('2d', { willReadFrequently: true });
     sctx.imageSmoothingEnabled = false;
     sctx.drawImage(cv, 0, 0);
 
@@ -228,7 +228,7 @@ async function decodeSkin(choice) {
     if (cv) return cv;
     const fallbackCv = document.createElement('canvas');
     fallbackCv.width = 64; fallbackCv.height = 64;
-    fallbackCv.getContext('2d').drawImage(img, 0, 0);
+    fallbackCv.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0);
     return fallbackCv;
   }
   const img = await loadImageUrl(`/assets/skins/${choice.kind}.png`);
@@ -266,7 +266,7 @@ export async function getSkinFaceUrl(scale = 4, choice = getSkinChoice()) {
   if (!src) return null;
   const cv = document.createElement('canvas');
   cv.width = 8 * scale; cv.height = 8 * scale;
-  const ctx = cv.getContext('2d');
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(src, 8, 8, 8, 8, 0, 0, cv.width, cv.height);
   ctx.drawImage(src, 40, 8, 8, 8, 0, 0, cv.width, cv.height);

@@ -29,6 +29,7 @@ export const DEFAULT_DEVICE = {
   fog: 'fancy',
   fogStart: 40,
   sky: true,
+  customSky: true,
   sun: true,
   stars: true,
   animatedTextures: 'all',
@@ -161,7 +162,7 @@ export const DEFAULT_WORLD_RULES = {
 // ─── Perfis de qualidade (PRD 03 §13) ─────────────────────────────────
 
 export const QUALITY_PROFILES = {
-  potato: { graphics: 'fast', renderDistance: 3, smoothLighting: 'off', particles: 'minimal', mipmaps: 0, resolutionScale: 50, shaderMode: 'classic', clouds: 'off', entityShadows: false, entityBlobShadows: false, sunShadows: 'off', ambientOcclusion: 'off', fog: 'off', sky: false, stars: false, sun: false, animatedTextures: 'off', entityDistance: 50, maxFps: 30, chunkUpdatesPerFrame: 1, leaves: 'fast', betterGrass: 'off', waterWaves: 'off', bloom: 0, vignette: 0, antialiasing: 'off', anisotropicFiltering: 0, screenShake: 0, dynamicLights: 'off', smoothCamera: false, pauseRenderWhenHidden: true, powerSaver: true, alternatingBlocks: false, foliageShadows: false, entityShadowCast: false, cloudShadows: false },
+  potato: { graphics: 'fast', renderDistance: 3, smoothLighting: 'off', particles: 'minimal', mipmaps: 0, resolutionScale: 50, shaderMode: 'classic', clouds: 'off', entityShadows: false, entityBlobShadows: false, sunShadows: 'off', ambientOcclusion: 'off', fog: 'off', sky: false, customSky: false, stars: false, sun: false, animatedTextures: 'off', entityDistance: 50, maxFps: 30, chunkUpdatesPerFrame: 1, leaves: 'fast', betterGrass: 'off', waterWaves: 'off', bloom: 0, vignette: 0, antialiasing: 'off', anisotropicFiltering: 0, screenShake: 0, dynamicLights: 'off', smoothCamera: false, pauseRenderWhenHidden: true, powerSaver: true, alternatingBlocks: false, foliageShadows: false, entityShadowCast: false, cloudShadows: false },
   minimum: { graphics: 'fast', renderDistance: 4, smoothLighting: 'off', particles: 'minimal', mipmaps: 0, resolutionScale: 75, shaderMode: 'classic' },
   low: { graphics: 'fast', renderDistance: 6, smoothLighting: 'min', particles: 'decreased', mipmaps: 2, resolutionScale: 100, shaderMode: 'classic' },
   medium: { graphics: 'fancy', renderDistance: 8, smoothLighting: 'max', particles: 'all', mipmaps: 4, resolutionScale: 100, shaderMode: 'classic' },
