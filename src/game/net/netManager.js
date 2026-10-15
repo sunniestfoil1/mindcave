@@ -9,6 +9,7 @@ import { receiveRemoteHit } from '@/game/combat';
 import { playMobSound, playEvent, playSound } from '@/game/sounds';
 import { processCommand, WORLD_COMMANDS, PLAYER_COMMANDS } from '@/game/commands';
 import { fillRegion, cloneRegion, validRegion } from './regionOps';
+import { recordPlayerSnapshot } from './netInterpolation';
 
 // === HOST ===
 export class NetHost {
@@ -202,21 +203,11 @@ export class NetHost {
         if (!this.remotePlayers) this.remotePlayers = new Map();
         let p = this.remotePlayers.get(userId);
         if (!p) {
-          p = { id: userId, name: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, targetX: msg.x, targetY: msg.y, targetZ: msg.z, targetYaw: msg.yaw };
+          p = { id: userId, name: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch };
           this.remotePlayers.set(userId, p);
-        } else {
-          p.isDead = !!msg.dead;
-          p.targetX = msg.x;
-          p.targetY = msg.y;
-          p.targetZ = msg.z;
-          p.targetYaw = msg.yaw;
-          p.pitch = msg.pitch;
         }
+        recordPlayerSnapshot(p, msg);
         // Repassa posição do jogador para outros convidados via canal UDP/não confiável
-        p.isDead = !!msg.dead;
-        p.sleeping = !!msg.sleeping;
-        p.held = msg.h || 0;
-        p.voice = msg.v | 0;
         this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, sleeping: !!msg.sleeping, h: msg.h || 0, v: msg.v | 0 }, userId, false);
         break;
       }
@@ -523,34 +514,10 @@ export class NetClient {
         if (!this.remotePlayers) this.remotePlayers = new Map();
         let p = this.remotePlayers.get(id);
         if (!p) {
-          p = { id, name: msg.n, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, targetX: msg.x, targetY: msg.y, targetZ: msg.z, targetYaw: msg.yaw };
+          p = { id, name: msg.n, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch };
           this.remotePlayers.set(id, p);
-        } else {
-          p.targetX = msg.x;
-          p.targetY = msg.y;
-          p.targetZ = msg.z;
-          p.targetYaw = msg.yaw;
-          p.pitch = msg.pitch;
         }
-        p.isDead = !!msg.dead;
-        p.sleeping = !!msg.sleeping;
-        p.held = msg.h || 0;
-        p.voice = msg.v | 0;
-        // Interpolação suave e rápida para combate fluido (0.55), com snap se distância > 4 blocos
-        const dx = p.targetX - p.x;
-        const dy = p.targetY - p.y;
-        const dz = p.targetZ - p.z;
-        if (dx * dx + dy * dy + dz * dz > 16) {
-          p.x = p.targetX;
-          p.y = p.targetY;
-          p.z = p.targetZ;
-          p.yaw = p.targetYaw;
-        } else {
-          p.x += dx * 0.55;
-          p.y += dy * 0.55;
-          p.z += dz * 0.55;
-          p.yaw += (p.targetYaw - p.yaw) * 0.55;
-        }
+        recordPlayerSnapshot(p, msg);
         this.onPlayerUpdate({ id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, time: msg.t || Date.now() });
         break;
       }

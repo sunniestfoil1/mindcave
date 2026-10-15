@@ -40,6 +40,7 @@ import { createAchievementState, serializeAchievements, deserializeAchievements,
 import { loadRealTextures, reloadRealTextures, isRealTexturesLoaded, tickTextureAnimations } from './textures';
 import { lookDirFromAngles } from './viewMath';
 import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel, setModelHeldItem, setModelCape } from './playerModel';
+import { interpolateRemotePlayer } from './net/netInterpolation';
 
 let _activeEngine = null;
 export function getActiveEngine() { return _activeEngine; }
@@ -1791,8 +1792,8 @@ export class GameEngine {
 
     perfMonitor.endStage('sim');
 
-    // Transmitir posição em multiplayer (a cada 2 frames)
-    if (this.netManager && (this.frame % 2 === 0)) {
+    // Transmitir posição em multiplayer (a cada tick = 20 TPS / 50ms)
+    if (this.netManager) {
       const posMsg = {
         t: 'move',
         id: this.netManager.user?.id || 'host',
@@ -2358,27 +2359,12 @@ export class GameEngine {
           icon.position.y = 2.65;
           group.add(icon);
           this.scene.add(group);
-          entry = { group, tag, icon, born: performance.now() };
+          entry = { group, tag, icon, born: performance.now(), anim: createAnimationState() };
           this._remoteMeshes.set(id, entry);
         }
 
-        if (rp.targetX !== undefined) {
-          const dx = rp.targetX - (rp.x ?? rp.targetX);
-          const dy = rp.targetY - (rp.y ?? rp.targetY);
-          const dz = rp.targetZ - (rp.z ?? rp.targetZ);
-          if (dx * dx + dy * dy + dz * dz > 16) {
-            rp.x = rp.targetX;
-            rp.y = rp.targetY;
-            rp.z = rp.targetZ;
-            rp.yaw = rp.targetYaw;
-          } else {
-            rp.x = (rp.x ?? rp.targetX) + dx * 0.55;
-            rp.y = (rp.y ?? rp.targetY) + dy * 0.55;
-            rp.z = (rp.z ?? rp.targetZ) + dz * 0.55;
-            rp.yaw = (rp.yaw ?? rp.targetYaw) + (rp.targetYaw - (rp.yaw ?? rp.targetYaw)) * 0.55;
-          }
-        }
-
+        const now = performance.now();
+        interpolateRemotePlayer(rp, now);
 
         placePlayerModel(entry.group, { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0 }, rp.yaw || 0);
         // Item que o jogador remoto está segurando (chegou junto com o move)
@@ -2386,7 +2372,6 @@ export class GameEngine {
         // Capa e skin do remoto: busca pelo nickname (cacheada)
         this._ensureRemoteCape(entry, rp.name);
         this._ensureRemoteSkin(entry, rp.name);
-        const now = performance.now();
         if (entry._prev) {
           const dt = Math.max(0.001, (now - entry._prev.t) / 1000);
           const spd = Math.hypot((rp.x || 0) - entry._prev.x, (rp.z || 0) - entry._prev.z) / dt;
@@ -2396,6 +2381,11 @@ export class GameEngine {
             const base = (10.8 * Math.PI) / 180;
             const flare = Math.min(1, spd / 7) * 0.55 + Math.min(1, Math.max(0, -vy) / 8) * 1.1;
             cp.rotation.x += (base + flare - cp.rotation.x) * 0.15;
+          }
+          if (entry.anim && !rp.sleeping && !rp.isDead) {
+            entry.anim.speed = spd;
+            if (spd > 0.05) entry.anim.walkPhase += spd * dt * 2.5;
+            applyThirdPersonPose(entry.group, entry.anim, rp, this.worldTime, 0);
           }
         }
         entry._prev = { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0, t: now };
