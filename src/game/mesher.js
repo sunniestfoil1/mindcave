@@ -17,6 +17,10 @@ const FACES = [
   { dir: [1, 0, 0], face: 'side', sh: 0.6, na: 0, c: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]] },
 ];
 const UV_CORNER = [[0, 0], [0, 1], [1, 1], [1, 0]];
+
+// Folhas: esconder ou não a face entre duas folhas iguais (opção Gráficos > Folhas; vale também dentro do worker)
+let LEAF_CULL = false;
+export function setLeafMode(mode) { LEAF_CULL = mode === 'fast' || mode === 'smart'; }
 const CROSS_PLANES = [
   [[0.05, 0, 0.05], [0.05, 1, 0.05], [0.95, 1, 0.95], [0.95, 0, 0.95]],
   [[0.95, 0, 0.05], [0.95, 1, 0.05], [0.05, 1, 0.95], [0.05, 0, 0.95]],
@@ -447,9 +451,9 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
           const nid = stateId(getBlockAbs(wx + dir[0], wy + dir[1], wz + dir[2]));
           if (nid !== 0) {
             if (isOpaque(nid)) continue;
-            // Smart Leaves (OptiFine / Badlion / CM Client): oculta faces internas coladas entre duas folhas iguais,
-            // mantendo o exterior da copa 100% detalhado e cortando 60% dos triângulos na floresta!
-            if (nid === id && (id === 18 || id === 161 || isFluidId(id) || block.render === 'translucent' || block.cullSame)) continue;
+            // Folhas "Detalhadas" (padrão do 1.8.9): toda face de folha é desenhada, mesmo colada em outra folha; assim as camadas
+            // de trás preenchem os buracos da textura. "Rápidas"/"Inteligentes" escondem as faces internas (menos triângulos).
+            if (nid === id && ((id === 18 || id === 161) ? LEAF_CULL : (isFluidId(id) || block.render === 'translucent' || block.cullSame))) continue;
           }
           const fl = getLightAbs(wx + dir[0], wy + dir[1], wz + dir[2]);
           const lightByte = (fl.sky << 4) | fl.block;
@@ -486,8 +490,10 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
           TCOLS_VALS[i * 3 + 2] = tt ? tt[2] : 1;
         }
 
-        const uScale = na === 2 ? rh : rw;
-        const vScale = na === 2 ? rw : rh;
+        // o eixo "u" da textura corre em ta1 (rh) nas faces norte/sul e na de baixo, e em ta2 (rw) nas demais
+        const uAlongA1 = na === 2 || f.dir[1] < 0;
+        const uScale = uAlongA1 ? rh : rw;
+        const vScale = uAlongA1 ? rw : rh;
         const base = target.pos.length / 3;
         for (let i = 0; i < 4; i++) {
           CP_TEMP[na] = layer + f.c[i][na];

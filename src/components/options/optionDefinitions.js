@@ -57,7 +57,7 @@ export const VIDEO_SECTIONS = (store) => [
       ], tooltip: 'Texturas nítidas em ângulo rasante.', perfImpact: 'low' },
       { type: 'button', key: 'device.leaves', label: 'Folhas', options: [
         { value: 'default', label: 'Padrão' }, { value: 'fast', label: 'Rápidas' }, { value: 'fancy', label: 'Detalhadas' }, { value: 'smart', label: 'Inteligentes' }
-      ], tooltip: 'Inteligentes: detalhadas na borda, opacas no interior.', perfImpact: 'medium' },
+      ], tooltip: 'Padrão e Detalhadas: todas as faces, como no 1.8.9. Rápidas e Inteligentes escondem as faces entre folhas (menos triângulos). Vale ao reabrir o mundo.', perfImpact: 'medium' },
       { type: 'button', key: 'device.betterGrass', label: 'Grama melhorada', options: [
         { value: 'off', label: 'Desl.' }, { value: 'fast', label: 'Rápida' }, { value: 'fancy', label: 'Detalhada' }
       ], tooltip: 'Lado do bloco de grama mostra textura do topo.', perfImpact: 'low' },

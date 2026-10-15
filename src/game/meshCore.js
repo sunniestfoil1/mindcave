@@ -1,7 +1,7 @@
 // Núcleo dos workers (PRD 23/24): cada worker mantém um ESPELHO dos chunks (blocos + tinta + luz) e executa
 // tarefas curtas — [id, chunk, seção, versão]. Nenhum dado de bloco trafega por tarefa (MC24-RF-002).
 // A main thread envia UM lote por worker por quadro (tipo 'batch'), com tudo que mudou (MC24-RF-001).
-import { buildSectionMesh } from './mesher';
+import { buildSectionMesh, setLeafMode } from './mesher';
 import { computeLightInto } from './lightCore';
 import { generateChunk } from './worldgen';
 import { createLightData, chunkKey } from './chunk';
@@ -59,7 +59,7 @@ export class MeshMirror {
     this.genOpts = null;
   }
 
-  init(msg) { this.tiles = msg.tiles; this.seed = msg.seed >>> 0; this.genOpts = msg.genOpts || null; }
+  init(msg) { setLeafMode(msg.leaves); this.tiles = msg.tiles; this.seed = msg.seed >>> 0; this.genOpts = msg.genOpts || null; }
 
   setChunk(key, cx, cz, blocks, tint, ver) {
     this.chunks.set(key, { key, cx, cz, blocks, tint, light: null, ver, lightSent: -1 });

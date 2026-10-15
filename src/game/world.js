@@ -11,7 +11,8 @@ import { createSharedUniforms, makeOpaqueMaterial, makeWaterMaterial } from './m
 import { MeshPool } from './meshPool';
 import { computeChunkTint } from './biomeTint';
 import { rebuildChunkColumnMesh, disposeMesh } from './sectionMesh';
-import { buildSectionMesh } from './mesher';
+import { buildSectionMesh, setLeafMode } from './mesher';
+import { settingsStore } from './settingsStore';
 import { isOpaque } from './blocks';
 
 const CLEAN = 0, DIRTY = 1, SENT = 2;
@@ -69,8 +70,10 @@ export class ClientWorld {
     this._pcx = 0; this._pcz = 0; this._psy = 4; this._radius = -1;
     this.meshFailures = [];
     this.stats = { dispatched: 0, completed: 0, errors: 0, timeouts: 0, uploaded: 0, generated: 0 };
+    const leafMode = settingsStore.get('device.leaves') || 'default';
+    setLeafMode(leafMode);
     this.pool = new MeshPool(
-      { tiles: this.atlas.tiles, seed: this.seed, genOpts: this.generatorOpts },
+      { tiles: this.atlas.tiles, seed: this.seed, genOpts: this.generatorOpts, leaves: leafMode },
       (slot, msg) => { msg.slot = slot; this.inbox.push(msg); },
     );
     this._batchDepth = 0;
