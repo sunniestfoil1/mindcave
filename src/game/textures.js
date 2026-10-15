@@ -1,4 +1,4 @@
-// Gerador de texturas procedurais 16×16 (PRD 01 RF-080, PRD 02 RF-100/101).
+// Gerador de texturas procedurais 16×16 e carregador do Atlas 1.8.9 sem bleeding.
 import * as THREE from 'three';
 import { mulberry32 } from './prng';
 import { loadPack, getPackCanvas, getPackJson, MC } from './pack';
@@ -305,14 +305,12 @@ export function makeAtlas() {
         ctx.fillRect(x0 + x, y0 + y, 1, 1);
       }
     }
-    // u0, v0 = canto superior esquerdo EXATO do tile no canvas (0..1);
-    // u1, v1 = canto inferior direito EXATO do tile no canvas (0..1).
-    // O shader faz (1.0 - localV) e clampa a meia-texel dentro do tile, impedindo 100% da "geada"/bleeding.
+    // Sem inset fracionário: o shader faz o clamp de meio-texel (0.03125..0.96875)
     tiles[name] = {
       u0: x0 / ATLAS,
-      v0: y0 / canvas.height,
+      v0: (y0 + TILE) / canvas.height,
       u1: (x0 + TILE) / ATLAS,
-      v1: (y0 + TILE) / canvas.height,
+      v1: y0 / canvas.height,
     };
   });
 

@@ -1,6 +1,7 @@
-// Cliente de mundo (PRD 23/24): blocos na main thread; geração, luz e meshing nos workers.
-// Cada seção 16³ tem um estado: LIMPA → SUJA (na fila) → ENVIADA (em um worker) → resultado na fila de upload → LIMPA.
-// Orçamentos por quadro: respostas dos workers 2 ms · despacho 1 ms · upload à GPU 2 ms · mensagens ≤ 1 lote/worker.
+// Cliente de mundo otimizado (Sodium / CM Client):
+//  · Fusão de seções por coluna de chunk (1 único Draw Call opaco + 1 de água por chunk);
+//  · Ordenação Front-to-Back (Early-Z Rejection) + Frustum Culling por BoundingBox da coluna;
+//  · Cave/Altitude Culling: descarta seções subterrâneas profundas em chunks distantes quando o jogador está na superfície.
 import { CHUNK_SIZE, WORLD_HEIGHT, SECTION_SIZE, SECTIONS_PER_CHUNK } from './constants';
 import { chunkCoord, localCoord, chunkIndex, chunkKey, stateId, stateMeta } from './chunk';
 import { generateChunk, getBiomeProvider } from './worldgen';
@@ -12,18 +13,17 @@ import { computeChunkTint } from './biomeTint';
 import { rebuildChunkColumnMesh, disposeMesh } from './sectionMesh';
 
 const CLEAN = 0, DIRTY = 1, SENT = 2;
-const TASK_TIMEOUT_MS = 5000;   // tarefa sem resposta é cancelada e reenviada depois, pelo agendador normal
+const TASK_TIMEOUT_MS = 5000;
 const GEN_TIMEOUT_MS = 12000;
 const MAX_ATTEMPTS = 3;
 const DISPATCH_BUDGET_MS = 1;
-const DRAIN_BUDGET_MS = 2;      // MC24-RF-003: respostas aplicadas com orçamento
+const DRAIN_BUDGET_MS = 2;
 const UPLOAD_BUDGET_MS = 2;
-const UPLOAD_MAX = 4;
+const UPLOAD_MAX = 6;
 const MAX_TIMEOUTS_PER_FRAME = 4;
-const LIGHT_RADIUS = 6;         // só chunks perto do jogador devolvem a luz à main thread
+const LIGHT_RADIUS = 6;
 const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
-// A parede da seção do vizinho (em cx+dx, cz+dz) voltada ao chunk recém-chegado tem blocos?
 function wallNonEmpty(data, sy, dx, dz) {
   const y0 = sy * SECTION_SIZE;
   const fixed = (dx === 1 || dz === 1) ? 0 : 15;
@@ -44,7 +44,6 @@ export class ClientWorld {
     this.atlas = makeAtlas();
     this.uniforms = createSharedUniforms();
     this.uniforms.map.value = this.atlas.texture;
-    // Tile size uniform (mesmo para todos os tiles: 16px no atlas)
     const firstTile = Object.values(this.atlas.tiles)[0];
     if (firstTile) this.uniforms.uTileSize.value.set(firstTile.u1 - firstTile.u0, firstTile.v1 - firstTile.v0);
     this.opaqueMat = makeOpaqueMaterial(this.uniforms);
@@ -53,22 +52,19 @@ export class ClientWorld {
     this._biomeProvider = null;
     this.scene = null;
 
-    // Alterações de chunks descarregados que ainda não foram salvas (não perder ao sair do raio)
     this._stash = new Map();
-
-    // Pipeline
-    this.pending = [];          // seções SUJAS, ordenadas por distância (a mais próxima no FIM → pop())
-    this.inflight = new Map();  // id → { c, sy, ver, slot, sentAt }
-    this.genInflight = new Map(); // chave do chunk → { id, cx, cz, slot, sentAt }
-    this.uploadMap = new Map(); // seção → resultado pronto aguardando upload à GPU
-    this.inbox = [];            // respostas dos workers (processadas com orçamento)
+    this.pending = [];
+    this.inflight = new Map();
+    this.genInflight = new Map();
+    this.uploadMap = new Map();
+    this.inbox = [];
     this._inboxHead = 0;
-    this.loadList = [];         // chunks a gerar (mais próximo no fim)
-    this._unsent = new Set();   // chunks ainda não enviados aos workers
-    this._blockUpdates = new Map(); // chunk → [idx, estado, ...] pendentes de envio
+    this.loadList = [];
+    this._unsent = new Set();
+    this._blockUpdates = new Map();
     this._taskId = 0;
     this._hasPos = false;
-    this._pcx = 0; this._pcz = 0; this._psy = 0; this._radius = -1;
+    this._pcx = 0; this._pcz = 0; this._psy = 4; this._radius = -1;
     this.meshFailures = [];
     this.stats = { dispatched: 0, completed: 0, errors: 0, timeouts: 0, uploaded: 0, generated: 0 };
     this.pool = new MeshPool(
@@ -94,21 +90,11 @@ export class ClientWorld {
     return c.data[chunkIndex(localCoord(x), y, localCoord(z))];
   }
 
-  getBlockId(x, y, z) {
-    return stateId(this.getBlock(x, y, z));
-  }
-
-  getBlockMeta(x, y, z) {
-    return stateMeta(this.getBlock(x, y, z));
-  }
-
+  getBlockId(x, y, z) { return stateId(this.getBlock(x, y, z)); }
+  getBlockMeta(x, y, z) { return stateMeta(this.getBlock(x, y, z)); }
   hasChunkAt(x, z) { return this.chunks.has(chunkKey(chunkCoord(x), chunkCoord(z))); }
-
   getLight(x, y, z) { return getLight(this, x, y, z); }
 
-  // ===== Chunks =====
-
-  // Caminho síncrono (spawn, edição em chunk ainda não carregado). O carregamento normal é feito nos workers.
   ensureChunk(cx, cz) {
     const c = this.chunks.get(chunkKey(cx, cz));
     if (c) return c;
@@ -135,7 +121,6 @@ export class ClientWorld {
       secVer: new Uint32Array(SECTIONS_PER_CHUNK),
       secTries: new Uint8Array(SECTIONS_PER_CHUNK),
       secCount: new Uint16Array(SECTIONS_PER_CHUNK),
-      sectionMeshes: new Array(SECTIONS_PER_CHUNK).fill(null),
       secOpaqueData: new Array(SECTIONS_PER_CHUNK).fill(null),
       secWaterData: new Array(SECTIONS_PER_CHUNK).fill(null),
       colOpaqueMesh: null,
@@ -144,7 +129,6 @@ export class ClientWorld {
     for (let i = 0; i < data.length; i++) if (data[i] !== 0) c.secCount[i >> 12]++;
     this.chunks.set(k, c);
     this._unsent.add(c);
-    // Seções vazias nunca entram na fila
     for (let sy = 0; sy < SECTIONS_PER_CHUNK; sy++) {
       if (c.secCount[sy] > 0) { c.secState[sy] = DIRTY; this._enqueue(c, sy); }
     }
@@ -152,7 +136,6 @@ export class ClientWorld {
     return c;
   }
 
-  // Recalcula a tinta de bioma de todos os chunks (quando os mapas de cor chegam depois da geração)
   refreshTints() {
     for (const c of this.chunks.values()) {
       c.tint = this._computeTint(c.cx, c.cz);
@@ -161,7 +144,6 @@ export class ClientWorld {
     }
   }
 
-  // Vizinhos já malhados tinham a borda voltada para este chunk como "ar": refazer só se há faces expostas
   _wakeNeighbors(c) {
     for (const [dx, dz] of NEIGHBORS) {
       const nc = this.chunks.get(chunkKey(c.cx + dx, c.cz + dz));
@@ -188,7 +170,7 @@ export class ClientWorld {
       if (!this._unsent.has(c)) {
         let list = this._blockUpdates.get(c);
         if (!list) { list = []; this._blockUpdates.set(c, list); }
-        list.push(idx, state); // várias alterações do mesmo chunk no quadro viram UMA mensagem
+        list.push(idx, state);
       }
       this._markSectionDirty(c, sy);
       const ly = y % SECTION_SIZE;
@@ -215,15 +197,12 @@ export class ClientWorld {
     }
   }
 
-  // ===== Fila de seções sujas =====
-
   _markSectionDirty(c, sy) {
-    c.secVer[sy]++; // versão da seção: resultado com versão antiga é aplicado e a seção é refeita
+    c.secVer[sy]++;
     if (c.secState[sy] === CLEAN) {
       c.secState[sy] = DIRTY;
       this._enqueue(c, sy);
     }
-    // DIRTY: já está na fila · SENT: será refeita quando o resultado chegar (versão difere)
   }
 
   _distOf(c, sy) {
@@ -247,25 +226,23 @@ export class ClientWorld {
     this.pending.sort((a, b) => b.d - a.d);
   }
 
-  // ===== Quadro =====
-
   update(scene, px, pz, radius, py = 64) {
     this.scene = scene;
     const ccx = chunkCoord(px), ccz = chunkCoord(pz);
+    this._psy = Math.floor(py / SECTION_SIZE);
     if (!this._hasPos || ccx !== this._pcx || ccz !== this._pcz || radius !== this._radius) {
       this._hasPos = true;
       this._pcx = ccx; this._pcz = ccz; this._radius = radius;
-      this._psy = Math.floor(py / SECTION_SIZE);
       this._unloadFar();
       this._rebuildLoadList();
       this._resort();
     }
-    this._drain();            // respostas dos workers, com orçamento de 2 ms
+    this._drain();
     this._dispatchGen();
     this._flushToPool();
     this._checkTimeouts();
     this._dispatchMesh();
-    this.pool.flush();        // no máximo 1 mensagem por worker, vazio = 0 mensagens
+    this.pool.flush();
   }
 
   _unloadFar() {
@@ -298,8 +275,6 @@ export class ClientWorld {
     this.loadList = list;
   }
 
-  // ----- respostas dos workers -----
-
   _drain() {
     if (this._inboxHead >= this.inbox.length) return;
     const t0 = performance.now();
@@ -327,7 +302,7 @@ export class ClientWorld {
   _takeGen(msg) {
     const k = chunkKey(msg.cx, msg.cz);
     const g = this.genInflight.get(k);
-    if (!g || g.id !== msg.id) return null; // cancelada por tempo esgotado
+    if (!g || g.id !== msg.id) return null;
     this.genInflight.delete(k);
     this.pool.release(g.slot);
     return k;
@@ -354,18 +329,17 @@ export class ClientWorld {
     this.inflight.delete(msg.id);
     this.pool.release(t.slot);
     this.stats.errors++;
-    console.error('[MeshWorker] erro ao gerar malha', t.c.cx, t.c.cz, 'seção', t.sy, msg.error);
     this._failSection(t.c, t.sy, msg.error, MAX_ATTEMPTS);
   }
 
   _onMeshed(msg) {
     const t = this.inflight.get(msg.id);
-    if (!t) return; // cancelada por tempo esgotado
+    if (!t) return;
     this.inflight.delete(msg.id);
     this.pool.release(t.slot);
     const c = t.c;
     this.stats.completed++;
-    if (this.chunks.get(c.k) !== c) return; // chunk descarregado enquanto a tarefa corria
+    if (this.chunks.get(c.k) !== c) return;
     const l = msg.light;
     if (l && l.ver > c.lightVer && l.ver <= c.ver) { c.lightData = l.data; c.lightVer = l.ver; }
     c.secTries[t.sy] = 0;
@@ -373,12 +347,10 @@ export class ClientWorld {
     if (c.secVer[t.sy] === t.ver) {
       c.secState[t.sy] = CLEAN;
     } else {
-      c.secState[t.sy] = DIRTY; // mudou durante o meshing: mostra esta versão e refaz
+      c.secState[t.sy] = DIRTY;
       this._enqueue(c, t.sy);
     }
   }
-
-  // ----- saída para os workers -----
 
   _dispatchGen() {
     if (this.loadList.length === 0) return;
@@ -394,7 +366,6 @@ export class ClientWorld {
     }
   }
 
-  // Dados de bloco chegam aos workers uma vez (chunk novo) ou em lote (alterações do quadro)
   _flushToPool() {
     if (this._unsent.size) {
       for (const c of this._unsent) {
@@ -430,7 +401,6 @@ export class ClientWorld {
     }
   }
 
-  // Tarefa sem resposta: cancela e devolve à fila normal (nunca refaz a malha na main thread)
   _checkTimeouts() {
     if (this.inflight.size === 0 && this.genInflight.size === 0) return;
     const now = performance.now();
@@ -440,7 +410,6 @@ export class ClientWorld {
       this.inflight.delete(id);
       this.pool.release(t.slot);
       this.stats.timeouts++;
-      console.error('[MeshWorker] tarefa sem resposta em 5 s', t.c.cx, t.c.cz, 'seção', t.sy);
       this._failSection(t.c, t.sy, 'timeout', 2);
       if (++n >= MAX_TIMEOUTS_PER_FRAME) return;
     }
@@ -449,7 +418,6 @@ export class ClientWorld {
       this.genInflight.delete(k);
       this.pool.release(g.slot);
       this.stats.timeouts++;
-      console.error('[MeshWorker] geração sem resposta', g.cx, g.cz);
       this.loadList.unshift({ cx: g.cx, cz: g.cz, d: 0 });
       if (++n >= MAX_TIMEOUTS_PER_FRAME) return;
     }
@@ -464,13 +432,10 @@ export class ClientWorld {
     } else {
       c.secState[sy] = CLEAN;
       this.meshFailures.push({ cx: c.cx, cz: c.cz, sy, reason });
-      console.error('[World] seção desistida após falhas', c.cx, c.cz, 'seção', sy, reason);
     }
   }
 
-  // ----- upload à GPU -----
-
-  // No máximo UPLOAD_MAX chunks atualizados (ou 2 ms) por quadro
+  // Junta as seções do chunk num único Mesh por coluna e aplica Cave Culling para chunks distantes
   uploadMeshes() {
     if (this.uploadMap.size === 0 || !this.scene) return 0;
     const t0 = performance.now();
@@ -489,13 +454,51 @@ export class ClientWorld {
     }
 
     for (const c of dirtyColumns) {
-      c.colOpaqueMesh = rebuildChunkColumnMesh(this.scene, c.colOpaqueMesh, c.secOpaqueData, this.opaqueMat, 0, c.cx, c.cz);
-      c.colWaterMesh = rebuildChunkColumnMesh(this.scene, c.colWaterMesh, c.secWaterData, this.waterMat, 1, c.cx, c.cz);
+      const distChunks = Math.max(Math.abs(c.cx - this._pcx), Math.abs(c.cz - this._pcz));
+      // Cave Culling: se o jogador está acima do nível do mar (psy >= 4) e o chunk está a >= 3 chunks de distância,
+      // ignora cavernas profundas abaixo de Y=48 (sy < 3), economizando milhares de vértices subterrâneos invisíveis.
+      const minSy = (this._psy >= 4 && distChunks >= 3) ? 3 : 0;
+      c.colOpaqueMesh = rebuildChunkColumnMesh(this.scene, c.colOpaqueMesh, c.secOpaqueData, this.opaqueMat, 0, c.cx, c.cz, minSy);
+      c.colWaterMesh = rebuildChunkColumnMesh(this.scene, c.colWaterMesh, c.secWaterData, this.waterMat, 1000, c.cx, c.cz, minSy);
       this.stats.uploaded++;
       n++;
       if (performance.now() - t0 > UPLOAD_BUDGET_MS) break;
     }
     return n;
+  }
+
+  // Frustum Culling por coluna + Ordenação Front-to-Back (Early-Z Rejection na GPU)
+  cullChunks(cameraPos, forwardDir, renderDistance, frustum) {
+    const maxDistSq = ((renderDistance + 1.25) * 16) * ((renderDistance + 1.25) * 16);
+    const camX = cameraPos.x, camZ = cameraPos.z;
+
+    for (const c of this.chunks.values()) {
+      const mOp = c.colOpaqueMesh;
+      const mWa = c.colWaterMesh;
+      if (!mOp && !mWa) continue;
+
+      const dx = (c.baseX + 8) - camX;
+      const dz = (c.baseZ + 8) - camZ;
+      const distSq = dx * dx + dz * dz;
+
+      let vis = distSq <= maxDistSq;
+      if (vis && frustum) {
+        const box = mOp?.geometry?.boundingBox || mWa?.geometry?.boundingBox;
+        if (box && !frustum.intersectsBox(box)) {
+          vis = false;
+        }
+      }
+
+      if (mOp) {
+        mOp.visible = vis;
+        // Front-to-Back: desenha os chunks mais próximos primeiro (0..999) para ativar Early-Z na GPU
+        if (vis) mOp.renderOrder = Math.min(999, (distSq * 0.01) | 0);
+      }
+      if (mWa) {
+        mWa.visible = vis;
+        if (vis) mWa.renderOrder = 1000 + Math.min(999, ((maxDistSq - distSq) * 0.01) | 0);
+      }
+    }
   }
 
   _disposeChunkMeshes(c) {
@@ -506,13 +509,10 @@ export class ClientWorld {
     if (c.secWaterData) c.secWaterData.fill(null);
   }
 
-  // ===== Estado / diagnóstico =====
-
   pendingMeshCount() { return this.pending.length + this.inflight.size + this.uploadMap.size; }
   loadBacklog() { return this.loadList.length + this.genInflight.size; }
   isIdle() { return this.pendingMeshCount() === 0 && this.loadBacklog() === 0 && this.inboxSize() === 0; }
 
-  // Espera curta (carregamento inicial) até a área ao redor do jogador estar malhada
   async warmUp(scene, px, pz, radius, py, timeoutMs = 4000, onProgress = null) {
     const t0 = performance.now();
     const expectedChunks = (radius * 2 + 1) * (radius * 2 + 1);
@@ -535,7 +535,6 @@ export class ClientWorld {
     return out;
   }
 
-  // Troca de dimensão: tira as malhas desta dimensão da cena e marca tudo como sujo, para recriá-las quando o jogador voltar
   unloadMeshes() {
     for (const c of this.chunks.values()) { this._disposeChunkMeshes(c); this.markAllSectionsDirty(c); }
   }

@@ -1833,6 +1833,9 @@ export class GameEngine {
       if (this.particles && !frozen) this.particles.renderUpdate();
       perfMonitor.endStage('entities');
       perfMonitor.beginStage('render');
+      if (this.world) {
+        this.world.cullChunks(this.camera.position, this.lookDir(), this.renderDistance, this._cameraFrustum);
+      }
       const mbOn = clientStore.isOn('motionblur');
       const mbAmount = mbOn ? clientStore.get('motionblur', 'amount') || 4 : 0;
       if (mbOn && this.motionBlur && !this.paused) {
@@ -1846,6 +1849,9 @@ export class GameEngine {
       } else {
         this.renderer.render(this.scene, this.camera);
       }
+      // Captura os Draw Calls e Triângulos reais do mundo antes que a cena da mão (fpsScene) zere o renderer.info
+      this._worldDrawCalls = this.renderer.info.render.calls;
+      this._worldTriangles = this.renderer.info.render.triangles;
       this.updateFirstPersonHand();
       // showCrosshair() do 1.8.9: some com o F3 (que desenha os eixos), com F1 e com qualquer tela aberta
       this.crosshair?.render(
@@ -2127,17 +2133,16 @@ export class GameEngine {
   updatePlayerModel() {
     const p = this.player;
     const m = this.playerModel;
-    const partialTick = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));
+    const inThirdPerson = (this.perspective || 0) > 0;
 
-    // Em 1ª pessoa o modelo do corpo fica invisível: só atualiza a malha completa em 3ª pessoa
-    if ((this.perspective || 0) > 0) {
+    if (inThirdPerson) {
+      const partialTick = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));
       placePlayerModel(m, p.pos, p.yaw);
       applyThirdPersonPose(m, this.anim, p, this.worldTime, partialTick);
       setModelHeldItem(m, this.getHeldItem()?.id);
       setModelCape(m, this._capeSrc, settingsStore.get('user.skinParts.cape') !== false);
     }
 
-    // Só percorre a hierarquia 3D se o estado de dano (hurtColor) mudou!
     const isHurt = p.hurtTime > 0;
     const hurtColor = isHurt ? 0xff5555 : 0xffffff;
     if (this._lastHurtColor !== hurtColor) {
@@ -2149,10 +2154,10 @@ export class GameEngine {
     }
 
     if (this.nametag) {
-      this.nametag.position.y = p.isDead ? 0.85 : 2.35;
-      this.nametag.visible = clientStore.isOn('nametags') && clientStore.get('nametags', 'own') && (this.perspective || 0) > 0;
+      this.nametag.visible = inThirdPerson && clientStore.isOn('nametags') && clientStore.get('nametags', 'own');
+      if (this.nametag.visible) this.nametag.position.y = p.isDead ? 0.85 : 2.35;
     }
-    if (this.voiceIconLocal && (this.perspective || 0) > 0) {
+    if (this.voiceIconLocal && inThirdPerson) {
       this.voiceIconLocal.position.y = (p.isDead ? 0.85 : 2.35) + 0.3;
       setVoiceIconState(this.voiceIconLocal, voiceChat.getWireState());
     }
@@ -2452,8 +2457,8 @@ export class GameEngine {
       if (this.world?.getLight) light = this.world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z));
       if (this.world?.getBiomeAt) biome = this.world.getBiomeAt(Math.floor(p.pos.x), Math.floor(p.pos.z))?.name || '—';
       perfStats = perfMonitor.getStats();
-      drawCalls = this.renderer?.info?.render?.calls || 0;
-      triangles = this.renderer?.info?.render?.triangles || 0;
+      drawCalls = this._worldDrawCalls ?? this.renderer?.info?.render?.calls ?? 0;
+      triangles = this._worldTriangles ?? this.renderer?.info?.render?.triangles ?? 0;
     }
 
     const t = this.worldTime % 24000;
@@ -3034,35 +3039,37 @@ export class GameEngine {
     this.fpsItem = null;
   }
 
-  // Direção das duas luzes no espaço da câmera: Rx(pitch)·Ry(yaw) aplicado aos vetores do GL (graus do MC; pitch positivo = olhando para baixo)
   _updateHandLighting() {
     if (!this._handL0) return;
     const p = this.player, pitch = p.pitch, yaw = p.yaw;
     const cp = Math.cos(pitch), sp = Math.sin(pitch), cy = Math.cos(yaw), sy = Math.sin(yaw);
-    const rot = (v, out) => {
-      // Ry(yaw) e depois Rx(pitch), rotações de mão direita como glRotatef
-      const x1 = cy * v[0] + sy * v[2], y1 = v[1], z1 = -sy * v[0] + cy * v[2];
+    const rot = (vx, vy, vz, out) => {
+      const x1 = cy * vx + sy * vz, y1 = vy, z1 = -sy * vx + cy * vz;
       out.set(x1, cp * y1 - sp * z1, sp * y1 + cp * z1);
     };
     const n0 = 1 / Math.hypot(0.2, 1.0, 0.7);
-    rot([0.2 * n0, 1.0 * n0, -0.7 * n0], this._handL0.position);
-    rot([-0.2 * n0, 1.0 * n0, 0.7 * n0], this._handL1.position);
-    // luz do local (mesma curva do shader do mundo): sem isso a mão ficaria 100% clara numa caverna escura
+    rot(0.2 * n0, 1.0 * n0, -0.7 * n0, this._handL0.position);
+    rot(-0.2 * n0, 1.0 * n0, 0.7 * n0, this._handL1.position);
+
     const eye = this.eyePos();
     const ex = Math.floor(eye.x), ey = Math.floor(eye.y), ez = Math.floor(eye.z);
-    const L = this.world.getLight(ex, ey, ez);
-    // A luz de céu só existe depois que o chunk foi iluminado pelos workers; com céu aberto acima do olho vale 15 já (sem mão preta no spawn)
-    if (this.frame % 10 === 0 || this._openSky === undefined) {
-      let open = true;
-      for (let y = ey + 1; y < Math.min(255, ey + 80); y++) { if (isSolid(stateId(this.world.getBlock(ex, y, ez)))) { open = false; break; } }
-      this._openSky = open;
-    }
-    const lvl = (l) => { const f = 1 - l; return (1 - f) / (f * 3 + 1); };
+    // Só recalcula a coluna de luz quando o jogador muda de bloco ou o brilho do sol muda
     const sunB = this.world.uniforms?.uSunBright?.value ?? 1;
-    const skyL = this._openSky ? 15 : (Number.isFinite(L?.sky) ? L.sky : 15), blkL = Number.isFinite(L?.block) ? L.block : 0; // chunk ainda sem luz: céu aberto
-    const sky = lvl(skyL / 15) * sunB * 0.95 + 0.05, blk = lvl(blkL / 15) * 1.5;
-    const f = Math.max(0.05, Math.min(1, (sky + blk) * 0.96 + 0.03));
-    this._handLightF = (this._handLightF ?? f) + (f - (this._handLightF ?? f)) * 0.2; // suaviza a transição
+    if (this._hlEx !== ex || this._hlEy !== ey || this._hlEz !== ez || Math.abs((this._hlSun ?? -1) - sunB) > 0.02) {
+      this._hlEx = ex; this._hlEy = ey; this._hlEz = ez; this._hlSun = sunB;
+      let open = true;
+      for (let y = ey + 1; y < Math.min(255, ey + 64); y++) {
+        if (isSolid(stateId(this.world.getBlock(ex, y, ez)))) { open = false; break; }
+      }
+      const L = this.world.getLight(ex, ey, ez);
+      const lvl = (l) => { const f = 1 - l; return (1 - f) / (f * 3 + 1); };
+      const skyL = open ? 15 : (Number.isFinite(L?.sky) ? L.sky : 15);
+      const blkL = Number.isFinite(L?.block) ? L.block : 0;
+      const sky = lvl(skyL / 15) * sunB * 0.95 + 0.05, blk = lvl(blkL / 15) * 1.5;
+      this._handTargetF = Math.max(0.05, Math.min(1, (sky + blk) * 0.96 + 0.03));
+    }
+    const targetF = this._handTargetF ?? 1;
+    this._handLightF = (this._handLightF ?? targetF) + (targetF - (this._handLightF ?? targetF)) * 0.2;
     this._handAmb.intensity = 0.4 * Math.PI * this._handLightF;
     this._handL0.intensity = this._handL1.intensity = 0.6 * Math.PI * this._handLightF;
   }

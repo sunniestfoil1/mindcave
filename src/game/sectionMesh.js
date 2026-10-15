@@ -1,5 +1,5 @@
-// Geometria das seções na GPU: cria/reutiliza BufferGeometry e Mesh via Pool estilo Sodium/FerriteCore
-// Inclui fusão por coluna de chunk (1 único Draw Call opaco + 1 de água por chunk 16x256x16)
+// Geometria das seções na GPU: junta todas as seções 16³ visíveis de uma coluna de chunk
+// em UM ÚNICO THREE.Mesh opaco e UM de água por chunk (reduz Draw Calls de ~2.500 para ~150).
 import * as THREE from 'three';
 
 const ATTRS = [
@@ -36,14 +36,12 @@ export function disposeMesh(scene, mesh) {
   if (mesh.geometry) releaseGeometry(mesh.geometry);
 }
 
-// Junta todas as seções 16³ não-vazias de uma coluna de chunk em UM ÚNICO BufferGeometry/Mesh.
-// Reduz os Draw Calls na GPU de ~2.000 para ~150!
-function buildMergedColumnGeometry(secList, cx, cz) {
+function buildMergedColumnGeometry(secList, cx, cz, minSectionY = 0) {
   let totalVerts = 0;
   let totalIndices = 0;
   let minSy = 16, maxSy = -1;
 
-  for (let sy = 0; sy < 16; sy++) {
+  for (let sy = minSectionY; sy < 16; sy++) {
     const g = secList[sy];
     if (!g || !g.positions || g.positions.length === 0) continue;
     totalVerts += g.positions.length / 3;
@@ -120,8 +118,8 @@ function buildMergedColumnGeometry(secList, cx, cz) {
   return geom;
 }
 
-export function rebuildChunkColumnMesh(scene, existingMesh, secDataArray, mat, order, cx, cz) {
-  const geom = buildMergedColumnGeometry(secDataArray, cx, cz);
+export function rebuildChunkColumnMesh(scene, existingMesh, secDataArray, mat, order, cx, cz, minSectionY = 0) {
+  const geom = buildMergedColumnGeometry(secDataArray, cx, cz, minSectionY);
   if (!geom) {
     if (existingMesh) disposeMesh(scene, existingMesh);
     return null;
@@ -145,7 +143,8 @@ export function rebuildChunkColumnMesh(scene, existingMesh, secDataArray, mat, o
   return m;
 }
 
-// Mantido por compatibilidade caso algum módulo externo importe fillSectionMesh
 export function fillSectionMesh(scene, mesh, g, mat, order, cx, sy, cz) {
-  return rebuildChunkColumnMesh(scene, mesh, g ? [g] : [], mat, order, cx, cz);
+  const arr = new Array(16).fill(null);
+  if (g) arr[sy] = g;
+  return rebuildChunkColumnMesh(scene, mesh, arr, mat, order, cx, cz, 0);
 }

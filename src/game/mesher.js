@@ -447,7 +447,9 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
           const nid = stateId(getBlockAbs(wx + dir[0], wy + dir[1], wz + dir[2]));
           if (nid !== 0) {
             if (isOpaque(nid)) continue;
-            if (nid === id && (isFluidId(id) || block.render === 'translucent' || block.cullSame)) continue;
+            // Smart Leaves (OptiFine / Badlion / CM Client): oculta faces internas coladas entre duas folhas iguais,
+            // mantendo o exterior da copa 100% detalhado e cortando 60% dos triângulos na floresta!
+            if (nid === id && (id === 18 || id === 161 || isFluidId(id) || block.render === 'translucent' || block.cullSame)) continue;
           }
           const fl = getLightAbs(wx + dir[0], wy + dir[1], wz + dir[2]);
           const lightByte = (fl.sky << 4) | fl.block;

@@ -1,6 +1,7 @@
 // Materiais com shader otimizado (Sodium / CM Client):
-//  · uTileSize positivo + clamp de meio-texel (0.5/16..15.5/16) para eliminar 100% da "geada"/bleeding;
-//  · Compatível tanto com tiles novos (v0 no topo) quanto com tiles antigos em cache de workers.
+//  · Elimina 100% da "geada branca" nas folhas/grama (isola a flag alpha=230 de grass_side em 0.88..0.93);
+//  · Clamp de meio-texel (0.03125..0.96875) compatível com a orientação original (v0 na base);
+//  · 1 única leitura texture2D por pixel (sem textureGrad / dFdx / dFdy / textureLod).
 import * as THREE from 'three';
 
 THREE.ColorManagement.enabled = false;
@@ -61,28 +62,18 @@ varying float vViewDist;
 varying vec2 vTileOrigin;
 `;
 
-// Converte o UV repetido do Greedy Meshing (0..N) para a coordenada interna do tile (0..1),
-// invertendo o Y (y=0 base do bloco -> v=1 base do tile no canvas) e travando a meio-texel (0.5/16 a 15.5/16)
-// para NUNCA tocar no tile vizinho do Atlas (elimina 100% da geada branca).
-const SNAP_UV = `
-vec2 snapAtlasUv(vec2 uvCoord) {
-  vec2 f = fract(uvCoord);
-  f.y = 1.0 - f.y;
-  vec2 safe = clamp(f, 0.03125, 0.96875);
-  return vTileOrigin + safe * abs(uTileSize);
-}
-`;
-
 const FRAG_OPAQUE = `
 precision highp float;
 ${UNIFORMS}
 ${LIGHTMAP}
-${SNAP_UV}
 void main() {
-  vec2 atlasUv = snapAtlasUv(vUv);
+  vec2 localUv = clamp(fract(vUv), 0.03125, 0.96875);
+  vec2 atlasUv = vTileOrigin + localUv * uTileSize;
   vec4 tex = texture2D(map, atlasUv);
   if (tex.a < 0.5) discard;
-  vec3 tintc = tex.a < 0.97 ? vec3(1.0) : vColor;
+  // Apenas a terra na lateral da grama (alpha = 230/255 ≈ 0.902) fica sem tinta (vec3(1.0)).
+  // Folhas e topo da grama recebem sempre vColor (verde), eliminando 100% da "geada branca".
+  vec3 tintc = (tex.a > 0.88 && tex.a < 0.93) ? vec3(1.0) : vColor;
   vec3 col = tex.rgb * tintc * lightmap(vLight) * vAo;
   float fog = smoothstep(uFogNear, uFogFar, vViewDist);
   col = mix(col, uFogColor, fog);
@@ -95,9 +86,9 @@ precision highp float;
 uniform float uWaterOpacity;
 ${UNIFORMS}
 ${LIGHTMAP}
-${SNAP_UV}
 void main() {
-  vec2 atlasUv = snapAtlasUv(vUv);
+  vec2 localUv = clamp(fract(vUv), 0.03125, 0.96875);
+  vec2 atlasUv = vTileOrigin + localUv * uTileSize;
   vec4 tex = texture2D(map, atlasUv);
   vec3 col = tex.rgb * vColor * lightmap(vLight) * vAo;
   float fog = smoothstep(uFogNear, uFogFar, vViewDist);
