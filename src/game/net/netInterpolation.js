@@ -17,6 +17,7 @@ export function recordPlayerSnapshot(p, msg) {
   p.sleeping = !!msg.sleeping;
   p.held = msg.h || 0;
   p.voice = msg.v | 0;
+  p.armor = msg.a | 0;
 
   if (!p.buffer) {
     p.buffer = [];

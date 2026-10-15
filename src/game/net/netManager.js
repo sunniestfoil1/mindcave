@@ -208,7 +208,7 @@ export class NetHost {
         }
         recordPlayerSnapshot(p, msg);
         // Repassa posição do jogador para outros convidados via canal UDP/não confiável
-        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, sleeping: !!msg.sleeping, h: msg.h || 0, v: msg.v | 0 }, userId, false);
+        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, sleeping: !!msg.sleeping, h: msg.h || 0, v: msg.v | 0, a: msg.a | 0 }, userId, false);
         break;
       }
       case 'sleep': {

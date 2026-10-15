@@ -39,7 +39,7 @@ import { createStats, serializeStats, deserializeStats, addStat, addStatByType }
 import { createAchievementState, serializeAchievements, deserializeAchievements, tryUnlock, checkStatAchievements } from './achievements';
 import { loadRealTextures, reloadRealTextures, isRealTexturesLoaded, tickTextureAnimations } from './textures';
 import { lookDirFromAngles } from './viewMath';
-import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel, setModelHeldItem, setModelCape } from './playerModel';
+import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel, setModelHeldItem, setModelCape, setModelArmor, armorCodeFromSlots } from './playerModel';
 import { interpolateRemotePlayer } from './net/netInterpolation';
 
 let _activeEngine = null;
@@ -1746,6 +1746,7 @@ export class GameEngine {
       const curPitch = Math.round(p.pitch * 100) / 100;
       const curHeld = this.getHeldItem()?.id || 0;
       const curVoice = voiceChat.getWireState();
+      const curArmor = armorCodeFromSlots(this.inventory?.armor);
       const curDead = !!p.isDead;
       const curSleeping = !!p.sleeping;
 
@@ -1760,13 +1761,14 @@ export class GameEngine {
         Math.abs(curPitch - last.pitch) > 0.015 ||
         curHeld !== last.held ||
         curVoice !== last.voice ||
+        curArmor !== last.armor ||
         curDead !== last.dead ||
         curSleeping !== last.sleeping;
 
       // Envia se houver movimento/mudança de estado ou como heartbeat a cada 20 ticks (1s)
       if (hasMoved || this._ticksSinceNetMove >= 20) {
         this._ticksSinceNetMove = 0;
-        this._lastSentPos = { x: curX, y: curY, z: curZ, yaw: curYaw, pitch: curPitch, held: curHeld, voice: curVoice, dead: curDead, sleeping: curSleeping };
+        this._lastSentPos = { x: curX, y: curY, z: curZ, yaw: curYaw, pitch: curPitch, held: curHeld, voice: curVoice, armor: curArmor, dead: curDead, sleeping: curSleeping };
 
         const posMsg = {
           t: 'move',
@@ -1781,6 +1783,7 @@ export class GameEngine {
           sleeping: curSleeping,
           h: curHeld,
           v: curVoice,
+          a: curArmor,
         };
         if (this.netManager.broadcast) {
           this.netManager.broadcast(posMsg, undefined, false);
@@ -2208,6 +2211,7 @@ export class GameEngine {
       placePlayerModel(m, p.pos, p.yaw);
       applyThirdPersonPose(m, this.anim, p, this.worldTime, partialTick);
       setModelHeldItem(m, this.getHeldItem()?.id);
+      setModelArmor(m, armorCodeFromSlots(this.inventory?.armor));
       setModelCape(m, this._capeSrc, settingsStore.get('user.skinParts.cape') !== false);
     }
 
@@ -2215,7 +2219,7 @@ export class GameEngine {
     const hurtColor = isHurt ? 0xff5555 : 0xffffff;
     if (this._lastHurtColor !== hurtColor) {
       this._lastHurtColor = hurtColor;
-      m.traverse((c) => { if (c.material && c.material.color && !c.isSprite) c.material.color.setHex(hurtColor); });
+      m.traverse((c) => { if (c.material && c.material.color && !c.isSprite) c.material.color.setHex(isHurt ? hurtColor : (c.material.userData?.baseColor ?? hurtColor)); });
       if (this.fpsArm) {
         this.fpsArm.traverse((c) => { if (c.material && c.material.color) c.material.color.setHex(hurtColor); });
       }
@@ -2366,6 +2370,7 @@ export class GameEngine {
         placePlayerModel(entry.group, { x: rx, y: ry, z: rz }, rp.yaw || 0);
         // Item que o jogador remoto está segurando (chegou junto com o move)
         setModelHeldItem(entry.group, rp.held);
+        setModelArmor(entry.group, rp.armor);
         // Capa e skin do remoto: busca pelo nickname (cacheada)
         this._ensureRemoteCape(entry, rp.name);
         this._ensureRemoteSkin(entry, rp.name);

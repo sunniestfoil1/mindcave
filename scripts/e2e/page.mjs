@@ -100,6 +100,44 @@ ok(!(await hasPauseMenu()), 'após comando "/..." o menu de pausa não aparece')
   ok(!(await page.evaluate(() => !!document.querySelector('[data-client-menu]'))), 'Shift direito de novo fecha o menu');
 }
 
+// ---- Modo de edição do HUD: lápis do menu, arrastar o widget, posição salva e restauração ----
+{
+  const rect = (sel) => page.evaluate((s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, pe: getComputedStyle(e).pointerEvents }; }, sel);
+  await page.keyboard.press('ShiftRight'); await sleep(800);
+  await page.click('[data-module="fps"]'); await sleep(300);            // FPS ligado
+  const antes = await rect('[data-hud-widget="fps"]');
+  await page.click('[aria-label="Editar posição do HUD"]'); await sleep(400);
+  ok(await page.evaluate(() => !!document.querySelector('[data-hud-edit]') && !document.querySelector('[data-module]')), 'o lápis esconde o painel e deixa só a barra de edição');
+  const ed = await rect('[data-hud-widget="fps"]');
+  ok(ed && ed.pe === 'auto', 'no modo de edição o widget de FPS recebe o mouse');
+  await page.mouse.move(ed.x + ed.w / 2, ed.y + ed.h / 2);
+  await page.mouse.down();
+  await page.mouse.move(ed.x + ed.w / 2 - 200, ed.y + ed.h / 2 + 150, { steps: 8 });
+  await page.mouse.up(); await sleep(300);
+  const dep = await rect('[data-hud-widget="fps"]');
+  ok(dep && Math.abs(dep.x - (ed.x - 200)) <= 2 && Math.abs(dep.y - (ed.y + 150)) <= 2, `arrastar move o widget (${Math.round(dep.x - ed.x)}, ${Math.round(dep.y - ed.y)} px)`);
+  const salvo = await page.evaluate(() => { const l = JSON.parse(localStorage.getItem('mc.client.v1') || '{}').__layout?.fps; return l && { x: l.x * innerWidth, y: l.y * innerHeight }; });
+  ok(salvo && Math.abs(salvo.x + 200) < 2 && Math.abs(salvo.y - 150) < 2, 'a posição fica salva como fração da janela');
+  // arrastar para fora da tela é limitado à janela
+  await page.mouse.move(dep.x + dep.w / 2, dep.y + dep.h / 2);
+  await page.mouse.down(); await page.mouse.move(-500, -500, { steps: 6 }); await page.mouse.up(); await sleep(200);
+  const canto = await rect('[data-hud-widget="fps"]');
+  ok(canto && canto.x >= -1 && canto.y >= -1, `o widget não sai da janela (${Math.round(canto.x)}, ${Math.round(canto.y)})`);
+  await page.keyboard.press('Escape'); await sleep(400);
+  ok(await page.evaluate(() => !!document.querySelector('[data-module]')), 'Esc na edição volta ao menu');
+  await page.keyboard.press('Escape'); await sleep(500);
+  const fora = await rect('[data-hud-widget="fps"]');
+  ok(fora && fora.pe === 'none' && Math.abs(fora.x - canto.x) <= 1, 'fora da edição o widget fica na posição nova e não recebe o mouse');
+  await page.keyboard.press('ShiftRight'); await sleep(600);
+  await page.click('[aria-label="Editar posição do HUD"]'); await sleep(300);
+  await page.evaluate(() => [...document.querySelectorAll('[data-hud-edit] button')].find((b) => /Restaurar/.test(b.textContent)).click()); await sleep(300);
+  const rest = await rect('[data-hud-widget="fps"]');
+  ok(rest && Math.abs(rest.x - antes.x) <= 1 && Math.abs(rest.y - antes.y) <= 1, 'Restaurar posições devolve o widget ao lugar padrão');
+  await page.evaluate(() => [...document.querySelectorAll('[data-hud-edit] button')].find((b) => /Concluir/.test(b.textContent)).click()); await sleep(300);
+  await page.click('[data-module="fps"]'); await sleep(300);           // FPS desligado de novo
+  await page.keyboard.press('Escape'); await sleep(500);
+}
+
 // ---- E: abre e fecha inventário; medir volta do HUD ----
 const hudVisible = () => page.evaluate(() => { const el = [...document.querySelectorAll('div')].find(d => d.className && typeof d.className === 'string' && d.className.includes('transition-opacity') && d.className.includes('duration-150')); return el ? !el.className.includes('opacity-0') : null; });
 ok((await hudVisible()) === true, 'HUD visível jogando');

@@ -14,6 +14,7 @@ function load() {
   return {};
 }
 let state = load();
+const ZERO = { x: 0, y: 0 };
 
 function commit() {
   version++;
@@ -32,7 +33,18 @@ const RGB_LUT = (() => {
   return t;
 })();
 
+// Modo de edição do HUD: não é salvo (sempre abre desligado). As posições dos widgets ficam em state.__layout como deslocamento
+// em fração da janela ({ x, y }), somado à posição padrão de cada widget: funciona em qualquer tamanho de tela.
+let editing = false;
+function notify() { version++; for (const fn of listeners) fn(); }
+
 export const clientStore = {
+  isEditing() { return editing; },
+  setEditing(on) { if (editing !== !!on) { editing = !!on; notify(); } },
+  getPos(id) { return state.__layout?.[id] || ZERO; },
+  setPos(id, x, y) { state = { ...state, __layout: { ...state.__layout, [id]: { x, y } } }; commit(); },
+  resetLayout() { const { __layout, ...rest } = state; state = rest; commit(); },
+
   isOn(id) {
     const m = MODULE_BY_ID[id];
     if (!m || m.kind === 'soon') return false;

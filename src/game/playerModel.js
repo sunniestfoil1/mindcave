@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { modelRotationYFromYaw } from './viewMath';
 import { getItem } from './items';
+import { getPackCanvas, onPackChanged, MC } from './pack';
 
 // === UV mapping — porte exato de setUVs() do skinview3d ===
 function setUVs(box, u, v, width, height, depth, textureWidth, textureHeight) {
@@ -411,6 +412,120 @@ export function setModelHeldItem(model, itemId) {
   const mesh = new THREE.Mesh(isTool ? _heldGeo.tool : isBlock ? _heldGeo.block : _heldGeo.item, mat);
   if (isTool) mesh.rotation.set(0.4, 0, 0.2);
   holder.add(mesh);
+}
+
+
+// === Armadura vestida (ModelBiped do 1.8.9 com expansão 1,0 / 0,5) ===
+// Código de rede: 3 bits por peça (0 nada, 1 couro, 2 malha, 3 ferro, 4 diamante, 5 ouro), capacete nos bits 0-2, botas nos 9-11.
+const ARMOR_MAT_CODE = { leather: 1, chain: 2, iron: 3, diamond: 4, gold: 5 };
+const ARMOR_FILE = [null, 'leather', 'chainmail', 'iron', 'diamond', 'gold'];
+const LEATHER_COLOR = 0xa06540;   // cor padrão do couro no 1.8.9 (sem tintura)
+
+export function armorCodeFromSlots(slots) {
+  let code = 0;
+  for (let i = 0; i < 4; i++) {
+    const it = slots && slots[i];
+    const m = it && it.id ? getItem(it.id)?.armor?.material : null;
+    code |= (ARMOR_MAT_CODE[m] || 0) << (i * 3);
+  }
+  return code;
+}
+
+// textura da camada (1 ou 2) do material: cache por arquivo, refeito quando o pacote de recursos muda
+const _armorTex = new Map();
+onPackChanged(() => {
+  for (const e of _armorTex.values()) { e.tex?.dispose(); }
+  _armorTex.clear();
+  _armorEpoch++;
+});
+let _armorEpoch = 0;
+function armorTexture(file, cb) {
+  let e = _armorTex.get(file);
+  if (!e) {
+    e = { tex: null, waiting: [] };
+    _armorTex.set(file, e);
+    getPackCanvas(MC + 'textures/models/armor/' + file + '.png').then((cv) => {
+      if (!cv) return;
+      const tex = new THREE.CanvasTexture(cv);
+      tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+      e.tex = tex;
+      for (const f of e.waiting.splice(0)) f(tex);
+    });
+  }
+  if (e.tex) cb(e.tex); else e.waiting.push(cb);
+}
+
+// caixa expandida com UV do layout 64×32 dos arquivos de armadura
+function armorBox(u, v, w, h, d, grow) {
+  const g = new THREE.BoxGeometry(w + grow * 2, h + grow * 2, d + grow * 2);
+  setUVs(g, u, v, w, h, d, 64, 32);
+  return g;
+}
+
+// peça → lista de [parte do corpo, geometria, posição x/y/z relativa, espelhar]
+function armorParts(piece) {
+  if (piece === 0) return [{ part: 'head', geo: () => armorBox(0, 0, 8, 8, 8, 1), pos: [0, 4, 0], layer: 1 }];
+  if (piece === 1) return [
+    { part: 'body', geo: () => armorBox(16, 16, 8, 12, 4, 1), pos: [0, 0, 0], layer: 1 },
+    { part: 'rightArm', geo: () => armorBox(40, 16, 4, 12, 4, 1), pos: [-1, -4, 0], layer: 1 },
+    { part: 'leftArm', geo: () => armorBox(40, 16, 4, 12, 4, 1), pos: [1, -4, 0], layer: 1, mirror: true },
+  ];
+  if (piece === 2) return [
+    { part: 'body', geo: () => armorBox(16, 16, 8, 12, 4, 0.5), pos: [0, 0, 0], layer: 2 },
+    { part: 'rightLeg', geo: () => armorBox(0, 16, 4, 12, 4, 0.5), pos: [0, -6, 0], layer: 2 },
+    { part: 'leftLeg', geo: () => armorBox(0, 16, 4, 12, 4, 0.5), pos: [0, -6, 0], layer: 2, mirror: true },
+  ];
+  return [
+    { part: 'rightLeg', geo: () => armorBox(0, 16, 4, 12, 4, 1), pos: [0, -6, 0], layer: 1 },
+    { part: 'leftLeg', geo: () => armorBox(0, 16, 4, 12, 4, 1), pos: [0, -6, 0], layer: 1, mirror: true },
+  ];
+}
+
+// Veste/tira a armadura de um modelo (jogador local em 3ª pessoa ou remoto). Só reconstrói a peça que mudou.
+export function setModelArmor(model, code) {
+  const ud = model?.userData;
+  if (!ud || !ud.skin) return;
+  code = code | 0;
+  if (!ud.armorState) ud.armorState = { code: 0, epoch: _armorEpoch, pieces: [null, null, null, null] };
+  const st = ud.armorState;
+  if (st.code === code && st.epoch === _armorEpoch) return;
+  const parts = { head: ud.head, body: ud.body, rightArm: ud.armR, leftArm: ud.armL, rightLeg: ud.legR, leftLeg: ud.legL };
+  for (let piece = 0; piece < 4; piece++) {
+    const mat = (code >> (piece * 3)) & 7;
+    const had = (st.code >> (piece * 3)) & 7;
+    if (mat === had && st.epoch === _armorEpoch) continue;
+    // remove a peça antiga
+    const old = st.pieces[piece];
+    if (old) for (const o of old) { o.parent?.remove(o.mesh); o.mesh.geometry.dispose(); o.mesh.material.dispose(); }
+    st.pieces[piece] = null;
+    if (!mat || !ARMOR_FILE[mat]) continue;
+    const list = [];
+    for (const def of armorParts(piece)) {
+      const file = ARMOR_FILE[mat] + '_layer_' + def.layer;
+      const material = new THREE.MeshLambertMaterial({ alphaTest: 0.1, side: THREE.FrontSide });
+      if (mat === 1) { material.color.setHex(LEATHER_COLOR); material.userData.baseColor = LEATHER_COLOR; }
+      const mesh = new THREE.Mesh(def.geo(), material);
+      mesh.visible = false;                        // some até a textura chegar (evita caixa branca)
+      mesh.position.set(def.pos[0], def.pos[1], def.pos[2]);
+      if (def.mirror) mesh.scale.x = -1;
+      armorTexture(file, (tex) => { material.map = tex; material.needsUpdate = true; mesh.visible = true; });
+      parts[def.part].add(mesh);
+      list.push({ mesh, parent: parts[def.part] });
+      // couro: a camada de tintura (_overlay) não leva a cor
+      if (mat === 1) {
+        const m2 = new THREE.MeshLambertMaterial({ alphaTest: 0.1, side: THREE.FrontSide });
+        const mesh2 = new THREE.Mesh(def.geo(), m2);
+        mesh2.visible = false;
+        mesh2.position.copy(mesh.position);
+        mesh2.scale.set(def.mirror ? -1.001 : 1.001, 1.001, 1.001);   // um fio acima da camada de couro, sem brigar de profundidade
+        armorTexture(file + '_overlay', (tex) => { m2.map = tex; m2.needsUpdate = true; mesh2.visible = true; });
+        parts[def.part].add(mesh2);
+        list.push({ mesh: mesh2, parent: parts[def.part] });
+      }
+    }
+    st.pieces[piece] = list;
+  }
+  st.code = code; st.epoch = _armorEpoch;
 }
 
 // Posiciona o modelo no mundo a partir do estado do jogador (usado pelo motor e pelo laboratório)

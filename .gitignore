@@ -54,3 +54,4 @@ ceu_extracted/
 supabase/.temp/
 repomix-*.xml
 .claude/
+scripts/e2e/out/

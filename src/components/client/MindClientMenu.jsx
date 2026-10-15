@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Shield, MapPin, MousePointerClick, Compass, BarChart3, Keyboard, Cpu, Layers, Wifi, Box, Palette, Languages, Apple, Wind, Tag,
-  Sparkles, RefreshCcw, FlaskConical, List, Sun, XCircle, Home, Settings, Info, Search, ChevronLeft,
+  Sparkles, RefreshCcw, FlaskConical, List, Sun, XCircle, Home, Settings, Info, Search, ChevronLeft, Pencil,
 } from 'lucide-react';
 import { MODULES } from '@/game/client/modules';
 import { clientStore, useClientStore } from '@/game/client/clientStore';
@@ -143,10 +143,14 @@ export default function MindClientMenu({ onClose }) {
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
+      if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation();
+        if (clientStore.isEditing()) clientStore.setEditing(false);   // Esc na edição volta ao menu; outro Esc fecha
+        else onClose();
+      }
     };
     window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
+    return () => { window.removeEventListener('keydown', onKey, true); clientStore.setEditing(false); };
   }, [onClose]);
 
   const list = useMemo(() => {
@@ -168,7 +172,7 @@ export default function MindClientMenu({ onClose }) {
           <h2 style={{ color: '#fff', marginTop: 0 }}>Mind Client</h2>
           <p>Menu aberto com o <b>Shift direito</b>. Clique num cartão para ligar ou desligar o módulo e na engrenagem para ajustar.</p>
           <p>Perspective: segure <b>ALT</b> para olhar em volta sem virar o corpo.</p>
-          <p>Módulos apagados marcados "Em breve" ainda não têm implementação.</p>
+          <p>O lápis na barra lateral abre a edição do HUD: arraste cada widget ligado para onde quiser; as posições ficam salvas.</p>
         </div>
       )
       : view === 'settings'
@@ -191,6 +195,18 @@ export default function MindClientMenu({ onClose }) {
           </div>
         );
 
+  // Modo de edição do HUD: o painel some e só fica a barra de cima; os widgets (ClientHud) viram arrastáveis
+  if (clientStore.isEditing()) {
+    const btn = { padding: '8px 18px', borderRadius: 10, border: `1.5px solid ${C.onBorder}`, background: C.on, color: '#fff', cursor: 'pointer', fontSize: 15, fontFamily: FONT };
+    return (
+      <div data-client-menu data-hud-edit style={{ position: 'fixed', bottom: '28%', left: '50%', transform: 'translateX(-50%)', zIndex: 61, display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', background: C.panel, borderRadius: 14, border: `1px solid ${C.border}`, fontFamily: FONT, color: C.text, fontSize: 15 }}>
+        <span>Arraste os widgets para onde quiser. Esc volta ao menu.</span>
+        <button type="button" style={btn} onClick={() => clientStore.resetLayout()}>Restaurar posições</button>
+        <button type="button" style={btn} onClick={() => clientStore.setEditing(false)}>Concluir</button>
+      </div>
+    );
+  }
+
   return (
     <div
       data-client-menu
@@ -202,6 +218,7 @@ export default function MindClientMenu({ onClose }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <SideButton label="Fechar" onClick={onClose}><XCircle size={22} /></SideButton>
             <SideButton label="Módulos" onClick={() => { setView('modules'); setOpen(null); }}><Home size={21} /></SideButton>
+            <SideButton label="Editar posição do HUD" onClick={() => clientStore.setEditing(true)}><Pencil size={20} /></SideButton>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <SideButton label="Configurações" onClick={() => { setView('settings'); setOpen(null); }}><Settings size={21} /></SideButton>

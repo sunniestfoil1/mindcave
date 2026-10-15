@@ -26,9 +26,15 @@ Ligados por padrão: Hit Color, Nametags, Particles, Perspective, Tab (o comport
 
 Boss Bar, Combo Display, Play Time, Potion Counter, Potion Effects, Reach Display, Old Animations, Time Changer, TNT Timer e Wavey Capes foram retirados a pedido. O item na mão já usa as animações do jogo original por padrão.
 
-## Ainda sem implementação ("Em breve", cartão apagado)
+## Editar a posição do HUD
 
-Pack Overlay, InputFix, Motion Blur, Shiny Pots e Skins aparecem no menu como no cliente de referência, mas não ligam: nenhum deles tem efeito no jogo ainda. A edição de posição dos widgets de HUD (o lápis da barra lateral do cliente de referência) também não foi feita; os widgets ficam em posições fixas.
+O lápis da barra lateral do menu esconde o painel e deixa os widgets ligados arrastáveis (contorno tracejado). Cada widget fica dentro da janela; os que estão sem dado na hora (Armor HUD sem armadura, Ping offline, Memory sem a API do navegador) ganham um espaço para você posicionar. **Esc** volta ao menu, **Concluir** sai da edição e **Restaurar posições** devolve tudo ao lugar padrão.
+
+A posição é guardada como fração da janela (deslocamento em relação ao lugar padrão) em `mc.client.v1.__layout`, então vale em qualquer resolução.
+
+## Armadura no modelo do jogador
+
+A armadura do inventário aparece no modelo em 3ª pessoa (F5) e nos outros jogadores: capacete na cabeça, peitoral no corpo e braços, calça no corpo e pernas, botas nas pernas, com as texturas `textures/models/armor/*_layer_1/2.png` do pacote de recursos ativo (troca junto com o pacote). Couro sai na cor padrão A06540 mais a camada de tintura. Pela rede segue um número (`a` na mensagem `move`, 3 bits por peça). Brilho de encantamento na armadura ainda não existe.
 
 ## Onde mexer
 
@@ -37,9 +43,11 @@ Pack Overlay, InputFix, Motion Blur, Shiny Pots e Skins aparecem no menu como no
 | Incluir ou tirar módulo, nome, ícone, ajustes, padrão | `src/game/client/modules.js` |
 | Estado, persistência, cor do RGB | `src/game/client/clientStore.js` |
 | Visual do menu | `src/components/client/MindClientMenu.jsx` |
-| Widgets de HUD | `src/components/client/ClientHud.jsx` |
+| Widgets de HUD e arrasto (`useWidget`) | `src/components/client/ClientHud.jsx` |
+| Posições salvas, modo de edição | `src/game/client/clientStore.js` (`getPos`, `setPos`, `setEditing`) |
+| Armadura no modelo | `src/game/playerModel.js` (`setModelArmor`, `armorCodeFromSlots`) |
 | Abrir/fechar o menu (tecla e telas) | `engine.js` (`onKey`, `ShiftRight`) e `src/pages/Game.jsx` (`onToggleClientMenu`) |
 
 ## Testes
 
-`npm run test:e2e`: `scripts/e2e/client.mjs` (motor: Shift direito, ALT, Fullbright, Hit Color, Item Physics, Particles, Hitbox, Tab, Nametags) e `scripts/e2e/page.mjs` (menu aberto na página: módulos, ligar FPS, Esc, mundo rodando).
+`npm run test:e2e`: `scripts/e2e/client.mjs` (motor: Shift direito, ALT, Fullbright, Hit Color, Item Physics, Particles, Hitbox, Tab, Nametags) e `scripts/e2e/page.mjs` (menu aberto na página: módulos, ligar FPS, Esc, mundo rodando, edição e arrasto do HUD) e `scripts/e2e/armor.mjs` (armadura no modelo local e remoto, print em `scripts/e2e/out/armor.png`).
