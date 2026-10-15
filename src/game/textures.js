@@ -453,8 +453,8 @@ async function composeChest(ctx) {
   draw('chest_front', (c) => { c.drawImage(src, 14, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 14, 33, 14, 10, 0, lidH, TILE, bodyH); c.drawImage(src, 1, 1, 2, 4, 7, lidH - 1, 2, 4); });
 }
 
-export function loadRealTextures() {
-  if (_realLoaded) return Promise.resolve(true);
+export function loadRealTextures(force = false) {
+  if (_realLoaded && !force) return Promise.resolve(true);
   if (_loadingPromise) return _loadingPromise;
   _loadingPromise = (async () => {
     if (!_cache) makeAtlas();
@@ -462,6 +462,7 @@ export function loadRealTextures() {
       const ok = await loadPack();
       if (!ok) return false;
       const { ctx, texture } = _cache;
+      _anims.length = 0;
       await Promise.all(TILE_ORDER.map(async (name, idx) => {
         const mc = MC_TEXTURE_MAP[name];
         if (!mc || name === 'grass_side') return;
@@ -493,6 +494,12 @@ export function loadRealTextures() {
     }
   })();
   return _loadingPromise;
+}
+
+export async function reloadRealTextures() {
+  _realLoaded = false;
+  _anims.length = 0;
+  return loadRealTextures(true);
 }
 
 // Animação por .mcmeta (ex.: water_still, 32 quadros, frametime 2): chamada a cada quadro com o tempo em ticks

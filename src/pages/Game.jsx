@@ -540,15 +540,6 @@ export default function Game() {
       {hud && <RadioWidget visible={!!hud.paused && !isAnyGuiOpen && !hud.chatOpen && !hud.isDead} />}
       <PerformancePanel visible={!!hud?.f3} />
 
-      {/* Diagnóstico de spawn/render — só com F3 aberto */}
-      {hud && hud.f3 && (
-        <div className="absolute top-1 left-1 z-50 bg-black/70 text-green-400 text-[10px] font-mono px-2 py-1 rounded pointer-events-none">
-          POS: {hud.xyz} | FLUID: {hud.inFluid || 'none'} | FLY: {hud.flying ? 'Y' : 'N'} | GM: {hud.gamemode}<br/>
-          CHUNKS: {hud.chunksLoaded} | MESH_Q: {hud.meshQueueSize} | FPS: {hud.fps}<br/>
-          RD: {settingsStore.get('device.renderDistance') || '?'} | FOG_N: {engineRef.current?.world?.uniforms?.uFogNear?.value?.toFixed(0)} | FOG_F: {engineRef.current?.world?.uniforms?.uFogFar?.value?.toFixed(0)}<br/>
-          BLOCK_BELOW: {(() => { try { const e = engineRef.current; if (!e) return '?'; const p = e.player.pos; const b = e.world.getBlock(Math.floor(p.x), Math.floor(p.y - 1), Math.floor(p.z)); return stateId(b) + ' ' + (getBlock(stateId(b))?.namePt || ''); } catch { return '?'; } })()}
-        </div>
-      )}
 
       {/* Tela de morte (PRD 05/07) */}
       {hud?.isDead && (

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { itemColor, ITEMS } from "@/game/items";
 import { BLOCKS, tileForFace } from "@/game/blocks";
 import { getDurabilityRatio } from "@/game/mining";
-import { getPackUrl, MC, isPackReady, onPackReady } from "@/game/pack";
+import { getPackUrl, MC, isPackReady, onPackReady, onPackChanged } from "@/game/pack";
 import { getAtlasTileCanvas, getAtlasVersion } from "@/game/textures";
 import { itemIconFile, itemBlockTile, ICON_TINT } from "@/game/gui/iconNames";
 import { hasGlint } from "@/game/glint";
@@ -87,7 +87,17 @@ const ItemSlot = React.memo(function ItemSlot({ item, onClick, onRightClick, onS
   const atlasVer = getAtlasVersion(); // o ícone é refeito quando as texturas reais terminam de carregar
   const [packVer, setPackVer] = useState(isPackReady() ? 1 : 0);
   useEffect(() => {
-    return onPackReady(() => setPackVer(v => v + 1));
+    const unReady = onPackReady(() => setPackVer(v => v + 1));
+    const unChange = onPackChanged(() => {
+      blockCanvasCache.clear();
+      flatCanvasCache.clear();
+      itemUrlCache.clear();
+      setPackVer(v => v + 1);
+    });
+    return () => {
+      unReady();
+      unChange();
+    };
   }, []);
 
   const hasItem = Boolean(item && item.id && item.id > 0);

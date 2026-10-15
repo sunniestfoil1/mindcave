@@ -267,6 +267,17 @@ export function getPackJson(path) {
   _jsonCache.set(path, p);
   return p;
 }
+const _packChangeListeners = new Set();
+export function onPackChanged(cb) {
+  _packChangeListeners.add(cb);
+  return () => _packChangeListeners.delete(cb);
+}
+export function notifyPackChanged() {
+  for (const cb of _packChangeListeners) {
+    try { cb(); } catch (e) { console.error('[Pack] Erro em listener de packChanged:', e); }
+  }
+}
+
 // Liga os pacotes extras (do mais prioritário ao menos). Chamado no boot, antes de qualquer textura ser pedida.
 // As folhas de GUI que o jogo mostra sem esperar o pacote base (widgets, icons) já saem daqui como URL pronta.
 const SYNC_GUI_TEXTURES = ['textures/gui/widgets.png', 'textures/gui/icons.png', 'textures/font/ascii.png'];
@@ -290,6 +301,7 @@ export async function setOverlays(list) {
     const bytes = await inflate(entry);
     _overlayUrls.set(path, URL.createObjectURL(new Blob([bytes], { type: 'image/png' })));
   }));
+  notifyPackChanged();
 }
 export function getOverlayUrlSync(path) { return _overlayUrls.get(path) || null; }
 // Lê um arquivo qualquer de um zip solto (pack.png e pack.mcmeta da tela de pacotes)

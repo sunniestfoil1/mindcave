@@ -1,7 +1,9 @@
 // Pacotes de recursos extras, no estilo do ResourcePackRepository do 1.8.9: a lista escolhida vale por cima do pacote base.
 // Cada pacote é um .zip no Supabase Storage. Depois de baixado fica na Cache API e só baixa de novo se o tamanho (ou o ETag) mudar:
 // a conferência é um HEAD de poucos bytes. A escolha fica no localStorage na ordem do options.txt (último = maior prioridade).
-import { SUPABASE_STORAGE_URL, setOverlays, readZipFile } from './pack';
+import { SUPABASE_STORAGE_URL, setOverlays, readZipFile, notifyPackChanged } from './pack';
+import { reloadRealTextures } from './textures';
+import { getActiveEngine } from './engine';
 
 const STORE_KEY = 'mc.resourcePacks.v1';
 const CACHE_NAME = 'mc-resourcepacks-v1';
@@ -127,4 +129,26 @@ export async function bootResourcePacks() {
   }
   if (list.length) await setOverlays(list);
   setTimeout(() => { for (const pack of stale) ensurePackBuffer(pack).catch((e) => console.warn(`[Pacotes] ${pack.id}: ${e.message}`)); }, 3000);
+}
+
+// Aplicação de pacotes em tempo real sem recarregar a página
+export async function applyResourcePacks(selectedIds, onProgress) {
+  setSelectedPackIds(selectedIds);
+  const list = [];
+  const reversed = [...selectedIds].reverse();
+  for (const id of reversed) {
+    const pack = packById(id);
+    if (!pack) continue;
+    const buf = await ensurePackBuffer(pack, (percent) => {
+      onProgress?.({ percent, status: `Carregando ${id}...` });
+    });
+    if (buf) list.push({ id, buf });
+  }
+  await setOverlays(list);
+  await reloadRealTextures();
+  notifyPackChanged();
+  const engine = getActiveEngine();
+  if (engine) {
+    await engine.reloadAssets();
+  }
 }

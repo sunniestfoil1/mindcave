@@ -37,9 +37,12 @@ import { explode, getExplosionDamage } from './explosions';
 import { tickAgriculture, applyBonemeal, trampleFarmland, harvestCrop } from './agriculture';
 import { createStats, serializeStats, deserializeStats, addStat, addStatByType } from './stats';
 import { createAchievementState, serializeAchievements, deserializeAchievements, tryUnlock, checkStatAchievements } from './achievements';
-import { loadRealTextures, isRealTexturesLoaded, tickTextureAnimations } from './textures';
+import { loadRealTextures, reloadRealTextures, isRealTexturesLoaded, tickTextureAnimations } from './textures';
 import { lookDirFromAngles } from './viewMath';
 import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel, setModelHeldItem, setModelCape } from './playerModel';
+
+let _activeEngine = null;
+export function getActiveEngine() { return _activeEngine; }
 import { onSkinChange, onCapeChange, getCapeChoice, preloadLocalSkin } from './skinStore';
 import { fetchCraftheadCape, fetchCraftheadSkin } from './crafthead';
 import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
@@ -166,28 +169,23 @@ export class GameEngine {
   }
 
   async start() {
+    _activeEngine = this;
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     const resScale = (settingsStore.get('device.resolutionScale') || 100) / 100;
+    // IMPORTANTE: antialias: false elimina o "texture bleeding" (linhas/malha branca entre blocos no Atlas)
+    // e remove o peso de MSAA no framebuffer WebGL2 (igual ao Minecraft 1.8.9 / CM Client).
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
-      antialias: settingsStore.get('device.antialiasing') !== 'off',
+      antialias: false,
       powerPreference: 'high-performance',
       stencil: false,
       depth: true,
       preserveDrawingBuffer: false,
     });
-    this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace; // sem conversão: ver ColorManagement acima
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * resScale);
+    this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+    this.renderer.setPixelRatio(resScale);
     this.renderer.setSize(w, h, false);
-    this.renderer.setClearColor(0xc0d8ff, 1); // cor do horizonte — evita tela preta antes dos chunks carregarem
-
-    // Canal de alta frequência para FPS Ilimitado (sem trava de 180Hz do requestAnimationFrame)
-    this._fastChannel = new MessageChannel();
-    this._fastScheduled = false;
-    this._fastChannel.port1.onmessage = () => {
-      this._fastScheduled = false;
-      if (!this.disposed) this.loop(performance.now());
-    };
+    this.renderer.setClearColor(0xc0d8ff, 1);
 
     this.crosshair = createCrosshair(this.renderer);
     this.motionBlur = createMotionBlur(this.renderer);
@@ -388,16 +386,6 @@ export class GameEngine {
 
   _scheduleNextFrame() {
     if (this.disposed) return;
-    const maxFps = settingsStore.get('device.maxFps');
-    const vsync = settingsStore.get('device.vsync');
-    // Quando em Ilimitado + VSync desligado e jogando ativamente, usa MessageChannel para destravar +500/2000 FPS
-    if (maxFps === 'unlimited' && !vsync && !this.paused && !document.hidden) {
-      if (!this._fastScheduled) {
-        this._fastScheduled = true;
-        this._fastChannel.port2.postMessage(null);
-      }
-      return;
-    }
     this.raf = requestAnimationFrame(this.loop);
   }
 
@@ -699,9 +687,14 @@ export class GameEngine {
   }
 
   // F3+T — recarregar assets (PRD 12 RF-041)
-  reloadAssets() {
+  async reloadAssets() {
+    await reloadRealTextures();
     if (this.world?.atlas?.texture) this.world.atlas.texture.needsUpdate = true;
-    this.emitHud();
+    this.sky?.applyPack?.();
+    applyPackSkin(this.playerModel, this.fpsArm);
+    this.reloadChunks();
+    if (this.updateFirstPersonHand) this.updateFirstPersonHand();
+    this.emitHud(true);
   }
 
   eyePos() {
@@ -3287,10 +3280,7 @@ export class GameEngine {
 
   stop() {
     this.disposed = true;
-    if (this._fastChannel) {
-      this._fastChannel.port1.onmessage = null;
-      this._fastChannel = null;
-    }
+    if (_activeEngine === this) _activeEngine = null;
     musicManager.stop();
     voiceChat.stop();
     cancelAnimationFrame(this.raf);

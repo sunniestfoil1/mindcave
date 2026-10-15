@@ -717,7 +717,7 @@ export default function RadioWidget({ visible = true }) {
         {/* Slot do Disco de Música da 1.8.9 (Gira durante a reprodução) */}
         <DiscSlot discName={track.disc} playing={state.playing} S={S} />
 
-        {/* Nome da faixa em Marquee/Carrossel + C418 */}
+        {/* Nome da faixa em Marquee/Carrossel + Autor em tamanho reduzido */}
         <div
           style={{
             position: "relative",
@@ -728,24 +728,36 @@ export default function RadioWidget({ visible = true }) {
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
-            gap: 2 * S,
           }}
         >
-          <MarqueeText
-            text={track.title}
-            S={S}
-            color={flash ? "#55FFFF" : state.playing ? "#FFFF55" : "#A0A0A0"}
-            shadow
-            maxWidthGui={78}
-          />
-          <McText
-            text={`${track.artist} [R3]`}
-            x={0}
-            y={11}
-            S={S}
-            color="#808080"
-            shadow
-          />
+          <div style={{ position: "relative", width: 78 * S, height: 9 * S, overflow: "hidden" }}>
+            <MarqueeText
+              text={track.title}
+              S={S}
+              color={flash ? "#55FFFF" : state.playing ? "#FFFF55" : "#A0A0A0"}
+              shadow
+              maxWidthGui={78}
+            />
+          </div>
+          <div
+            style={{
+              position: "relative",
+              height: 7 * S,
+              marginTop: 1 * S,
+              transformOrigin: "left center",
+              transform: "scale(0.72)",
+              imageRendering: "pixelated",
+            }}
+          >
+            <McText
+              text={`${track.artist} [R3]`}
+              x={0}
+              y={0}
+              S={S}
+              color="#808080"
+              shadow
+            />
+          </div>
         </div>
 
         {/* Analisador de espectro calibrado para as 8 frequências acústicas */}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getPackUrl, onPackReady, getOverlayUrlSync, MC } from '@/game/pack';
+import { getPackUrl, onPackReady, onPackChanged, getOverlayUrlSync, MC } from '@/game/pack';
 import { getGuiScale } from '@/game/gui/scale';
 import { settingsStore } from '@/game/settingsStore';
 import { drawMcText, measureMcText } from '@/game/gui/font';
@@ -10,29 +10,46 @@ const LOCAL_TEXTURES = {
   'textures/gui/icons.png': '/assets/ui/icons.png',
 };
 
+export function clearPackTextureCache() {
+  urlCache.clear();
+}
+
 export function usePackTexture(path) {
-  const local = getOverlayUrlSync(path) || LOCAL_TEXTURES[path];
-  const [url, setUrl] = useState(urlCache.get(path) || local || null);
+  const getInitial = () => urlCache.get(path) || getOverlayUrlSync(path) || LOCAL_TEXTURES[path] || null;
+  const [url, setUrl] = useState(getInitial);
+
   useEffect(() => {
-    if (local) return undefined;
-    if (urlCache.has(path)) {
-      setUrl(urlCache.get(path));
-      return undefined;
-    }
     let off = false;
-    const load = () =>
+    const update = () => {
+      const syncOverlay = getOverlayUrlSync(path);
+      if (syncOverlay) {
+        if (!off) setUrl(syncOverlay);
+        return;
+      }
       getPackUrl(MC + path).then((u) => {
         if (u && !off) {
           urlCache.set(path, u);
           setUrl(u);
+        } else if (!u && !off) {
+          setUrl(LOCAL_TEXTURES[path] || null);
         }
       });
-    const un = onPackReady(load);
+    };
+
+    update();
+    const unChange = onPackChanged(() => {
+      urlCache.delete(path);
+      update();
+    });
+    const unReady = onPackReady(update);
+
     return () => {
       off = true;
-      un();
+      unChange();
+      unReady();
     };
-  }, [path, local]);
+  }, [path]);
+
   return url;
 }
 

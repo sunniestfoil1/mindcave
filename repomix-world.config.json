@@ -1,0 +1,16 @@
+{
+  "output": {
+    "filePath": "repomix-world.xml",
+    "style": "xml",
+    "headerText": "Mind Cave 3D World & Rendering Files (Uncut)",
+    "removeComments": false,
+    "removeEmptyLines": false
+  },
+  "include": [
+    "src/game/world.js",
+    "src/game/materials.js",
+    "src/game/textures.js",
+    "src/game/mesher.js",
+    "src/game/sectionMesh.js"
+  ]
+}

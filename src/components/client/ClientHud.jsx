@@ -85,7 +85,7 @@ function ArmorHud({ engine, S }) {
 export default function ClientHud({ hud, engine }) {
   useClientStore();
   const S = useGuiScaleValue();
-  if (!hud || hud.hideHud) return null;
+  if (!hud || hud.hideHud || hud.f3) return null;
   const txt = (text, style, key) => (
     <div key={key} style={{ position: 'absolute', pointerEvents: 'none', ...style }}>
       <McText text={text} x={0} y={0} S={S} color="#FFFFFF" shadow align={style.textAlign === 'center' ? 'center' : style.right !== undefined ? 'right' : 'left'} />

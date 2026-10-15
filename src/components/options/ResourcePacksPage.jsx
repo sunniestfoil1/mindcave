@@ -5,7 +5,7 @@ import { measureMcText } from '@/game/gui/font';
 import { loadPack } from '@/game/pack';
 import { useT } from '@/game/i18n';
 import {
-  PACK_CATALOG, getSelectedPackIds, setSelectedPackIds, ensurePackBuffer, getCachedPackBuffer, readPackInfo,
+  PACK_CATALOG, getSelectedPackIds, setSelectedPackIds, ensurePackBuffer, getCachedPackBuffer, readPackInfo, applyResourcePacks,
 } from '@/game/resourcePacks';
 
 // Tela de pacotes de recursos (GuiScreenResourcePacks do 1.8.9): duas listas de 200 px, entradas de 36 px com ícone 32×32,
@@ -140,11 +140,18 @@ export default function ResourcePacksPage({ onBack }) {
     setChanged(true);
   };
 
-  const done = () => {
+  const done = async () => {
     if (!changed) { onBack(); return; }
-    setSelectedPackIds(selected.slice().reverse());
     setApplying(true);
-    setTimeout(() => window.location.reload(), 150);
+    try {
+      await applyResourcePacks(selected.slice().reverse(), (p) => {
+        setBusy({ id: p.status, percent: p.percent });
+      });
+      onBack();
+    } catch (e) {
+      setError(`${t('resourcePack.failed')}: ${e.message}`);
+      setApplying(false);
+    }
   };
 
   const mb = (n) => (n / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB';
