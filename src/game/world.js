@@ -11,6 +11,8 @@ import { createSharedUniforms, makeOpaqueMaterial, makeWaterMaterial } from './m
 import { MeshPool } from './meshPool';
 import { computeChunkTint } from './biomeTint';
 import { rebuildChunkColumnMesh, disposeMesh } from './sectionMesh';
+import { buildSectionMesh } from './mesher';
+import { isOpaque } from './blocks';
 
 const CLEAN = 0, DIRTY = 1, SENT = 2;
 const TASK_TIMEOUT_MS = 5000;
@@ -154,6 +156,55 @@ export class ClientWorld {
     }
   }
 
+  // Propaga luz básica dos 6 vizinhos na hora quando um bloco é quebrado, evitando que o buraco pisque escuro
+  _patchImmediateLight(c, lx, y, lz, state) {
+    if (!c.lightData) return;
+    const idx = chunkIndex(lx, y, lz);
+    if (state !== 0 && isOpaque(stateId(state))) {
+      c.lightData[idx] = 0;
+      return;
+    }
+    const wx = c.baseX + lx, wz = c.baseZ + lz;
+    let maxSky = 0, maxBlk = 0;
+    const dirs = [[0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]];
+    for (let i = 0; i < 6; i++) {
+      const nl = this.getLight(wx + dirs[i][0], y + dirs[i][1], wz + dirs[i][2]);
+      const s = dirs[i][1] === 1 && nl.sky === 15 ? 15 : Math.max(0, nl.sky - 1);
+      const b = Math.max(0, nl.block - 1);
+      if (s > maxSky) maxSky = s;
+      if (b > maxBlk) maxBlk = b;
+    }
+    c.lightData[idx] = (maxSky << 4) | maxBlk;
+  }
+
+  // Reconstroi a seção 16³ sincronicamente na hora (0ms de latência visual ao quebrar/colocar blocos)
+  _rebuildSectionImmediate(c, sy) {
+    if (!this.scene || sy < 0 || sy >= SECTIONS_PER_CHUNK) return;
+    if (c.secCount[sy] === 0) {
+      c.secOpaqueData[sy] = null;
+      c.secWaterData[sy] = null;
+    } else {
+      const yBase = sy * SECTION_SIZE;
+      const getBlockLocal = (lx, ly, lz) => c.data[chunkIndex(lx, yBase + ly, lz)];
+      const getBlockAbs = (wx, wy, wz) => this.getBlock(wx, wy, wz);
+      const getLightAbs = (wx, wy, wz) => this.getLight(wx, wy, wz);
+      const res = buildSectionMesh(
+        getBlockLocal,
+        sy,
+        c.baseX,
+        c.baseZ,
+        getBlockAbs,
+        getLightAbs,
+        this.atlas.tiles,
+        c.tint
+      );
+      c.secOpaqueData[sy] = res.opaque;
+      c.secWaterData[sy] = res.water;
+    }
+    c.colOpaqueMesh = rebuildChunkColumnMesh(this.scene, c.colOpaqueMesh, c.secOpaqueData, this.opaqueMat, 0, c.cx, c.cz, 0);
+    c.colWaterMesh = rebuildChunkColumnMesh(this.scene, c.colWaterMesh, c.secWaterData, this.waterMat, 1000, c.cx, c.cz, 0);
+  }
+
   setBlock(x, y, z, state) {
     if (y < 0 || y >= WORLD_HEIGHT) return 0;
     const cx = chunkCoord(x), cz = chunkCoord(z);
@@ -167,11 +218,30 @@ export class ClientWorld {
       c.ver++;
       if (old === 0) c.secCount[sy]++;
       else if (state === 0) c.secCount[sy]--;
+
+      // Atualiza a luz local imediatamente
+      this._patchImmediateLight(c, lx, y, lz, state);
+
       if (!this._unsent.has(c)) {
         let list = this._blockUpdates.get(c);
         if (!list) { list = []; this._blockUpdates.set(c, list); }
         list.push(idx, state);
       }
+
+      // Se a alteração é perto do jogador (<= 2 chunks), reconstrói a malha NA HORA (0 ms de delay!)
+      const isNearPlayer = Math.abs(cx - this._pcx) <= 2 && Math.abs(cz - this._pcz) <= 2;
+      if (isNearPlayer && this.scene) {
+        this._rebuildSectionImmediate(c, sy);
+        const ly = y % SECTION_SIZE;
+        if (ly === 0 && sy > 0) this._rebuildSectionImmediate(c, sy - 1);
+        if (ly === SECTION_SIZE - 1 && sy < SECTIONS_PER_CHUNK - 1) this._rebuildSectionImmediate(c, sy + 1);
+        if (lx === 0) { const nc = this.chunks.get(chunkKey(cx - 1, cz)); if (nc) this._rebuildSectionImmediate(nc, sy); }
+        if (lx === CHUNK_SIZE - 1) { const nc = this.chunks.get(chunkKey(cx + 1, cz)); if (nc) this._rebuildSectionImmediate(nc, sy); }
+        if (lz === 0) { const nc = this.chunks.get(chunkKey(cx, cz - 1)); if (nc) this._rebuildSectionImmediate(nc, sy); }
+        if (lz === CHUNK_SIZE - 1) { const nc = this.chunks.get(chunkKey(cx, cz + 1)); if (nc) this._rebuildSectionImmediate(nc, sy); }
+      }
+
+      // Continua agendando nos workers em segundo plano para recalcular a iluminação global exata
       this._markSectionDirty(c, sy);
       const ly = y % SECTION_SIZE;
       if (ly === 0 && sy > 0) this._markSectionDirty(c, sy - 1);

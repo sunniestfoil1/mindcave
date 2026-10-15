@@ -407,6 +407,19 @@ export class GameEngine {
     this._onMouseDown = (e) => {
       this._grabIfWanted();
       this.mouseBtn[e.button] = true;
+      if (!this.paused && !this.chatOpen && !this.player?.isDead && !this.player?.sleeping) {
+        const keys = settingsStore.get('user.keys') || {};
+        const atkCode = keys.attack || 'Mouse0';
+        const useCode = keys.use || 'Mouse2';
+        if (atkCode === 'Mouse' + e.button) {
+          this._pendingAttackClick = true;
+          this.breakCd = 0; // Novo clique físico zera o delay de quebrar (padrão 1.8.9)
+        }
+        if (useCode === 'Mouse' + e.button) {
+          this._pendingUseClick = true;
+          this.placeCd = 0; // Novo clique físico zera o delay de colocar bloco (fast-place 1.8.9)
+        }
+      }
       const pickKey = (settingsStore.get('user.keys') || {}).pick;
       if (pickKey && pickKey.startsWith('Mouse') && parseInt(pickKey.slice(5)) === e.button) {
         if (!this.paused && !this.chatOpen) this.pickBlock();
@@ -1491,15 +1504,22 @@ export class GameEngine {
     if (this.breakCd > 0) this.breakCd--;
     if (this.placeCd > 0) this.placeCd--;
 
-    // Combate e ações (PRD 07 RF-001..034) — morto/dormindo não ataca/interage
-    const attackActive = this.isAction('attack') && !this.paused && !this.chatOpen && !p.isDead && !p.sleeping;
-    const useActive = this.isAction('use') && !this.paused && !this.chatOpen && !p.isDead && !p.sleeping;
-    const attackPressed = attackActive && !this._prevAttack;
-    const usePressed = useActive && !this._prevUse;
+    // Combate, mineração e colocação de blocos com fila de clique sem perda entre ticks (1.8.9)
+    const canAct = !this.paused && !this.chatOpen && !p.isDead && !p.sleeping && !this.containerOpenFn?.();
+    const attackHeld = canAct && this.isAction('attack');
+    const useHeld = canAct && this.isAction('use');
+    const attackPressed = canAct && (this._pendingAttackClick || (attackHeld && !this._prevAttack));
+    const usePressed = canAct && (this._pendingUseClick || (useHeld && !this._prevUse));
+    this._pendingAttackClick = false;
+    this._pendingUseClick = false;
+
+    const attackActive = attackHeld || attackPressed;
+    const useActive = useHeld || usePressed;
     const heldItem = this.getHeldItem();
 
-    // Left-click: swing + atacar entidade / minerar (RF-001, RF-051)
+    // Se o jogador clicou de novo ou mudou de bloco mirado, zera o cooldown de quebra
     if (attackPressed) {
+      this.breakCd = 0;
       startSwing(this.anim);
       recordClick(this.cps);
       const entHit = this.raycastEntity();
@@ -1513,15 +1533,17 @@ export class GameEngine {
         }
       }
     }
+
     if (attackActive) {
-      // 1.8.9: segurar o botão esquerdo repete continuamente a animação de bater (no ar ou no bloco)
       if (!this.anim.isSwinging) {
         startSwing(this.anim);
       }
-      // Mineração contínua — só se não há entidade no caminho
       if (!this.raycastEntity()) {
         if (p.gameMode === 'creative' || p.gameMode === 'spectator') {
-          if (this.breakCd <= 0) { this.breakBlock(); this.breakCd = 5; }
+          if (this.breakCd <= 0) {
+            this.breakBlock();
+            this.breakCd = attackPressed ? 3 : 5;
+          }
         } else {
           this.tickMining(p);
         }
@@ -1531,7 +1553,10 @@ export class GameEngine {
       this.miningProgress = 0;
     }
 
-    // Right-click: bloquear / arco / comer / arremessar / colocar (RF-006, RF-020, RF-030)
+    if (usePressed) {
+      this.placeCd = 0;
+    }
+
     if (useActive) {
       if (isSword(heldItem)) {
         p.blocking = true; p.usingItem = true;
@@ -1548,12 +1573,11 @@ export class GameEngine {
       } else if (this.placeCd <= 0 && !heldItem?.id) {
         // mão vazia — nada
       } else if (this.placeCd <= 0 && usePressed && this.useHeldItem(heldItem)) {
-        this.placeCd = 4; // balde, enxada, sementes, pederneira, farinha de osso
+        this.placeCd = 4;
       } else if (this.placeCd <= 0) {
         this.placeBlock();
       }
     } else {
-      // Release
       if (p.bowDrawing && this.bowChargeTicks > 0) {
         if (p.bowCharge >= 0.1) this.shootArrow(p, p.bowCharge);
         p.bowDrawing = false; p.bowCharge = 0; this.bowChargeTicks = 0;
@@ -2592,29 +2616,38 @@ export class GameEngine {
     }
   }
 
-  // === Mineração (PRD 06 RF-060) ===
   tickMining(p) {
-    const hit = this.raycast();
+    const hit = this.raycast(true);
     if (!hit) { this.miningTarget = null; this.miningProgress = 0; return; }
+    const block = getBlock(hit.id);
+    if (block.hardness < 0) return;
+
+    const tool = this.getHeldItem();
+    const time = getMiningTime(hit.id, tool, p.effects, this.inFluid === 'water', p.onGround);
+    if (time === Infinity) return;
+
+    // Blocos instantâneos (grama, flores, tocha ou eficiência alta): quebram na hora sem esperar breakCd!
+    if (time <= 1) {
+      this.breakBlockSurvival(hit, tool);
+      this.miningTarget = null;
+      this.miningProgress = 0;
+      return;
+    }
+
     if (!this.miningTarget || this.miningTarget.x !== hit.x || this.miningTarget.y !== hit.y || this.miningTarget.z !== hit.z) {
       this.miningTarget = { x: hit.x, y: hit.y, z: hit.z };
       this.miningProgress = 0;
     }
-    const block = getBlock(hit.id);
-    if (block.hardness < 0) return;
-    if (this.breakCd > 0) return; // pausa de 5 ticks entre blocos, como na 1.8.9
-    const tool = this.getHeldItem();
-    const time = getMiningTime(hit.id, tool, p.effects, this.inFluid === 'water', p.onGround);
-    if (time === Infinity) return;
-    // Dureza 0 (grama alta, flores, tochas): quebra no mesmo tick, como na 1.8.9
-    this.miningProgress += time === 0 ? 1 : 1 / time;
+
+    if (this.breakCd > 0) return;
+    this.miningProgress += 1 / time;
     this._digTick = (this._digTick || 0) + 1;
     if (this._digTick % 4 === 0) playDigSound(hit.id, { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 });
     if (this.miningProgress >= 1) {
       this.breakBlockSurvival(hit, tool);
       this.miningTarget = null;
       this.miningProgress = 0;
-      this.breakCd = 5;
+      this.breakCd = 4; // Pausa curta entre quebras contínuas segurando o botão
     }
   }
 
@@ -2666,8 +2699,10 @@ export class GameEngine {
       checkStatAchievements(this.player.achievements, this.player.stats);
     }
     this.particles?.spawnBlockBreak(hit.x, hit.y, hit.z, hit.id);
+    playBlockBreakSound(hit.id, { x: hit.x, y: hit.y, z: hit.z });
     const _brokenState = this.world.getBlock(hit.x, hit.y, hit.z);
     this.world.setBlock(hit.x, hit.y, hit.z, 0);
+    this._cachedRaycastFrame = -1;
     this.breakBedPartner(hit.x, hit.y, hit.z, _brokenState);
     this.onBlockChange?.(hit.x, hit.y, hit.z, 0);
     this.netManager?.sendBlockChange?.(hit.x, hit.y, hit.z, 0);
