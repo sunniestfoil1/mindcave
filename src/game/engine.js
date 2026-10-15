@@ -1792,28 +1792,57 @@ export class GameEngine {
 
     perfMonitor.endStage('sim');
 
-    // Transmitir posição em multiplayer (a cada tick = 20 TPS / 50ms)
+    // Transmitir posição em multiplayer (a cada tick = 20 TPS com Idle Deadband e compactação estilo Eaglercraft)
     if (this.netManager) {
-      const posMsg = {
-        t: 'move',
-        id: this.netManager.user?.id || 'host',
-        n: p.nomeJogador,
-        x: p.pos.x,
-        y: p.pos.y,
-        z: p.pos.z,
-        yaw: p.yaw,
-        pitch: p.pitch,
-        dead: !!p.isDead,
-        sleeping: !!p.sleeping,
-        h: this.getHeldItem()?.id || 0,
-        v: voiceChat.getWireState(), // chat de voz: 0 desligado, 1 mutado, 2 ligado, 3-5 falando (tom baixo/médio/alto)
-      };
-      if (this.netManager.broadcast) {
-        this.netManager.broadcast(posMsg, undefined, false);
-      } else if (this.netManager.conn) {
-        this.netManager.conn.send(posMsg, false);
-      }
+      const curX = Math.round(p.pos.x * 100) / 100;
+      const curY = Math.round(p.pos.y * 100) / 100;
+      const curZ = Math.round(p.pos.z * 100) / 100;
+      const curYaw = Math.round(p.yaw * 100) / 100;
+      const curPitch = Math.round(p.pitch * 100) / 100;
+      const curHeld = this.getHeldItem()?.id || 0;
+      const curVoice = voiceChat.getWireState();
+      const curDead = !!p.isDead;
+      const curSleeping = !!p.sleeping;
 
+      const last = this._lastSentPos;
+      this._ticksSinceNetMove = (this._ticksSinceNetMove || 0) + 1;
+
+      const hasMoved = !last ||
+        Math.abs(curX - last.x) > 0.005 ||
+        Math.abs(curY - last.y) > 0.005 ||
+        Math.abs(curZ - last.z) > 0.005 ||
+        Math.abs(curYaw - last.yaw) > 0.015 ||
+        Math.abs(curPitch - last.pitch) > 0.015 ||
+        curHeld !== last.held ||
+        curVoice !== last.voice ||
+        curDead !== last.dead ||
+        curSleeping !== last.sleeping;
+
+      // Envia se houver movimento/mudança de estado ou como heartbeat a cada 20 ticks (1s)
+      if (hasMoved || this._ticksSinceNetMove >= 20) {
+        this._ticksSinceNetMove = 0;
+        this._lastSentPos = { x: curX, y: curY, z: curZ, yaw: curYaw, pitch: curPitch, held: curHeld, voice: curVoice, dead: curDead, sleeping: curSleeping };
+
+        const posMsg = {
+          t: 'move',
+          id: this.netManager.user?.id || 'host',
+          n: p.nomeJogador,
+          x: curX,
+          y: curY,
+          z: curZ,
+          yaw: curYaw,
+          pitch: curPitch,
+          dead: curDead,
+          sleeping: curSleeping,
+          h: curHeld,
+          v: curVoice,
+        };
+        if (this.netManager.broadcast) {
+          this.netManager.broadcast(posMsg, undefined, false);
+        } else if (this.netManager.conn) {
+          this.netManager.conn.send(posMsg, false);
+        }
+      }
     }
 
     // Partículas
@@ -2366,7 +2395,37 @@ export class GameEngine {
         const now = performance.now();
         interpolateRemotePlayer(rp, now);
 
-        placePlayerModel(entry.group, { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0 }, rp.yaw || 0);
+        const rx = rp.x || 0;
+        const ry = rp.y || 0;
+        const rz = rp.z || 0;
+
+        // Voz por aproximação: posição do jogador, tom (alcance) e ícone do microfone (sempre atualizada)
+        voiceChat.updateRemotePosition(id, { x: rx, y: ry, z: rz });
+        voiceChat.setRemoteVoice(id, rp.voice | 0);
+        if (entry?.icon) setVoiceIconState(entry.icon, rp.voice | 0);
+
+        // Otimização Eaglercraft: Frustum & Distance Culling de Jogadores Remotos
+        const myPos = this.player?.pos || this.camera.position;
+        const maxDist = (this.renderDistance || 8) * 16;
+        const dx = rx - myPos.x;
+        const dz = rz - myPos.z;
+        const tooFar = (dx * dx + dz * dz) > (maxDist * maxDist);
+
+        let inFrustum = true;
+        if (!tooFar && this._cameraFrustum) {
+          if (!entry._box) entry._box = new THREE.Box3();
+          entry._box.min.set(rx - 0.8, ry - 0.2, rz - 0.8);
+          entry._box.max.set(rx + 0.8, ry + 2.4, rz + 0.8);
+          inFrustum = this._cameraFrustum.intersectsBox(entry._box);
+        }
+
+        if (tooFar || !inFrustum) {
+          entry.group.visible = false;
+          entry._prev = { x: rx, y: ry, z: rz, t: now };
+          continue;
+        }
+
+        placePlayerModel(entry.group, { x: rx, y: ry, z: rz }, rp.yaw || 0);
         // Item que o jogador remoto está segurando (chegou junto com o move)
         setModelHeldItem(entry.group, rp.held);
         // Capa e skin do remoto: busca pelo nickname (cacheada)
@@ -2374,8 +2433,8 @@ export class GameEngine {
         this._ensureRemoteSkin(entry, rp.name);
         if (entry._prev) {
           const dt = Math.max(0.001, (now - entry._prev.t) / 1000);
-          const spd = Math.hypot((rp.x || 0) - entry._prev.x, (rp.z || 0) - entry._prev.z) / dt;
-          const vy = ((rp.y || 0) - entry._prev.y) / dt;
+          const spd = Math.hypot(rx - entry._prev.x, rz - entry._prev.z) / dt;
+          const vy = (ry - entry._prev.y) / dt;
           const cp = entry.group.userData.cape;
           if (cp && cp.visible) {
             const base = (10.8 * Math.PI) / 180;
@@ -2388,11 +2447,11 @@ export class GameEngine {
             applyThirdPersonPose(entry.group, entry.anim, rp, this.worldTime, 0);
           }
         }
-        entry._prev = { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0, t: now };
+        entry._prev = { x: rx, y: ry, z: rz, t: now };
         if (rp.sleeping) {
           entry.group.rotation.x = -Math.PI / 2;
           entry.group.rotation.z = 0;
-          entry.group.position.y = (rp.y || 0) + 0.2;
+          entry.group.position.y = ry + 0.2;
           if (entry.tag) entry.tag.position.y = 0.9;
         } else {
           // Morto: tomba de lado, fica vermelho e treme (o 1.8.9 gira o corpo 90° em ~20 ticks)
@@ -2410,11 +2469,6 @@ export class GameEngine {
           }
           if (entry.icon) entry.icon.position.y = (rp.isDead ? 0.85 : 2.35) + 0.3;
         }
-
-        // Voz por aproximação: posição do jogador, tom (alcance) e ícone do microfone
-        voiceChat.updateRemotePosition(id, { x: rp.x || 0, y: rp.y || 0, z: rp.z || 0 });
-        voiceChat.setRemoteVoice(id, rp.voice | 0);
-        if (entry?.icon) setVoiceIconState(entry.icon, rp.voice | 0);
       }
     }
 
