@@ -1,0 +1,33 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "_comentario": "Variante só com documentação e configuração (sem o código de src/). Uso: npx repomix -c repomix.docs.config.json",
+  "input": { "maxFileSize": 1048576 },
+  "output": {
+    "filePath": "repomix-docs-output.xml",
+    "style": "xml",
+    "compress": false,
+    "removeComments": false,
+    "removeEmptyLines": true,
+    "showLineNumbers": false,
+    "fileSummary": true,
+    "directoryStructure": true,
+    "topFilesLength": 10,
+    "git": { "includeDiffs": false, "includeLogs": false }
+  },
+  "include": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "INSTRUCAO-PRD-25.md",
+    "package.json",
+    "docs/**/*.md",
+    "mind-cave-prd/**/*.md",
+    "supabase/migrations/**"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": ["docs/**/*.json", "**/.env*", "repomix-docs-output.*"]
+  },
+  "security": { "enableSecurityCheck": true },
+  "tokenCount": { "encoding": "o200k_base" }
+}
