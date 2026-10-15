@@ -201,7 +201,7 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
   // Só roda se houver mensagens recentes não expiradas (evita setInterval perpétuo em idle).
   useEffect(() => {
     if (chatOpen || messages.length === 0) return undefined;
-    const visibleTime = (settings.chatVisibleTime ?? 10) * 1000;
+    const visibleTime = (visibleTimeSec ?? 10) * 1000;
     const latestTs = messages[messages.length - 1]?.timestamp || 0;
     if (Date.now() - latestTs > visibleTime + 1000) return undefined;
 
@@ -211,7 +211,7 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
       if (current - latestTs > visibleTime + 1000) clearInterval(timer);
     }, 200);
     return () => clearInterval(timer);
-  }, [chatOpen, messages, settings.chatVisibleTime]);
+  }, [chatOpen, messages, visibleTimeSec]);
 
   // Posiciona o cursor após a "/" quando aberto pelo atalho de comando
   useEffect(() => {

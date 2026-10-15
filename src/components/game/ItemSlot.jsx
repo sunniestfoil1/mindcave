@@ -78,7 +78,7 @@ function useGlintUrl(active) {
   return url;
 }
 
-export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, onHover, size = 44, highlight = false, transparent = false, fill = false, guiScale = 0, ...rest }) {
+const ItemSlot = React.memo(function ItemSlot({ item, onClick, onRightClick, onShiftClick, onHover, size = 44, highlight = false, transparent = false, fill = false, guiScale = 0, ...rest }) {
 
   const [hover, setHover] = useState(false);
   const glintOn = !!item && hasGlint(item);
@@ -292,4 +292,18 @@ export default function ItemSlot({ item, onClick, onRightClick, onShiftClick, on
       )}
     </div>
   );
-}
+}, (prev, next) => (
+  prev.size === next.size &&
+  prev.highlight === next.highlight &&
+  prev.transparent === next.transparent &&
+  prev.fill === next.fill &&
+  prev.guiScale === next.guiScale &&
+  prev.item?.id === next.item?.id &&
+  prev.item?.count === next.item?.count &&
+  prev.item?.meta === next.item?.meta &&
+  prev.item?.durability === next.item?.durability &&
+  prev.item?.data?.durability === next.item?.data?.durability &&
+  prev.item?.enchantments === next.item?.enchantments
+));
+
+export default ItemSlot;
