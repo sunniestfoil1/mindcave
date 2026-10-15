@@ -192,6 +192,9 @@ export class GameEngine {
     // módulo Hitbox do Mind Client liga/desliga as caixas de colisão (F3 + B continua valendo)
     this.showHitboxes = clientStore.isOn('hitbox') || this.showHitboxes;
     this._unsubClientStore = clientStore.subscribe(() => { this.showHitboxes = clientStore.isOn('hitbox'); });
+    this._unsubSettingsStore = settingsStore.subscribe((k) => {
+      if (k === 'device.resolutionScale' && this.renderer) this.onResize();
+    });
 
     this.scene = new THREE.Scene();
 
@@ -687,7 +690,14 @@ export class GameEngine {
 
   onResize() {
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
-    this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    const resScale = (settingsStore.get('device.resolutionScale') || 100) / 100;
+    this.renderer.setPixelRatio(resScale);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    if (this.fpsCamera) {
+      this.fpsCamera.aspect = w / h;
+      this.fpsCamera.updateProjectionMatrix();
+    }
     this.renderer.setSize(w, h, false);
   }
 
@@ -3354,6 +3364,7 @@ export class GameEngine {
     this.crosshair?.dispose();
     this.motionBlur?.dispose();
     this._unsubClientStore?.();
+    this._unsubSettingsStore?.();
     if (this.sky) this.sky.dispose();
     if (this.weather) this.weather.dispose();
     for (const w of Object.values(this.worlds)) if (w && w !== this.world) w.dispose(this.scene);

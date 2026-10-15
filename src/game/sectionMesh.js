@@ -129,6 +129,10 @@ export function rebuildChunkColumnMesh(scene, existingMesh, secDataArray, mat, o
     if (existingMesh.geometry) releaseGeometry(existingMesh.geometry);
     existingMesh.geometry = geom;
     existingMesh.visible = true;
+    existingMesh.matrixAutoUpdate = false;
+    existingMesh.matrixWorldAutoUpdate = false;
+    existingMesh.updateMatrix();
+    existingMesh.updateMatrixWorld(true);
     return existingMesh;
   }
 
@@ -139,6 +143,8 @@ export function rebuildChunkColumnMesh(scene, existingMesh, secDataArray, mat, o
   m.receiveShadow = false;
   m.matrixAutoUpdate = false;
   m.matrixWorldAutoUpdate = false;
+  m.updateMatrix();
+  m.updateMatrixWorld(true);
   scene.add(m);
   return m;
 }
