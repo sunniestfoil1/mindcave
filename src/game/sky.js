@@ -508,7 +508,6 @@ export class Sky {
     this.clouds.position.x = camX;
     this.clouds.position.z = camZ;
     this.clouds.visible = true;
-    void dayFactor;
   }
 
   dispose() {
