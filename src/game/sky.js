@@ -478,9 +478,8 @@ export class Sky {
     }
 
     // Controle da Cúpula Base:
-    // Se o Céu Personalizado estiver desativado, o Céu Padrão (cúpula gradiente zênite/horizonte) fica 100% ativo!
-    // Se o Céu Personalizado estiver ativo e substituindo tudo (cover >= 0.99), oculta a cúpula base para não conflitar.
-    this.dome.visible = !customSkyEnabled || cover < 0.99;
+    // A cúpula base (gradiente zênite/horizonte) permanece sempre visível de fundo, sem piscar
+    this.dome.visible = true;
 
     // Estrelas:
     // Se Céu Personalizado estiver desligado, renderiza as estrelas procedurais do céu padrão com brilho total.

@@ -173,21 +173,11 @@ export class GameEngine {
     _activeEngine = this;
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     const resScale = (settingsStore.get('device.resolutionScale') || 100) / 100;
-    // Segredo do Eaglercraft: cria o contexto WebGL2 com desynchronized: true e alpha: false
-    // Isso faz bypass do compositor VSync do navegador e permite 1000+ FPS sem flags no Chrome!
-    const glContext = this.canvas.getContext('webgl2', {
-      alpha: false,
-      antialias: false,
-      depth: true,
-      stencil: false,
-      desynchronized: true,
-      powerPreference: 'high-performance',
-      preserveDrawingBuffer: false,
-    });
-
+    // WebGL2 de alta performance perfeitamente sincronizado com o compositor DWM
+    // antialias: false elimina artefatos de junção no Atlas e poupa GPU
+    // powerPreference: 'high-performance' garante o uso da GPU dedicada (AMD Radeon RX 6600)
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
-      context: glContext || undefined,
       alpha: false,
       antialias: false,
       powerPreference: 'high-performance',
@@ -196,20 +186,9 @@ export class GameEngine {
       preserveDrawingBuffer: false,
     });
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-    this.renderer.sortObjects = false; // Evita ordenar arrays na CPU a cada frame (a água já usa renderOrder)
     this.renderer.setPixelRatio(resScale);
     this.renderer.setSize(w, h, false);
     this.renderer.setClearColor(0xc0d8ff, 1);
-
-    // Loop de alta frequência estilo Eaglercraft (MessageChannel + Controle de Fila WebGL2)
-    this._gl = this.renderer.getContext();
-    this._gpuFences = [];
-    this._fastChannel = new MessageChannel();
-    this._fastScheduled = false;
-    this._fastChannel.port1.onmessage = () => {
-      this._fastScheduled = false;
-      if (!this.disposed) this.loop(performance.now());
-    };
 
     this.crosshair = createCrosshair(this.renderer);
     this.motionBlur = createMotionBlur(this.renderer);
@@ -413,40 +392,6 @@ export class GameEngine {
 
   _scheduleNextFrame() {
     if (this.disposed) return;
-    const maxFps = settingsStore.get('device.maxFps');
-    const vsync = settingsStore.get('device.vsync');
-
-    // Quando FPS = Ilimitado (ou > 180) e VSync desligado, usa o MessageChannel sem afogar o ANGLE/D3D11
-    if ((maxFps === 'unlimited' || parseInt(maxFps, 10) > 180) && !vsync && !this.paused && !document.hidden) {
-      const gl = this._gl;
-      // Limpa fences que a GPU já terminou de processar
-      if (gl && this._gpuFences && this._gpuFences.length > 0) {
-        while (this._gpuFences.length > 0) {
-          const status = gl.clientWaitSync(this._gpuFences[0], 0, 0);
-          if (status === gl.ALREADY_SIGNALED || status === gl.CONDITION_SATISFIED || status === gl.WAIT_FAILED) {
-            gl.deleteSync(this._gpuFences.shift());
-          } else {
-            break;
-          }
-        }
-      }
-
-      // Se a GPU está com >= 3 frames acumulados no buffer D3D11, sincroniza 1 frame com rAF para esvaziar sem lag;
-      // caso contrário, dispara imediatamente via MessageChannel a 1000-2000+ FPS!
-      if (this._gpuFences && this._gpuFences.length >= 3) {
-        this.raf = requestAnimationFrame(this.loop);
-        return;
-      }
-
-      if (this._fastChannel) {
-        if (!this._fastScheduled) {
-          this._fastScheduled = true;
-          this._fastChannel.port2.postMessage(null);
-        }
-        return;
-      }
-    }
-
     this.raf = requestAnimationFrame(this.loop);
   }
 
@@ -1980,13 +1925,6 @@ export class GameEngine {
         !this.f3 && !this.hideHud && !this.paused && !this.chatOpen && !this.player.isDead && !this.containerOpenFn?.(),
       );
 
-      // Envia os comandos imediatamente para a placa de vídeo (evita batching lento do ANGLE)
-      const gl = this._gl;
-      if (gl && gl.fenceSync) {
-        const fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-        if (fence) this._gpuFences.push(fence);
-        gl.flush();
-      }
 
       this.fpsFrames++;
       perfMonitor.endStage('render');
@@ -3446,20 +3384,7 @@ export class GameEngine {
     musicManager.stop();
     voiceChat.stop();
     cancelAnimationFrame(this.raf);
-    if (this._fastChannel) {
-      try {
-        this._fastChannel.port1.onmessage = null;
-        this._fastChannel.port1.close();
-        this._fastChannel.port2.close();
-      } catch (e) {}
-      this._fastChannel = null;
-    }
-    if (this._gl && this._gpuFences) {
-      for (const fence of this._gpuFences) {
-        try { this._gl.deleteSync(fence); } catch (e) {}
-      }
-      this._gpuFences = [];
-    }
+
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
     window.removeEventListener('blur', this._onBlur);
