@@ -167,11 +167,28 @@ export class GameEngine {
 
   async start() {
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    const resScale = (settingsStore.get('device.resolutionScale') || 100) / 100;
+    this.renderer = new THREE.WebGLRenderer({
+      canvas: this.canvas,
+      antialias: settingsStore.get('device.antialiasing') !== 'off',
+      powerPreference: 'high-performance',
+      stencil: false,
+      depth: true,
+      preserveDrawingBuffer: false,
+    });
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace; // sem conversão: ver ColorManagement acima
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * resScale);
     this.renderer.setSize(w, h, false);
     this.renderer.setClearColor(0xc0d8ff, 1); // cor do horizonte — evita tela preta antes dos chunks carregarem
+
+    // Canal de alta frequência para FPS Ilimitado (sem trava de 180Hz do requestAnimationFrame)
+    this._fastChannel = new MessageChannel();
+    this._fastScheduled = false;
+    this._fastChannel.port1.onmessage = () => {
+      this._fastScheduled = false;
+      if (!this.disposed) this.loop(performance.now());
+    };
+
     this.crosshair = createCrosshair(this.renderer);
     this.motionBlur = createMotionBlur(this.renderer);
     // módulo Hitbox do Mind Client liga/desliga as caixas de colisão (F3 + B continua valendo)
@@ -366,6 +383,21 @@ export class GameEngine {
     this.lastTime = performance.now();
     this.fpsTime = this.lastTime;
     this.loop = this.loop.bind(this);
+    this._scheduleNextFrame();
+  }
+
+  _scheduleNextFrame() {
+    if (this.disposed) return;
+    const maxFps = settingsStore.get('device.maxFps');
+    const vsync = settingsStore.get('device.vsync');
+    // Quando em Ilimitado + VSync desligado e jogando ativamente, usa MessageChannel para destravar +500/2000 FPS
+    if (maxFps === 'unlimited' && !vsync && !this.paused && !document.hidden) {
+      if (!this._fastScheduled) {
+        this._fastScheduled = true;
+        this._fastChannel.port2.postMessage(null);
+      }
+      return;
+    }
     this.raf = requestAnimationFrame(this.loop);
   }
 
@@ -684,11 +716,17 @@ export class GameEngine {
 
   raycast(force = false) {
     const p = this.player;
-    if (!force && this._cachedRaycastFrame === this.frame && p) {
-      const posKey = `${p.yaw.toFixed(3)}_${p.pitch.toFixed(3)}_${p.pos.x.toFixed(2)}_${p.pos.y.toFixed(2)}_${p.pos.z.toFixed(2)}`;
-      if (this._cachedRaycastPosKey === posKey) {
-        return this._cachedRaycast;
-      }
+    if (
+      !force &&
+      this._cachedRaycastFrame === this.frame &&
+      p &&
+      this._rcYaw === p.yaw &&
+      this._rcPitch === p.pitch &&
+      this._rcX === p.pos.x &&
+      this._rcY === p.pos.y &&
+      this._rcZ === p.pos.z
+    ) {
+      return this._cachedRaycast;
     }
 
     const eye = this.eyePos();
@@ -744,7 +782,11 @@ export class GameEngine {
 
     if (p) {
       this._cachedRaycastFrame = this.frame;
-      this._cachedRaycastPosKey = `${p.yaw.toFixed(3)}_${p.pitch.toFixed(3)}_${p.pos.x.toFixed(2)}_${p.pos.y.toFixed(2)}_${p.pos.z.toFixed(2)}`;
+      this._rcYaw = p.yaw;
+      this._rcPitch = p.pitch;
+      this._rcX = p.pos.x;
+      this._rcY = p.pos.y;
+      this._rcZ = p.pos.z;
       this._cachedRaycast = result;
     }
     return result;
@@ -1717,7 +1759,7 @@ export class GameEngine {
 
   loop(now) {
     if (this.disposed) return;
-    this.raf = requestAnimationFrame(this.loop);
+    this._scheduleNextFrame();
     perfMonitor.beginFrame();
 
     // PRD 21 RF-001: timing por stage
@@ -2093,24 +2135,31 @@ export class GameEngine {
     const p = this.player;
     const m = this.playerModel;
     const partialTick = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));
-    placePlayerModel(m, p.pos, p.yaw);
-    applyThirdPersonPose(m, this.anim, p, this.worldTime, partialTick);
-    // Item na mão visível no F5 (o mesh de 1ª pessoa só renderiza em perspective === 0)
-    setModelHeldItem(m, this.getHeldItem()?.id);
-    // Capa: segue a opção "modelPart_cape" da customização de skin
-    setModelCape(m, this._capeSrc, settingsStore.get('user.skinParts.cape') !== false);
 
-    // Efeito de flash vermelho ao tomar dano (Hurt Red Tint)
+    // Em 1ª pessoa o modelo do corpo fica invisível: só atualiza a malha completa em 3ª pessoa
+    if ((this.perspective || 0) > 0) {
+      placePlayerModel(m, p.pos, p.yaw);
+      applyThirdPersonPose(m, this.anim, p, this.worldTime, partialTick);
+      setModelHeldItem(m, this.getHeldItem()?.id);
+      setModelCape(m, this._capeSrc, settingsStore.get('user.skinParts.cape') !== false);
+    }
+
+    // Só percorre a hierarquia 3D se o estado de dano (hurtColor) mudou!
     const isHurt = p.hurtTime > 0;
     const hurtColor = isHurt ? 0xff5555 : 0xffffff;
-    m.traverse(c => { if (c.material && c.material.color && !c.isSprite) c.material.color.setHex(hurtColor); });
-    if (this.fpsArm) {
-      this.fpsArm.traverse(c => { if (c.material && c.material.color) c.material.color.setHex(hurtColor); });
+    if (this._lastHurtColor !== hurtColor) {
+      this._lastHurtColor = hurtColor;
+      m.traverse((c) => { if (c.material && c.material.color && !c.isSprite) c.material.color.setHex(hurtColor); });
+      if (this.fpsArm) {
+        this.fpsArm.traverse((c) => { if (c.material && c.material.color) c.material.color.setHex(hurtColor); });
+      }
     }
-    // Nametag acompanha a altura (abaixa se morto, mas sem encostar no chão)
-    if (this.nametag) this.nametag.position.y = p.isDead ? 0.85 : 2.35;
-    if (this.nametag) this.nametag.visible = clientStore.isOn('nametags') && clientStore.get('nametags', 'own') && (this.perspective || 0) > 0;
-    if (this.voiceIconLocal) {
+
+    if (this.nametag) {
+      this.nametag.position.y = p.isDead ? 0.85 : 2.35;
+      this.nametag.visible = clientStore.isOn('nametags') && clientStore.get('nametags', 'own') && (this.perspective || 0) > 0;
+    }
+    if (this.voiceIconLocal && (this.perspective || 0) > 0) {
       this.voiceIconLocal.position.y = (p.isDead ? 0.85 : 2.35) + 0.3;
       setVoiceIconState(this.voiceIconLocal, voiceChat.getWireState());
     }
@@ -2290,19 +2339,130 @@ export class GameEngine {
     }
   }
 
-  emitHud() {
+  emitHud(force = false) {
     this._hudAt = performance.now();
     const p = this.player;
-    const yaw = ((p.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    const deg = yaw * 180 / Math.PI;
-    let facing;
+    if (!p) return;
+
+    const isF3 = !!this.f3;
+    const clientCoords = clientStore.isOn('coordinates');
+    const clientDir = clientStore.isOn('direction');
+    const clientFps = clientStore.isOn('fps') || !!settingsStore.get('device.showFps');
+    const clientCps = clientStore.isOn('cps');
+
+    const px = p.pos.x;
+    const py = p.pos.y;
+    const pz = p.pos.z;
+    const yaw = p.yaw;
+
+    if (!force && !isF3 && this._lastHudSig) {
+      const sig = this._lastHudSig;
+      const posMoved = (clientCoords && (Math.abs(px - sig.px) > 0.005 || Math.abs(py - sig.py) > 0.005 || Math.abs(pz - sig.pz) > 0.005)) ||
+                       (clientDir && Math.abs(yaw - sig.yaw) > 0.015);
+      const fpsChanged = clientFps && (this.fps !== sig.fps);
+      const cpsChanged = clientCps && (this.cps !== sig.cps);
+      const playerChanged = p.health !== sig.health ||
+                            p.hunger !== sig.hunger ||
+                            p.air !== sig.air ||
+                            p.selectedSlot !== sig.selectedSlot ||
+                            p.isDead !== sig.isDead ||
+                            p.sleeping !== sig.sleeping ||
+                            p.sleepTimer !== sig.sleepTimer ||
+                            p.eating !== sig.eating ||
+                            p.eatingTicks !== sig.eatingTicks ||
+                            p.blocking !== sig.blocking ||
+                            p.bowDrawing !== sig.bowDrawing ||
+                            p.bowCharge !== sig.bowCharge ||
+                            p.flying !== sig.flying ||
+                            p.sneaking !== sig.sneaking ||
+                            p.sprinting !== sig.sprinting ||
+                            (p.effects ? p.effects.length : 0) !== sig.effectsLen ||
+                            p.xpLevel !== sig.xpLevel ||
+                            p.absorption !== sig.absorption ||
+                            p.fireTicks !== sig.fireTicks ||
+                            p.hurtTime !== sig.hurtTime;
+      const engineChanged = this.paused !== sig.paused ||
+                            this.chatOpen !== sig.chatOpen ||
+                            this.hideHud !== sig.hideHud ||
+                            this.inFluid !== sig.inFluid ||
+                            (this.titleTicks > 0) !== sig.hasTitle ||
+                            (this._portalTicks > 0) !== sig.hasPortal ||
+                            this.playerListOpen !== sig.playerListOpen ||
+                            musicManager.isPlaying !== sig.musicPlaying ||
+                            musicManager.trackName !== sig.musicTrack ||
+                            voiceChat.micMuted !== sig.voiceMuted ||
+                            voiceChat.isSpeaking !== sig.voiceSpeaking ||
+                            voiceChat.localStream !== sig.voiceActive;
+
+      if (!posMoved && !fpsChanged && !cpsChanged && !playerChanged && !engineChanged) {
+        return;
+      }
+    }
+
+    this._lastHudSig = {
+      isF3,
+      px, py, pz, yaw,
+      fps: this.fps,
+      cps: this.cps,
+      health: p.health,
+      hunger: p.hunger,
+      air: p.air,
+      selectedSlot: p.selectedSlot,
+      isDead: p.isDead,
+      sleeping: p.sleeping,
+      sleepTimer: p.sleepTimer,
+      eating: p.eating,
+      eatingTicks: p.eatingTicks,
+      blocking: p.blocking,
+      bowDrawing: p.bowDrawing,
+      bowCharge: p.bowCharge,
+      flying: p.flying,
+      sneaking: p.sneaking,
+      sprinting: p.sprinting,
+      effectsLen: p.effects ? p.effects.length : 0,
+      xpLevel: p.xpLevel,
+      absorption: p.absorption,
+      fireTicks: p.fireTicks,
+      hurtTime: p.hurtTime,
+      paused: this.paused,
+      chatOpen: this.chatOpen,
+      hideHud: this.hideHud,
+      inFluid: this.inFluid,
+      hasTitle: this.titleTicks > 0,
+      hasPortal: this._portalTicks > 0,
+      playerListOpen: this.playerListOpen,
+      musicPlaying: musicManager.isPlaying,
+      musicTrack: musicManager.trackName,
+      voiceMuted: voiceChat.micMuted,
+      voiceSpeaking: voiceChat.isSpeaking,
+      voiceActive: voiceChat.localStream,
+    };
+
+    const yawRad = ((p.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    const deg = yawRad * 180 / Math.PI;
+    let facing = 'Sul (+Z)';
     if (deg < 45 || deg >= 315) facing = 'Sul (+Z)';
     else if (deg < 135) facing = 'Oeste (-X)';
     else if (deg < 225) facing = 'Norte (-Z)';
     else facing = 'Leste (+X)';
-    const hit = this.raycast();
-    const eye = this.eyePos();
-    const light = this.world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z));
+
+    let hit = null;
+    let light = { sky: 15, block: 0 };
+    let biome = '—';
+    let perfStats = null;
+    let drawCalls = 0;
+    let triangles = 0;
+
+    if (isF3) {
+      hit = this.raycast();
+      const eye = this.eyePos();
+      if (this.world?.getLight) light = this.world.getLight(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z));
+      if (this.world?.getBiomeAt) biome = this.world.getBiomeAt(Math.floor(p.pos.x), Math.floor(p.pos.z))?.name || '—';
+      perfStats = perfMonitor.getStats();
+      drawCalls = this.renderer?.info?.render?.calls || 0;
+      triangles = this.renderer?.info?.render?.triangles || 0;
+    }
+
     const t = this.worldTime % 24000;
     const hours = Math.floor((t / 1000 + 6) % 24);
     const mins = Math.floor((t % 1000) / 1000 * 60);
@@ -2325,14 +2485,14 @@ export class GameEngine {
       sleepingStatus: (sleepingCount > 0) ? `${sleepingCount}/${totalPlayers} jogadores dormindo, durma para amanhecer` : null,
       fps: this.fps,
       tps: 20,
-      xyz: `${p.pos.x.toFixed(3)} / ${p.pos.y.toFixed(3)} / ${p.pos.z.toFixed(3)}`,
+      xyz: isF3 ? `${p.pos.x.toFixed(3)} / ${p.pos.y.toFixed(3)} / ${p.pos.z.toFixed(3)}` : `${Math.floor(p.pos.x)} / ${Math.floor(p.pos.y)} / ${Math.floor(p.pos.z)}`,
       px: p.pos.x, py: p.pos.y, pz: p.pos.z,
       block: `${Math.floor(p.pos.x)}, ${Math.floor(p.pos.y)}, ${Math.floor(p.pos.z)}`,
       chunk: `${chunkCoord(Math.floor(p.pos.x))}, ${chunkCoord(Math.floor(p.pos.z))}`,
       facing,
       yaw: deg.toFixed(1),
       pitch: (p.pitch * 180 / Math.PI).toFixed(1),
-      targeted: hit ? `${getBlock(hit.id).namePt} @ ${hit.x},${hit.y},${hit.z}` : '—',
+      targeted: (isF3 && hit) ? `${getBlock(hit.id).namePt} @ ${hit.x},${hit.y},${hit.z}` : '—',
       hotbar: p.hotbar,
       selectedSlot: p.selectedSlot,
       gamemode: p.gameMode,
@@ -2381,11 +2541,11 @@ export class GameEngine {
       gunStats: this.gunController ? this.gunController.stats : null,
       noiseEvents: this.noiseSystem ? this.noiseSystem.events.length : 0,
       gunsEnabled: this.gameRules.gunsEnabled !== false,
-      biome: this.world.getBiomeAt ? (this.world.getBiomeAt(Math.floor(p.pos.x), Math.floor(p.pos.z))?.name || '—') : '—',
+      biome,
       moonPhase: Math.floor((this.worldTime / 24000) % 8),
       meshQueueSize: this.world.pendingMeshCount(),
-      drawCalls: this.renderer?.info?.render?.calls || 0,
-      triangles: this.renderer?.info?.render?.triangles || 0,
+      drawCalls,
+      triangles,
       chunksLoaded: this.world.chunks ? this.world.chunks.size : 0,
       stats: p.stats || null,
       achievements: p.achievements || null,
@@ -2395,7 +2555,7 @@ export class GameEngine {
       build: 'PRD-21',
       title: this.titleTicks > 0 ? this.titleText : null,
       subtitle: this.titleTicks > 0 ? this.subtitleText : null,
-      perf: perfMonitor.getStats(),
+      perf: perfStats || perfMonitor.getStats(),
       gpuRenderer: perfMonitor.gpuRenderer,
       isSoftwareRenderer: perfMonitor.isSoftwareRenderer,
       loadingRadius: this.loadingRadius,
@@ -3127,6 +3287,10 @@ export class GameEngine {
 
   stop() {
     this.disposed = true;
+    if (this._fastChannel) {
+      this._fastChannel.port1.onmessage = null;
+      this._fastChannel = null;
+    }
     musicManager.stop();
     voiceChat.stop();
     cancelAnimationFrame(this.raf);

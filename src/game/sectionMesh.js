@@ -12,7 +12,7 @@ const ATTRS = [
 ];
 
 const GEOMETRY_POOL = [];
-const MAX_POOL_SIZE = 500;
+const MAX_POOL_SIZE = 768;
 
 export function acquireGeometry() {
   return GEOMETRY_POOL.pop() || new THREE.BufferGeometry();
@@ -22,7 +22,6 @@ export function releaseGeometry(geom) {
   if (!geom) return;
   geom.dispose();
   if (GEOMETRY_POOL.length < MAX_POOL_SIZE) {
-    // Limpa atributos e índice antigos para reutilizar a instância sem novas alocações
     for (const key in geom.attributes) {
       geom.deleteAttribute(key);
     }
@@ -35,26 +34,41 @@ function buildGeometry(g, cx, sy, cz) {
   const nv = g.positions.length / 3;
   const ni = g.indices.length;
   const geom = acquireGeometry();
-  for (const [key, name, size, norm] of ATTRS) {
+
+  for (let i = 0; i < ATTRS.length; i++) {
+    const [key, name, size, norm] = ATTRS[i];
     const src = g[key];
     const attr = new THREE.BufferAttribute(src, size, norm);
     attr.count = nv;
     geom.setAttribute(name, attr);
   }
+
   const ia = new THREE.BufferAttribute(g.indices, 1);
   ia.count = ni;
   geom.setIndex(ia);
 
-  // Bounding Sphere e Box3 precisos estilo Sodium (16x16x16: centro em 8, raio = sqrt(8^2+8^2+8^2) ≈ 13.8564)
+  // Reutiliza Box3 e Sphere existentes no objeto BufferGeometry do pool (Zero alocação de Vector3)
   const minX = cx * 16, minY = sy * 16, minZ = cz * 16;
-  geom.boundingBox = new THREE.Box3(
-    new THREE.Vector3(minX, minY, minZ),
-    new THREE.Vector3(minX + 16, minY + 16, minZ + 16)
-  );
-  geom.boundingSphere = new THREE.Sphere(
-    new THREE.Vector3(minX + 8, minY + 8, minZ + 8),
-    13.86
-  );
+  if (!geom.boundingBox) {
+    geom.boundingBox = new THREE.Box3(
+      new THREE.Vector3(minX, minY, minZ),
+      new THREE.Vector3(minX + 16, minY + 16, minZ + 16)
+    );
+  } else {
+    geom.boundingBox.min.set(minX, minY, minZ);
+    geom.boundingBox.max.set(minX + 16, minY + 16, minZ + 16);
+  }
+
+  if (!geom.boundingSphere) {
+    geom.boundingSphere = new THREE.Sphere(
+      new THREE.Vector3(minX + 8, minY + 8, minZ + 8),
+      13.86
+    );
+  } else {
+    geom.boundingSphere.center.set(minX + 8, minY + 8, minZ + 8);
+    geom.boundingSphere.radius = 13.86;
+  }
+
   return geom;
 }
 
@@ -73,7 +87,6 @@ export function fillSectionMesh(scene, mesh, g, mat, order, cx, sy, cz) {
 
   const geom = buildGeometry(g, cx, sy, cz);
 
-  // Se o mesh já existe no grafo da cena, apenas substitui a geometria na GPU
   if (mesh) {
     if (mesh.geometry) releaseGeometry(mesh.geometry);
     mesh.geometry = geom;
@@ -84,7 +97,9 @@ export function fillSectionMesh(scene, mesh, g, mat, order, cx, sy, cz) {
   const m = new THREE.Mesh(geom, mat);
   m.renderOrder = order;
   m.frustumCulled = true;
-  m.matrixAutoUpdate = false;        // posições já estão em coordenadas de mundo
+  m.castShadow = false;
+  m.receiveShadow = false;
+  m.matrixAutoUpdate = false;
   m.matrixWorldAutoUpdate = false;
   scene.add(m);
   return m;

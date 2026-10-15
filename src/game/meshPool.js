@@ -7,7 +7,6 @@ const MAX_WORKERS = (typeof navigator !== 'undefined' && navigator.hardwareConcu
   ? Math.max(2, Math.min(8, navigator.hardwareConcurrency - 1))
   : 4;
 
-// Reserva: mesma lógica do worker, executada na main thread (1 lote por macrotask)
 class LocalWorker {
   constructor() {
     this.mirror = new MeshMirror();
@@ -40,30 +39,29 @@ function spawnWorker(index, onMessage) {
   }
 }
 
-function newBatch() { return { type: 'batch', un: [], ch: [], bl: [], gn: [], ts: [], tr: [] }; }
+function newBatch() { return { type: 'batch', un: [], ch: [], bl: [], gn: [], ts: [] }; }
 
 export class MeshPool {
   constructor(initMsg, onMessage) {
     this.slots = [];
-    this.msgs = 0;          // mensagens enviadas no total
-    this.lastFlushMsgs = 0; // mensagens do último quadro
+    this.msgs = 0;
+    this.lastFlushMsgs = 0;
     const hc = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
     const want = Math.max(1, Math.min(MAX_WORKERS, hc - 1));
     for (let i = 0; i < want; i++) {
       const w = spawnWorker(i, onMessage);
       if (!w) break;
-      this.slots.push({ w, inflight: 0, batch: newBatch(), dirty: false });
+      this.slots.push({ w, inflight: 0, batch: newBatch(), transfers: [], dirty: false });
     }
     this.local = this.slots.length === 0;
     if (this.local) {
       const lw = new LocalWorker();
       lw.onmessage = (e) => onMessage(0, e.data);
-      this.slots.push({ w: lw, inflight: 0, batch: newBatch(), dirty: false });
+      this.slots.push({ w: lw, inflight: 0, batch: newBatch(), transfers: [], dirty: false });
     }
     for (const s of this.slots) s.w.postMessage({ type: 'init', ...initMsg });
   }
 
-  // Reserva uma vaga no worker menos ocupado; -1 se todos estiverem no limite
   acquire() {
     let best = -1, bestLoad = MAX_PER_WORKER;
     for (let i = 0; i < this.slots.length; i++) {
@@ -74,7 +72,9 @@ export class MeshPool {
   }
 
   hasCapacity() {
-    for (const s of this.slots) if (s.inflight < MAX_PER_WORKER) return true;
+    for (let i = 0; i < this.slots.length; i++) {
+      if (this.slots[i].inflight < MAX_PER_WORKER) return true;
+    }
     return false;
   }
 
@@ -83,32 +83,30 @@ export class MeshPool {
     if (s && s.inflight > 0) s.inflight--;
   }
 
-  // ---- fila de saída (enviada em flush(), no máximo 1 mensagem por worker) ----
   queueTask(slot, task) { const s = this.slots[slot]; s.batch.ts.push(task); s.dirty = true; }
   queueGen(slot, task) { const s = this.slots[slot]; s.batch.gn.push(task); s.dirty = true; }
-  queueUnload(key) { for (const s of this.slots) { s.batch.un.push(key); s.dirty = true; } }
-  queueBlocks(key, ver, list) { for (const s of this.slots) { s.batch.bl.push([key, ver, list]); s.dirty = true; } }
+  queueUnload(key) { for (let i = 0; i < this.slots.length; i++) { const s = this.slots[i]; s.batch.un.push(key); s.dirty = true; } }
+  queueBlocks(key, ver, list) { for (let i = 0; i < this.slots.length; i++) { const s = this.slots[i]; s.batch.bl.push([key, ver, list]); s.dirty = true; } }
 
-  // Cada worker recebe a sua própria cópia dos blocos e da tinta (transferidas, sem clonagem)
   queueChunk(c) {
-    for (const s of this.slots) {
+    for (let i = 0; i < this.slots.length; i++) {
+      const s = this.slots[i];
       const blocks = c.data.slice();
       const tint = c.tint.slice();
       s.batch.ch.push({ key: c.k, cx: c.cx, cz: c.cz, ver: c.ver, blocks, tint });
-      s.batch.tr.push(blocks.buffer, tint.buffer);
+      s.transfers.push(blocks.buffer, tint.buffer);
       s.dirty = true;
     }
   }
 
   flush() {
     let n = 0;
-    for (const s of this.slots) {
+    for (let i = 0; i < this.slots.length; i++) {
+      const s = this.slots[i];
       if (!s.dirty) continue;
-      const b = s.batch;
-      const tr = b.tr;
-      delete b.tr;
-      s.w.postMessage(b, tr);
+      s.w.postMessage(s.batch, s.transfers);
       s.batch = newBatch();
+      s.transfers = [];
       s.dirty = false;
       n++;
     }
@@ -117,5 +115,8 @@ export class MeshPool {
     return n;
   }
 
-  dispose() { for (const s of this.slots) s.w.terminate(); this.slots.length = 0; }
+  dispose() {
+    for (let i = 0; i < this.slots.length; i++) this.slots[i].w.terminate();
+    this.slots.length = 0;
+  }
 }
