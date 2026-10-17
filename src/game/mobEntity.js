@@ -14,6 +14,8 @@ let _mobId = 0;
 export class MobEntity {
   // Preenchido pelo motor: toca o som do mob (hurt, death, ambient, step, primed, teleport, scream, stare)
   static onSound = null;
+  // Online: preenchido pelo motor do convidado; chamado quando alguém bate numa cópia (o host é quem decide o dano)
+  static onGhostDamage = null;
 
   constructor(typeId, pos) {
     this.id = ++_mobId;
@@ -296,6 +298,12 @@ export class MobEntity {
 
   applyDamage(amount, source, attacker, opts = {}) {
     if (this.isDead) return false;
+    if (this.ghost) {   // cópia do host: só mostra o tranco; o dano de verdade vai para o host, dono da vida do mob
+      if (this.hurtResistantTime > 0 && amount <= this.lastDamage) return false;
+      this.hurtTime = 10; this.hurtResistantTime = 10; this.lastDamage = amount;
+      MobEntity.onGhostDamage?.(this, amount, source, attacker, opts);
+      return true;
+    }
     // Janela de 10 ticks (1.8.9): golpe maior só aplica a diferença
     let applied = amount;
     if (this.hurtResistantTime > 0) {

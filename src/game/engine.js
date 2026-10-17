@@ -33,7 +33,7 @@ import { ProjectileManager } from './projectiles';
 import { createAnimationState, tickAnimation, startSwing, applyThirdPersonPose } from './animation';
 import { buildHandRig, poseHand } from './firstPersonHand';
 import { isTouchDevice } from './touch';
-import { attackEntity, isSword, isBow, isThrowable, computeBowCharge, createCpsTracker, recordClick, getCps, ATTACK_REACH } from './combat';
+import { attackEntity, isSword, isBow, isThrowable, computeBowCharge, createCpsTracker, recordClick, getCps, ATTACK_REACH, canBlockDamage, getBlockedDamage } from './combat';
 import { MobManager } from './mobManager';
 import { hasGlint, buildGlintOverlay } from './glint';
 import { ClientWorld } from './world';
@@ -273,6 +273,9 @@ export class GameEngine {
 
     // Mobs (PRD 08)
     this.mobs = new MobManager(this.scene, this.world);
+    this.mobs.remoteFn = () => !!(this.netManager && !this.netManager.broadcast);   // convidado: os mobs vêm do host
+    this.mobs.onRemoteAttack = (peerId, mob, dmg) => this.netManager?.sendMobAttack?.(peerId, { dmg, who: mob.type.namePt, ax: mob.pos.x, ay: mob.pos.y, az: mob.pos.z });
+    MobEntity.onGhostDamage = (mob, dmg, src, attacker, opts) => this.netManager?.sendMobHit?.({ id: mob.netId, dmg, src: src === 'projectile' ? 'projectile' : 'attack', kb: !opts || opts.knockback !== false });
     if (this._savedMobs) {
       this.mobs.deserialize(this._savedMobs);
     }
@@ -1219,16 +1222,86 @@ export class GameEngine {
     this.placeCd = 4;
   }
 
+  _netSend(pkt, reliable = true) {
+    if (!this.netManager) return;
+    if (this.netManager.broadcast) this.netManager.broadcast(pkt, undefined, reliable);
+    else this.netManager.conn?.send(pkt, reliable);
+  }
+
+  // Jogadores remotos (convidados) como alvos para a IA dos mobs do host: um objeto estável por jogador, posição e estado atualizados a cada chamada
+  _remoteProxies() {
+    const out = [];
+    const rps = this.netManager?.remotePlayers;
+    if (!rps || !this.netManager.broadcast) return out;
+    if (!this._proxyCache) this._proxyCache = new Map();
+    for (const [id, rp] of rps) {
+      if (rp.x === undefined) continue;
+      let px = this._proxyCache.get(id);
+      if (!px) { px = { id, isRemote: true, isPlayer: true, pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, width: 0.6, height: 1.8 }; this._proxyCache.set(id, px); }
+      px.name = rp.name; px.nomeJogador = rp.name;
+      px.pos.x = rp.x; px.pos.y = rp.y; px.pos.z = rp.z;
+      px.yaw = rp.yaw || 0; px.pitch = rp.pitch || 0;
+      px.isDead = !!rp.isDead; px.gameMode = rp.gameMode || 'survival';
+      out.push(px);
+    }
+    return out;
+  }
+
+  // Um mob do host bateu em mim (sou convidado): o dano passa pela minha armadura e pelo bloqueio, como se o mob fosse local
+  hurtByMob(dmg, who) {
+    const p = this.player;
+    if (!Number.isFinite(dmg) || dmg <= 0 || p.isDead || p.gameMode === 'creative' || p.gameMode === 'spectator') return;
+    let d = Math.min(40, dmg);
+    if (p.blocking && canBlockDamage('attack')) d = getBlockedDamage(d);
+    applyDamage(p, d, 'attack');
+    p._lastAttacker = who || 'um monstro'; p._lastWeapon = null;
+    this.emitHud();
+  }
+
+  // Tosquia: lã (1–3) solta no chão, ovelha sem lã, som e rede (usado pelo meu clique e pelo pedido de um convidado)
+  shearSheep(e) {
+    if (!e || e.typeId !== 'sheep' || e.sheared || e.isBaby || e.isDead) return false;
+    e.sheared = true;
+    const n = 1 + Math.floor(Math.random() * 3);
+    const item = { id: 35, count: n, meta: e.woolColor || 0 }, at = { x: e.pos.x, y: e.pos.y + 1, z: e.pos.z }, v = { x: (Math.random() - 0.5) * 0.4, y: 2, z: (Math.random() - 0.5) * 0.4 };
+    this.itemEntities?.spawnItem(item, at, v, 10);
+    this._netSend({ t: 'item_drop', item, pos: at, vel: v, pickupDelay: 10 });
+    playEvent('entity.sheep.shear', { pos: e.pos });
+    return true;
+  }
+
+  // Explosão vinda da rede: quebra os blocos avisados, toca o som, tira o meu dano (cada jogador calcula o próprio) e, no host, machuca os mobs
+  applyRemoteBlast(msg) {
+    if (!msg || ![msg.x, msg.y, msg.z, msg.power].every(Number.isFinite)) return;
+    const pos = { x: msg.x, y: msg.y, z: msg.z };
+    if (canPlayExplosionSound()) playExplodeSound(pos);
+    for (const b of (msg.blocks || []).slice(0, 1500)) this.world.setBlock(b[0], b[1], b[2], 0);
+    this._cachedRaycastFrame = -1;
+    if (this.particles) { this.particles.spawnNamed?.('hugeexplosion', pos.x, pos.y, pos.z, 1); this.particles.spawnNamed?.('smoke', pos.x, pos.y, pos.z, 8); }
+    const p = this.player;
+    const pDmg = getExplosionDamage(p.pos, pos, msg.power);
+    if (pDmg.damage > 0 && !p.isDead && p.gameMode !== 'creative' && p.gameMode !== 'spectator') {
+      applyDamage(p, pDmg.damage, 'explosion');
+      p.vel.x += pDmg.knockback.x; p.vel.y += pDmg.knockback.y; p.vel.z += pDmg.knockback.z;
+    }
+    if (this.netManager?.broadcast && this.entities) {   // só o host decide a vida dos mobs
+      for (const e of this.entities) {
+        if (e.isDead || e.isPlayer || e.ghost) continue;
+        const eDmg = getExplosionDamage(e.pos, pos, msg.power);
+        if (eDmg.damage > 0 && e.health !== undefined) { e.applyDamage?.(eDmg.damage, 'explosion', null, { knockback: false }); e.pos.x += eDmg.knockback.x; e.pos.y += eDmg.knockback.y; e.pos.z += eDmg.knockback.z; }
+      }
+    }
+    this.emitHud();
+  }
+
   // Botão direito em entidade com item na mão: tesoura tosquia ovelha (1–3 de lã) e gasta a tesoura
   useOnEntity(slot) {
     if (!slot || slot.id !== 359) return false;
     const hit = this.raycastEntity();
     const e = hit && hit.entity;
     if (!e || e.typeId !== 'sheep' || e.sheared || e.isBaby || e.isDead) return false;
-    e.sheared = true;
-    const n = 1 + Math.floor(Math.random() * 3);
-    this.itemEntities?.spawnItem({ id: 35, count: n, meta: e.woolColor || 0 }, { x: e.pos.x, y: e.pos.y + 1, z: e.pos.z }, { x: (Math.random() - 0.5) * 0.4, y: 2, z: (Math.random() - 0.5) * 0.4 }, 10);
-    playEvent('entity.sheep.shear', { pos: e.pos });
+    if (e.ghost) { this.netManager?.sendMobUse?.({ id: e.netId, act: 'shear' }); e.sheared = true; this._wearHeld(slot); return true; }   // convidado: o host tosquia de verdade
+    this.shearSheep(e);
     this._wearHeld(slot);
     return true;
   }
@@ -1285,7 +1358,9 @@ export class GameEngine {
       const egg = SPAWN_EGGS[slot.meta || 0];
       const h = this.raycast();
       if (!egg || !h) return false;
-      const m = this.mobs?.spawn(egg.mob, { x: h.x + h.nx + 0.5, y: h.y + h.ny + (h.ny === 1 && FENCE_IDS.has(h.id) ? 0.5 : 0), z: h.z + h.nz + 0.5 });
+      const at = { x: h.x + h.nx + 0.5, y: h.y + h.ny + (h.ny === 1 && FENCE_IDS.has(h.id) ? 0.5 : 0), z: h.z + h.nz + 0.5 };
+      if (this.mobs?.isRemote()) { this.netManager?.sendMobSpawn?.({ mob: egg.mob, ...at }); this._consumeHeld(slot); return true; }   // convidado: o host cria o mob
+      const m = this.mobs?.spawn(egg.mob, at);
       if (!m) return false;
       m.persistent = true;                 // quem veio de ovo não some sozinho (o despawn natural só vale para os que nasceram do mundo)
       m.yaw = Math.random() * Math.PI * 2;
@@ -2192,7 +2267,12 @@ export class GameEngine {
           this.noiseSystem.emit(pos, radius);
         },
         onExplode: (pos, power) => { this.detonate(pos, power); },
+        remotePlayers: this._remoteProxies(),
+        onNetDrop: (item, pos, vel) => this._netSend({ t: 'item_drop', item, pos, vel, pickupDelay: 10 }),
+        onNetXp: (amount, pos) => this._netSend({ t: 'xp_drop', amount, pos }),
+        onNetArrow: (a) => this._netSend({ t: 'marrow', ...a }),
       });
+      if (this.netManager?.broadcastMobs && this.worldTime % 2 === 0) this.netManager.broadcastMobs(this.mobs, this.dimension);
       const mobList = this.mobs ? this.mobs.getEntities() : [];
       const remoteList = [];
       if (this.netManager?.remotePlayers) {
@@ -2259,6 +2339,7 @@ export class GameEngine {
       const curArmor = armorCodeFromSlots(this.inventory?.armor);
       const curDead = !!p.isDead;
       const curSleeping = !!p.sleeping;
+      const curGm = p.gameMode === 'creative' ? 1 : p.gameMode === 'spectator' ? 3 : p.gameMode === 'adventure' ? 2 : 0;
 
       const last = this._lastSentPos;
       this._ticksSinceNetMove = (this._ticksSinceNetMove || 0) + 1;
@@ -2273,12 +2354,13 @@ export class GameEngine {
         curVoice !== last.voice ||
         curArmor !== last.armor ||
         curDead !== last.dead ||
-        curSleeping !== last.sleeping;
+        curSleeping !== last.sleeping ||
+        curGm !== last.gm;
 
       // Envia se houver movimento/mudança de estado ou como heartbeat a cada 20 ticks (1s)
       if (hasMoved || this._ticksSinceNetMove >= 20) {
         this._ticksSinceNetMove = 0;
-        this._lastSentPos = { x: curX, y: curY, z: curZ, yaw: curYaw, pitch: curPitch, held: curHeld, voice: curVoice, armor: curArmor, dead: curDead, sleeping: curSleeping };
+        this._lastSentPos = { x: curX, y: curY, z: curZ, yaw: curYaw, pitch: curPitch, held: curHeld, voice: curVoice, armor: curArmor, dead: curDead, sleeping: curSleeping, gm: curGm };
 
         const posMsg = {
           t: 'move',
@@ -2294,6 +2376,7 @@ export class GameEngine {
           h: curHeld,
           v: curVoice,
           a: curArmor,
+          g: curGm,
         };
         if (this.netManager.broadcast) {
           this.netManager.broadcast(posMsg, undefined, false);
@@ -3875,6 +3958,10 @@ export class GameEngine {
       dropItems: this.gameRules.doTileDrops !== false,
     });
 
+    if (this.netManager) {   // todo mundo vê os mesmos blocos quebrados, os mesmos drops, e cada jogador calcula o próprio dano
+      this._netSend({ t: 'blast', x: pos.x, y: pos.y, z: pos.z, power, blocks: (result.destroyed || []).slice(0, 1500).map((d) => [d.x, d.y, d.z]) });
+      for (const d of (result.droppedItems || []).slice(0, 64)) this._netSend({ t: 'item_drop', item: { id: d.id, count: d.count || 1, meta: d.meta || 0 }, pos: { x: d.x, y: d.y, z: d.z }, vel: { x: (Math.random() - 0.5) * 1.5, y: 1.5 + Math.random() * 1.5, z: (Math.random() - 0.5) * 1.5 }, pickupDelay: 10 });
+    }
     // Explosão levou pedaço da moldura ou do portal: o portal restante desfaz inteiro
     if (result.destroyed && result.destroyed.length) { for (const d of result.destroyed) this._portalIntegrity(d.x, d.y, d.z); }
 

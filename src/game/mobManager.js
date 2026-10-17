@@ -8,6 +8,9 @@ import { stateId } from './chunk';
 import { applyHitFlash } from './hitFlash';
 import { clientStore } from './client/clientStore';
 import { canBlockDamage, getBlockedDamage } from './combat';
+import { decodeMob, MF, GHOST_MISSED_LIMIT, lerpAngleShort, validRemoteHit } from './net/mobSync';
+import { getMobType } from './mobRegistry';
+import { validTarget } from './aiGoals';
 
 const _mobBox = new THREE.Box3();
 const NO_DESPAWN = new Set(['pig', 'cow', 'sheep', 'chicken', 'wolf']);   // EntityAnimal.canDespawn = false
@@ -18,6 +21,111 @@ export class MobManager {
     this.world = world;
     this.mobs = [];
     this.spawnSystem = new MobSpawnSystem();
+    this.remoteFn = null;        // () => true quando este jogo é convidado de um mundo online (os mobs vêm do host)
+    this.ghostMap = new Map();   // netId → cópia
+    this._netId = 0;
+    this.onRemoteAttack = null;  // (peerId, mob, dano) → o host avisa o convidado que um mob bateu nele
+  }
+
+  isRemote() { return !!(this.remoteFn && this.remoteFn()); }
+  netIdOf(mob) { if (!mob.netId) mob.netId = ++this._netId; return mob.netId; }
+  findByNetId(id) { return this.mobs.find((m) => m.netId === id) || null; }
+
+  // ---- HOST: o alvo de cada mob é o jogador mais próximo entre o do host e os convidados (de preferência um que dê para atacar)
+  _nearestTarget(mob, player, remotes) {
+    const list = [player, ...(remotes || [])].filter(Boolean);
+    let best = null, bd = Infinity, bestAny = null, bad = Infinity;
+    for (const t of list) {
+      const d = (t.pos.x - mob.pos.x) ** 2 + (t.pos.y - mob.pos.y) ** 2 + (t.pos.z - mob.pos.z) ** 2;
+      if (d < bad) { bad = d; bestAny = t; }
+      if (validTarget(t) && d < bd) { bd = d; best = t; }
+    }
+    return best || bestAny || player;
+  }
+
+  // ---- HOST: golpe de um convidado (mensagem 'mobhit'); `proxy` é o jogador remoto que bateu
+  applyRemoteHit(msg, proxy) {
+    const mob = this.findByNetId(msg.id);
+    if (!validRemoteHit(msg, mob, proxy && proxy.pos)) return false;
+    return mob.applyDamage(msg.dmg, msg.src === 'projectile' ? 'projectile' : 'attack', proxy, { knockback: msg.kb !== false });
+  }
+
+  // ---- CONVIDADO: cópias dos mobs do host
+  _makeGhost(d) {
+    const g = new MobEntity(d.typeId, { x: d.x, y: d.y, z: d.z });
+    g.ghost = true; g.netId = d.netId; g.missed = 0;
+    const baby = !!(d.flags & MF.BABY);
+    if (baby !== g.isBaby) { g.isBaby = baby; g.type = baby ? { ...getMobType(d.typeId), width: getMobType(d.typeId).width * 0.5, height: getMobType(d.typeId).height * 0.5, speed: getMobType(d.typeId).speed * 1.2 } : getMobType(d.typeId); }
+    g.yaw = d.yaw; g.headYaw = d.headYaw; g.headPitch = d.headPitch;
+    g.net = { x: d.x, y: d.y, z: d.z, yaw: d.yaw, headYaw: d.headYaw, headPitch: d.headPitch };
+    g._prevX = d.x; g._prevY = d.y; g._prevZ = d.z;
+    g.ensureModel(this.scene);
+    this.mobs.push(g);
+    this.ghostMap.set(d.netId, g);
+    return g;
+  }
+
+  _dropGhost(g) {
+    g.removeModel(this.scene);
+    const i = this.mobs.indexOf(g);
+    if (i >= 0) this.mobs.splice(i, 1);
+    this.ghostMap.delete(g.netId);
+  }
+
+  clearGhosts() { for (const g of [...this.ghostMap.values()]) this._dropGhost(g); }
+
+  // Pacote 'mobs' do host: cria, atualiza e marca como visto; quem não veio vai somando "ausências"
+  applySnapshot(msg, dimension) {
+    if (!msg || !Array.isArray(msg.m)) return;
+    if (!this._wasRemote) { this._wasRemote = true; for (const m of this.mobs) if (!m.ghost) m.removeModel(this.scene); this.mobs = this.mobs.filter((m) => m.ghost); }
+    if (msg.dim !== dimension) { this.clearGhosts(); return; }   // o convidado está em outro mundo (Nether/Aether): nenhuma cópia
+    const seen = new Set();
+    for (const a of msg.m) {
+      const d = decodeMob(a);
+      seen.add(d.netId);
+      let g = this.ghostMap.get(d.netId);
+      if (g && g.typeId !== d.typeId) { this._dropGhost(g); g = null; }
+      if (!g) g = this._makeGhost(d);
+      g.missed = 0;
+      g.net = { x: d.x, y: d.y, z: d.z, yaw: d.yaw, headYaw: d.headYaw, headPitch: d.headPitch };
+      g.health = d.health;
+      g.sheared = !!(d.flags & MF.SHEARED);
+      g.fireTicks = (d.flags & MF.FIRE) ? 20 : 0;
+      g.target = (d.flags & MF.AGGRO) ? (g.target || { pos: { x: d.x, y: d.y, z: d.z } }) : null;
+      g.screaming = !!(d.flags & MF.SCREAM);
+      g.onGround = !!(d.flags & MF.GROUND);
+      g.swelling = d.swelling;
+      if (d.hurtTime > g.hurtTime) g.hurtTime = d.hurtTime;
+      if ((d.flags & MF.DEAD) && !g.isDead) { g.isDead = true; g.deathTime = d.deathTime; }
+      if ((d.flags & MF.BABY) !== (g.isBaby ? MF.BABY : 0)) { g.isBaby = !!(d.flags & MF.BABY); }
+    }
+    for (const [id, g] of this.ghostMap) if (!seen.has(id)) g.missed++;
+  }
+
+  // Um tick das cópias: anda 50% do caminho até o último ponto do host, gira, balança as pernas e remove as que sumiram
+  _tickGhosts(ctx) {
+    for (const g of [...this.ghostMap.values()]) {
+      if (g.missed >= GHOST_MISSED_LIMIT || (g.isDead && (g.deathTime = (g.deathTime || 0) + 1) >= 20)) {
+        if (g.isDead && ctx && ctx.particles) ctx.particles.spawnDeathPoof(g.pos.x, g.pos.y + (g.type.height || 1.8) * 0.5, g.pos.z);
+        this._dropGhost(g);
+        continue;
+      }
+      g.ticksAlive++;
+      g._prevX = g.pos.x; g._prevY = g.pos.y; g._prevZ = g.pos.z;
+      const n = g.net;
+      const dx = n.x - g.pos.x, dy = n.y - g.pos.y, dz = n.z - g.pos.z;
+      const k = (dx * dx + dy * dy + dz * dz) > 64 ? 1 : 0.5;   // teleporte (enderman, longe demais): salta
+      g.pos.x += dx * k; g.pos.y += dy * k; g.pos.z += dz * k;
+      g.yaw = lerpAngleShort(g.yaw, n.yaw, 0.5);
+      g.headYaw = n.headYaw; g.headPitch = n.headPitch;
+      const moved = Math.hypot(g.pos.x - g._prevX, g.pos.z - g._prevZ);
+      g._prevLimbSwing = g._limbSwing || 0; g._prevLimbSwingAmount = g._limbSwingAmount || 0;
+      g._limbSwing = (g._limbSwing || 0) + moved * 1.8;
+      g._limbSwingAmount = (g._limbSwingAmount || 0) + (Math.min(1, moved / (g.type.speed || 0.23)) - (g._limbSwingAmount || 0)) * 0.35;
+      g.vel.x = g.pos.x - g._prevX; g.vel.z = g.pos.z - g._prevZ; g.vel.y = g.pos.y - g._prevY;
+      if (g.hurtTime > 0) g.hurtTime--;
+      if (g.hurtResistantTime > 0) g.hurtResistantTime--;
+    }
   }
 
   spawn(typeId, pos) {
@@ -36,6 +144,7 @@ export class MobManager {
   }
 
   tick(player, ctx) {
+    if (this.isRemote()) { this._tickGhosts(ctx); return; }   // convidado: só as cópias do host
     this._populateNear(player, ctx);
     // Spawn natural
     this.spawnSystem.tick(this.world, player, this.mobs, ctx);
@@ -43,6 +152,7 @@ export class MobManager {
     const mobCtx = {
       ...ctx, player, mobs: this.mobs,
       onAttackPlayer: (mob, damage) => {
+        if (mob.target && mob.target.isRemote) { this.onRemoteAttack?.(mob.target.id, mob, damage); return; }   // o alvo é um convidado: o host só avisa, ele aplica o dano em si
         const p = player;
         if (p.isDead || p.gameMode === 'creative' || p.gameMode === 'spectator') return;
         let dmg = damage;
@@ -63,10 +173,9 @@ export class MobManager {
         const diff = ({ peaceful: 0, easy: 1, normal: 2, hard: 3 })[ctx.difficulty] ?? 2;
         const inacc = 0.0075 * (14 - diff * 4) * 2;
         const jit = () => (Math.random() - 0.5) * inacc;
-        ctx.projectiles.spawnArrow(mob, 1.6 / 3, {
-          eye, shooterIsMob: true, shooterName: mob.type.namePt,
-          lookDir: { x: tx / len + jit(), y: ty / len + jit(), z: tz / len + jit() },
-        });
+        const lookDir = { x: tx / len + jit(), y: ty / len + jit(), z: tz / len + jit() };
+        ctx.projectiles.spawnArrow(mob, 1.6 / 3, { eye, shooterIsMob: true, shooterName: mob.type.namePt, lookDir });
+        ctx.onNetArrow?.({ eye, dir: lookDir, speed: 1.6 / 3, name: mob.type.namePt });
         MobEntity.onSound?.(mob, 'shoot');
       },
       // Usa a explosão do motor (raios, drops, cadeia de TNT, som); a esfera simples fica só como reserva sem motor
@@ -88,7 +197,8 @@ export class MobManager {
       if (!this.world.hasChunkAt(Math.floor(mob.pos.x), Math.floor(mob.pos.z))) continue;
       // Rede de segurança: abaixo do mundo some sem morte, partículas, drops nem som
       if (mob.pos.y < -32) { mob.removeModel(this.scene); toRemove.push(mob); continue; }
-      if (this._shouldNaturallyDespawn(mob, player)) { mob.removeModel(this.scene); toRemove.push(mob); continue; }
+      if (this._shouldNaturallyDespawn(mob, this._nearestTarget(mob, player, ctx.remotePlayers))) { mob.removeModel(this.scene); toRemove.push(mob); continue; }
+      mobCtx.player = this._nearestTarget(mob, player, ctx.remotePlayers);
       mob.tick(this.world, mobCtx);
 
       // Drops ao morrer
@@ -99,12 +209,9 @@ export class MobManager {
           for (const d of drops) {
             const rx = (Math.random() - 0.5) * 0.2;
             const rz = (Math.random() - 0.5) * 0.2;
-            ctx.itemEntities.spawnItem(
-              { id: d.id, count: d.count, meta: d.meta || 0 },
-              { x: mob.pos.x, y: mob.pos.y + 0.3, z: mob.pos.z },
-              { x: rx, y: 0.25, z: rz },
-              10
-            );
+            const item = { id: d.id, count: d.count, meta: d.meta || 0 }, at = { x: mob.pos.x, y: mob.pos.y + 0.3, z: mob.pos.z }, v = { x: rx, y: 0.25, z: rz };
+            ctx.itemEntities.spawnItem(item, at, v, 10);
+            ctx.onNetDrop?.(item, at, v);
           }
         } else if (ctx.inventory && drops.length > 0) {
           for (const d of drops) addItem(ctx.inventory, d);
@@ -112,6 +219,7 @@ export class MobManager {
         if (mob.type.xp > 0) {
           if (ctx.itemEntities?.spawnXpOrb) {
             ctx.itemEntities.spawnXpOrb(mob.type.xp, { x: mob.pos.x, y: mob.pos.y + 0.3, z: mob.pos.z });
+            ctx.onNetXp?.(mob.type.xp, { x: mob.pos.x, y: mob.pos.y + 0.3, z: mob.pos.z });
           } else {
             addXP(player, mob.type.xp);
           }
@@ -316,5 +424,6 @@ export class MobManager {
   clearAll() {
     for (const m of this.mobs) m.removeModel(this.scene);
     this.mobs.length = 0;
+    this.ghostMap.clear();
   }
 }

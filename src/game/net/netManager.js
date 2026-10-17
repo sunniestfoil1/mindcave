@@ -10,6 +10,8 @@ import { playMobSound, playEvent, playSound } from '@/game/sounds';
 import { processCommand, WORLD_COMMANDS, PLAYER_COMMANDS } from '@/game/commands';
 import { fillRegion, cloneRegion, validRegion } from './regionOps';
 import { recordPlayerSnapshot } from './netInterpolation';
+import { buildMobSnapshot } from './mobSync';
+import { SPAWN_EGGS } from '@/game/spawnEggData';
 
 // === HOST ===
 export class NetHost {
@@ -208,7 +210,7 @@ export class NetHost {
         }
         recordPlayerSnapshot(p, msg);
         // Repassa posição do jogador para outros convidados via canal UDP/não confiável
-        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, sleeping: !!msg.sleeping, h: msg.h || 0, v: msg.v | 0, a: msg.a | 0 }, userId, false);
+        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, sleeping: !!msg.sleeping, h: msg.h || 0, v: msg.v | 0, a: msg.a | 0, g: msg.g | 0 }, userId, false);
         break;
       }
       case 'sleep': {
@@ -247,6 +249,34 @@ export class NetHost {
       }
       case 'jukebox': {
         this.engine?.jukebox?.onRemote(msg);
+        this.broadcast(msg, userId);
+        break;
+      }
+      case 'mobhit': {   // convidado bateu numa cópia: o host confere (alcance e dano) e aplica no mob de verdade
+        const proxy = this.engine?._remoteProxies?.().find((r) => r.id === userId);
+        this.engine?.mobs?.applyRemoteHit(msg, proxy);
+        break;
+      }
+      case 'mobuse': {   // tesoura numa ovelha
+        const proxy = this.engine?._remoteProxies?.().find((r) => r.id === userId);
+        const mob = this.engine?.mobs?.findByNetId(msg.id);
+        if (proxy && mob && msg.act === 'shear' && Math.hypot(proxy.pos.x - mob.pos.x, proxy.pos.z - mob.pos.z) <= 8) this.engine.shearSheep(mob);
+        break;
+      }
+      case 'mobspawn': {   // ovo de spawn do convidado: o host cria o mob (persistente), perto de onde o convidado está
+        const proxy = this.engine?._remoteProxies?.().find((r) => r.id === userId);
+        const now = Date.now();
+        const peer = this.peers.get(userId);
+        if (!proxy || !peer || now - (peer.lastEgg || 0) < 150) break;
+        const allowed = Object.values(SPAWN_EGGS).some((e) => e.mob === msg.mob);
+        if (!allowed || ![msg.x, msg.y, msg.z].every(Number.isFinite) || Math.hypot(proxy.pos.x - msg.x, proxy.pos.z - msg.z) > 14) break;
+        peer.lastEgg = now;
+        const m = this.engine.mobs.spawn(msg.mob, { x: msg.x, y: msg.y, z: msg.z });
+        if (m) m.persistent = true;
+        break;
+      }
+      case 'blast': {   // explosão causada por um convidado: o host aplica no mundo dele e repassa aos outros
+        this.engine?.applyRemoteBlast?.(msg);
         this.broadcast(msg, userId);
         break;
       }
@@ -330,6 +360,23 @@ export class NetHost {
         }
       }
     }
+  }
+
+  // Estado dos mobs para cada convidado (só os que estão a até 96 blocos dele); sem mob nenhum, só avisa uma vez para as cópias sumirem
+  broadcastMobs(mobs, dim) {
+    for (const [uid, peer] of this.peers) {
+      const rp = this.remotePlayers?.get(uid);
+      const near = rp && rp.x !== undefined ? { x: rp.x, z: rp.z } : { x: this.engine.player.pos.x, z: this.engine.player.pos.z };
+      const list = buildMobSnapshot(mobs.mobs, near, 96, 64, (m) => mobs.netIdOf(m));
+      if (!list.length && !peer.hadMobs) continue;
+      peer.hadMobs = list.length > 0;
+      peer.conn.send({ t: 'mobs', dim, m: list }, false);
+    }
+  }
+
+  // Um mob bateu num convidado: o convidado aplica o dano em si mesmo (armadura, janela de 10 ticks e bloqueio são dele)
+  sendMobAttack(userId, payload) {
+    this.peers.get(userId)?.conn.send({ t: 'mobatk', ...payload });
   }
 
   broadcast(msg, excludeUserId, reliable = true) {
@@ -549,6 +596,26 @@ export class NetClient {
         this.engine?.jukebox?.onRemote(msg);
         break;
       }
+      case 'mobs': {
+        this.engine?.mobs?.applySnapshot(msg, this.engine.dimension);
+        break;
+      }
+      case 'mobatk': {
+        this.engine?.hurtByMob?.(msg.dmg, msg.who, msg);
+        break;
+      }
+      case 'marrow': {   // flecha de esqueleto do host: o convidado a simula também e ela acerta (ou erra) o jogador dele
+        this.engine?.projectiles?.spawnArrow({ id: -1, pos: msg.eye, vel: { x: 0, y: 0, z: 0 } }, msg.speed, { eye: msg.eye, shooterIsMob: true, shooterName: msg.name, lookDir: msg.dir });
+        break;
+      }
+      case 'xp_drop': {
+        this.engine?.itemEntities?.spawnXpOrb?.(msg.amount, msg.pos);
+        break;
+      }
+      case 'blast': {
+        this.engine?.applyRemoteBlast?.(msg);
+        break;
+      }
       case 'firework': {
         this.engine?.fireworks?.launch(msg.x, msg.y, msg.z, msg.preset || 0, this.engine.player.pos);
         break;
@@ -680,6 +747,11 @@ export class NetClient {
   sendHit(targetId, hit) {
     this.conn?.send({ t: 'hit', targetId, ...hit, fromName: this.user?.full_name || 'Player' });
   }
+
+  // Golpe, tesoura e ovo do convidado: o host decide (os mobs só existem de verdade lá)
+  sendMobHit(msg) { this.conn?.send({ t: 'mobhit', ...msg }); }
+  sendMobUse(msg) { this.conn?.send({ t: 'mobuse', ...msg }); }
+  sendMobSpawn(msg) { this.conn?.send({ t: 'mobspawn', ...msg }); }
 
   _applyIncomingHit(hit) {
     if (!receiveRemoteHit(this.engine?.player, hit)) return;

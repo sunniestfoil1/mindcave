@@ -18,6 +18,7 @@ export function recordPlayerSnapshot(p, msg) {
   p.held = msg.h || 0;
   p.voice = msg.v | 0;
   p.armor = msg.a | 0;
+  p.gameMode = ['survival', 'creative', 'adventure', 'spectator'][msg.g | 0] || 'survival';
 
   if (!p.buffer) {
     p.buffer = [];

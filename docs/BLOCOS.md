@@ -45,7 +45,9 @@ mais a Bancada de Armeiro (177) e os 6 blocos do Aether (210–215).
 - **Pistões** só existem como bloco; não empurram nem puxam. **Trilhos** são só o bloco (não há vagonete).
 - **Bloco de notas** troca o tom a cada clique, mas só toca a harpa (o instrumento pelo bloco de baixo não existe).
 - **Bloco infestado** não solta peixe-de-prata (não solta nada). **Estandartes** (ids 176/177 do 1.8.9) não existem.
-- **Mobs não são sincronizados no online**: cada jogador simula os seus (só sons e itens soltos viajam pela rede).
+- **Mobs no online**: o host simula (IA, vida, dano, drops) e manda os mobs a até 96 blocos de cada convidado 10×/s (`src/game/net/mobSync.js`);
+  o convidado vê cópias suaves e manda golpes, tesoura e ovos ao host. Limite: mobs só existem onde o **host** tem chunks carregados, então um
+  convidado muito longe do host não vê mobs; cada um fica no seu mundo (Nether/Aether não são sincronizados entre jogadores).
 - **Aether**: só ilhas, nuvens, árvores claras e animais comuns. Não tem os mobs, a masmorra, o ouro-do-Aether nem a luz própria do mod; as
   árvores usam tronco e folha de bétula. Não é salvo no arquivo do mundo (como o Nether, vale só durante a sessão).
 - **Discos 5, otherside e Pigstep** vêm de versões novas: tocam no jukebox, mas o ícone do item é o de um disco parecido.
