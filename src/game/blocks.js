@@ -1,13 +1,8 @@
 // Registro de blocos data-driven — PRD 02 RF-001. Adicionar bloco = adicionar entrada.
 import { packState as packS } from './chunk';
+import { registerMoreBlocks, onWall, WALL_META_DIR } from './blocksMore';
 
 export const RenderType = { OPAQUE: 'opaque', CUTOUT: 'cutout', TRANSLUCENT: 'translucent' };
-
-// Cores da lã (meta 0..15) — aproximação 1.8
-export const WOOL_COLORS = [
-  [0xdddddd], [0xdb7d3e], [0xb24cd8], [0x6b8ac9], [0x9d9d9d], [0x41ae38], [0xc2c2c2], [0x2d2d2d],
-  [0x9d7d6b], [0x40362b], [0x6b4f9d], [0x4a4a4a], [0x8a4133], [0x2d5a4f], [0x6b8a3e], [0xe6e6e6],
-];
 
 // Helper para criar entrada de bloco com defaults
 // MC24-RF-012: bloco com modelo não-cubo NÃO é sólido nem opaco por padrão (plantas, tochas, tapetes…);
@@ -18,6 +13,8 @@ function B(id, name, namePt, props) {
            lightOpacity: flat ? 0 : 15, lightEmission: 0, slipperiness: 0.6, replaceable: false,
            soundCategory: 'stone', model: 'cube', drop: id, ...props };
 }
+
+const logFaces = (top, side) => ({ top, bottom: top, side });
 
 export const BLOCKS = {
   0:  B(0, 'air', 'Ar', { solid: false, opaque: false, render: 'opaque', lightOpacity: 0, replaceable: true, drop: null, model: 'none' }),
@@ -48,8 +45,8 @@ export const BLOCKS = {
 
   // Madeira
   5:  B(5, 'planks', 'Tábuas de Carvalho', { hardness: 2.0, faces: { all: 'planks' }, drop: 5, soundCategory: 'wood' }),
-  17: B(17, 'log', 'Tronco de Carvalho', { hardness: 2.0, faces: { top: 'log_top', bottom: 'log_top', side: 'log_side' }, drop: 17, axisByMeta: true, soundCategory: 'wood' }),
-  18: B(18, 'leaves', 'Folhas de Carvalho', { hardness: 0.2, faces: { all: 'leaves' }, drop: null, render: 'cutout', opaque: false, cullSame: true, lightOpacity: 1, tint: 'foliage' }),
+  17: B(17, 'log', 'Tronco de Carvalho', { hardness: 2.0, faces: { top: 'log_top', bottom: 'log_top', side: 'log_side' }, drop: 17, axisByMeta: true, soundCategory: 'wood', variantMask: 3, dropMeta: true, variants: [logFaces('log_top', 'log_side'), logFaces('log_spruce_top', 'log_spruce_side'), logFaces('log_birch_top', 'log_birch_side'), logFaces('log_jungle_top', 'log_jungle_side')], variantNames: ['Tronco de Carvalho', 'Tronco de Pinheiro', 'Tronco de Bétula', 'Tronco da Selva'] }),
+  18: B(18, 'leaves', 'Folhas de Carvalho', { hardness: 0.2, faces: { all: 'leaves' }, drop: null, render: 'cutout', opaque: false, cullSame: true, lightOpacity: 1, tint: 'foliage', variantMask: 3, variants: [{ all: 'leaves' }, { all: 'leaves_spruce' }, { all: 'leaves_birch' }, { all: 'leaves_jungle' }], variantNames: ['Folhas de Carvalho', 'Folhas de Pinheiro', 'Folhas de Bétula', 'Folhas da Selva'] }),
   47: B(47, 'bookshelf', 'Estante', { hardness: 1.5, faces: { top: 'planks', bottom: 'planks', side: 'bookshelf' }, drop: 47, soundCategory: 'wood' }),
   170: B(170, 'hay_block', 'Fardo de Feno', { hardness: 0.5, faces: { all: 'hay' }, drop: 170, soundCategory: 'grass', axisByMeta: true }),
 
@@ -113,15 +110,15 @@ export const BLOCKS = {
   78: B(78, 'snow_layer', 'Camada de Neve', { hardness: 0.1, faces: { all: 'snow' }, drop: 78, lightOpacity: 0, model: 'snow', replaceable: true, soundCategory: 'snow' }),
 
   // Variantes de madeira (PRD 04)
-  162: B(162, 'log2', 'Tronco de Acácia', { hardness: 2.0, faces: { top: 'log_top', bottom: 'log_top', side: 'log_side' }, drop: 162, axisByMeta: true, soundCategory: 'wood' }),
-  161: B(161, 'leaves2', 'Folhas de Acácia', { hardness: 0.2, faces: { all: 'leaves' }, drop: null, render: 'cutout', opaque: false, cullSame: true, lightOpacity: 1, tint: 'foliage' }),
+  162: B(162, 'log2', 'Tronco de Acácia', { hardness: 2.0, faces: { top: 'log_acacia_top', bottom: 'log_acacia_top', side: 'log_acacia_side' }, drop: 162, axisByMeta: true, soundCategory: 'wood', variantMask: 1, dropMeta: true, variants: [logFaces('log_acacia_top', 'log_acacia_side'), logFaces('log_big_oak_top', 'log_big_oak_side')], variantNames: ['Tronco de Acácia', 'Tronco de Carvalho Escuro'] }),
+  161: B(161, 'leaves2', 'Folhas de Acácia', { hardness: 0.2, faces: { all: 'leaves_acacia' }, drop: null, render: 'cutout', opaque: false, cullSame: true, lightOpacity: 1, tint: 'foliage', variantMask: 1, variants: [{ all: 'leaves_acacia' }, { all: 'leaves_big_oak' }], variantNames: ['Folhas de Acácia', 'Folhas de Carvalho Escuro'] }),
 
   // Blocos de cogumelo gigante
   99: B(99, 'brown_mushroom_block', 'Bloco de Cogumelo Marrom', { hardness: 0.2, faces: { all: 'mushroom_brown' }, drop: 99 }),
   100: B(100, 'red_mushroom_block', 'Bloco de Cogumelo Vermelho', { hardness: 0.2, faces: { all: 'mushroom_red' }, drop: 100 }),
 
   // Plantas e especiais (PRD 04)
-  106: B(106, 'vine', 'Trepadeira', { hardness: 0.2, faces: { all: 'vine' }, tint: 'foliage', drop: 106, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' }),
+  106: B(106, 'vine', 'Trepadeira', { hardness: 0.2, faces: { all: 'vine' }, tint: 'foliage', drop: 106, render: 'cutout', lightOpacity: 0, model: 'vine', solid: false, replaceable: true, soundCategory: 'grass' }),
   81: B(81, 'cactus', 'Cacto', { hardness: 0.4, faces: { top: 'cactus_top', bottom: 'cactus_bottom', side: 'cactus_side' }, drop: 81, render: 'cutout', lightOpacity: 0, model: 'box', box: [0.0625, 0, 0.0625, 0.9375, 1, 0.9375], solid: true, opaque: false }),
   141: B(141, 'carrots', 'Cenouras', { hardness: 0, faces: { all: 'carrots_stage_0' }, drop: 391, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' , variants: [{ all: 'carrots_stage_0' }, { all: 'carrots_stage_0' }, { all: 'carrots_stage_1' }, { all: 'carrots_stage_1' }, { all: 'carrots_stage_2' }, { all: 'carrots_stage_2' }, { all: 'carrots_stage_2' }, { all: 'carrots_stage_3' }]}),
   142: B(142, 'potatoes', 'Batatas', { hardness: 0, faces: { all: 'potatoes_stage_0' }, drop: 392, render: 'cutout', lightOpacity: 0, model: 'cross', solid: false, replaceable: true, soundCategory: 'grass' , variants: [{ all: 'potatoes_stage_0' }, { all: 'potatoes_stage_0' }, { all: 'potatoes_stage_1' }, { all: 'potatoes_stage_1' }, { all: 'potatoes_stage_2' }, { all: 'potatoes_stage_2' }, { all: 'potatoes_stage_2' }, { all: 'potatoes_stage_3' }]}),
@@ -129,8 +126,7 @@ export const BLOCKS = {
   174: B(174, 'packed_ice', 'Gelo Compactado', { hardness: 0.5, faces: { all: 'ice' }, drop: null, render: 'translucent', opaque: false, lightOpacity: 3, slipperiness: 0.98 }),
   86: B(86, 'pumpkin', 'Abóbora', { hardness: 1.0, faces: { top: 'pumpkin_top', bottom: 'pumpkin_top', side: 'pumpkin_side', front: 'pumpkin_face_off' }, drop: 86 , orient: true}),
   103: B(103, 'melon_block', 'Melância', { hardness: 1.0, faces: { top: 'melon_top', bottom: 'melon_top', side: 'melon_side' }, drop: 103 }),
-  175: B(175, 'mossy_stone_bricks', 'Tijolos de Pedra Musgosos', { hardness: 2.0, faces: { all: 'mossy_cobble' }, drop: 175 }),
-  176: B(176, 'red_sandstone', 'Arenito Vermelho', { hardness: 0.8, faces: { top: 'sandstone_top', bottom: 'sandstone_bottom', side: 'sandstone_side' }, drop: 176 }),
+  176: B(176, 'red_sandstone', 'Arenito Vermelho (antigo)', { hardness: 0.8, faces: { top: 'sandstone_top', bottom: 'sandstone_bottom', side: 'sandstone_side' }, drop: 176 }),
 
   // PRD 09: Bancada de Armeiro (RF-002)
   177: B(177, 'gunsmith_bench', 'Bancada de Armeiro', { hardness: 2.5, faces: { top: 'planks', bottom: 'planks', side: 'crafting_side' }, drop: 177, soundCategory: 'wood' }),
@@ -140,8 +136,8 @@ export const BLOCKS = {
   69: B(69, 'lever', 'Alavanca', { hardness: 0.5, faces: { all: 'lever' }, drop: 69, render: 'cutout', lightOpacity: 0, model: 'torch', solid: false, replaceable: true, soundCategory: 'wood' }),
   70: B(70, 'stone_pressure_plate', 'Placa de Pressão de Pedra', { hardness: 0.5, faces: { all: 'stone' }, drop: 70, render: 'cutout', lightOpacity: 0, model: 'carpet', solid: false, replaceable: true, soundCategory: 'stone' }),
   72: B(72, 'wooden_pressure_plate', 'Placa de Pressão de Madeira', { hardness: 0.5, faces: { all: 'planks' }, drop: 72, render: 'cutout', lightOpacity: 0, model: 'carpet', solid: false, replaceable: true, soundCategory: 'wood' }),
-  75: B(75, 'unlit_redstone_torch', 'Tocha de Redstone Apagada', { hardness: 0, faces: { all: 'redstone_block' }, drop: 76, render: 'cutout', lightOpacity: 0, model: 'torch', solid: false, replaceable: true, soundCategory: 'wood' }),
-  76: B(76, 'redstone_torch', 'Tocha de Redstone', { hardness: 0, faces: { all: 'redstone_block' }, drop: 76, render: 'cutout', lightOpacity: 0, model: 'torch', solid: false, replaceable: true, lightEmission: 7, soundCategory: 'wood' }),
+  75: B(75, 'unlit_redstone_torch', 'Tocha de Redstone Apagada', { hardness: 0, faces: { all: 'redstone_torch_off' }, drop: 76, render: 'cutout', lightOpacity: 0, model: 'torch', solid: false, replaceable: true, soundCategory: 'wood' }),
+  76: B(76, 'redstone_torch', 'Tocha de Redstone', { hardness: 0, faces: { all: 'redstone_torch_on' }, drop: 76, render: 'cutout', lightOpacity: 0, model: 'torch', solid: false, replaceable: true, lightEmission: 7, soundCategory: 'wood' }),
   77: B(77, 'stone_button', 'Botão de Pedra', { hardness: 0.5, faces: { all: 'stone' }, drop: 77, render: 'cutout', lightOpacity: 0, model: 'torch', solid: false, replaceable: true, soundCategory: 'stone' }),
   93: B(93, 'unpowered_repeater', 'Repetidor Desligado', { hardness: 0, faces: { top: 'repeater_off', bottom: 'stone_slab_top', side: 'stone_slab_side' }, drop: 356, render: 'cutout', lightOpacity: 0, model: 'box', box: [0, 0, 0, 1, 0.125, 1], solid: false, replaceable: true, soundCategory: 'stone' }),
   94: B(94, 'powered_repeater', 'Repetidor Ligado', { hardness: 0, faces: { top: 'repeater_on', bottom: 'stone_slab_top', side: 'stone_slab_side' }, drop: 356, render: 'cutout', lightOpacity: 0, model: 'box', box: [0, 0, 0, 1, 0.125, 1], solid: false, replaceable: true, soundCategory: 'stone' }),
@@ -177,8 +173,29 @@ export function lightEmission(id) { const b = BLOCKS[id]; return b ? (b.lightEmi
 // Direções horizontais (0 oeste, 1 norte, 2 leste, 3 sul): a meta & 3 de blocos orientados é o lado da frente (abóbora, fornalha...)
 export const HFACES = [[-1, 0], [0, -1], [1, 0], [0, 1]];
 
+// Cogumelo gigante (1.8.9): a meta diz em quais lados fica a pele (1..9 = canto/lado do chapéu, 14 = tudo, 15 = caule, 10 = caule nos lados, 0 = poros)
+function hugeMushroomTile(skin, meta, dir) {
+  const m = meta || 0;
+  if (m === 14) return skin;
+  if (m === 15) return 'mushroom_block_skin_stem';
+  if (m === 10) return dir && dir[1] === 0 ? 'mushroom_block_skin_stem' : 'mushroom_block_inside';
+  if (m >= 1 && m <= 9 && dir) {
+    if (dir[1] === 1) return skin;
+    if (dir[1] === -1) return 'mushroom_block_inside';
+    const west = m === 1 || m === 4 || m === 7, east = m === 3 || m === 6 || m === 9, north = m <= 3, south = m >= 7;
+    if ((dir[0] === -1 && west) || (dir[0] === 1 && east) || (dir[2] === -1 && north) || (dir[2] === 1 && south)) return skin;
+  }
+  return 'mushroom_block_inside';
+}
+
 export function tileForFace(block, face, meta, dir) {
-  const f = (block.variants && block.variants[(meta || 0) & 7]) || block.faces || {};
+  if (block.hugeMushroom && dir) return hugeMushroomTile(block.hugeMushroom, meta, dir);
+  const f = (block.variants && block.variants[(meta || 0) & (block.variantMask ?? 7)]) || block.faces || {};
+  // tronco deitado: as pontas (tile de topo) ficam nas faces ao longo do eixo da meta (bits 2-3: 0 = y, 1 = x, 2 = z, 3 = casca nos 6 lados)
+  if (block.axisByMeta && dir && f.top && f.side) {
+    const ax = ((meta || 0) >> 2) & 3;
+    return (ax === 0 ? dir[1] !== 0 : ax === 1 ? dir[0] !== 0 : ax === 2 ? dir[2] !== 0 : false) ? f.top : f.side;
+  }
   if (block.orient && dir && f.front && dir[1] === 0 && dir[0] === HFACES[(meta || 0) & 3][0] && dir[2] === HFACES[(meta || 0) & 3][1]) return f.front;
   if (f.all) return f.all;
   if (face === 'front' && f.front) return f.front;
@@ -186,10 +203,6 @@ export function tileForFace(block, face, meta, dir) {
 }
 
 export function blockTint(block, face, meta) {
-  if (block.id === 35 || block.id === 95 || block.id === 159 || block.id === 171) {
-    const c = WOOL_COLORS[meta & 15] || WOOL_COLORS[0];
-    return [((c[0] >> 16) & 255) / 255, ((c[0] >> 8) & 255) / 255, (c[0] & 255) / 255];
-  }
   // Tint por bioma (placeholder: valores fixos aproximados de planície)
   if (block.tint === 'grass') return [0.53, 0.72, 0.28];
   if (block.tint === 'foliage') return [0.43, 0.65, 0.25];
@@ -209,7 +222,8 @@ export function getSelectionBox(id, meta = 0) {
   if (!b) return FULL_BOX;
   switch (b.model) {
     case 'cross': return (id === 37 || id === 38 || id === 39 || id === 40) ? SEL_FLOWER : SEL_GRASS;
-    case 'torch': return SEL_TORCH;
+    case 'torch': return (meta & 7) >= 1 && (meta & 7) <= 4 ? onWall(WALL_META_DIR[meta & 7], 0.5, 0.3125, 0.6875, 0.2, 0.85) : SEL_TORCH;
+    case 'rail': return [0, 0, 0, 1, 0.125, 1];
     case 'carpet': return id === 171 ? [0, 0, 0, 1, 0.0625, 1] : SEL_PLATE;
     case 'snow': return [0, 0, 0, 1, ((meta & 7) + 1) / 8, 1];
     case 'box': return b.box || FULL_BOX;
@@ -294,6 +308,8 @@ BLOCKS[153] = B(153, 'quartz_ore', 'Minério de Quartzo', { hardness: 3.0, faces
 BLOCKS[54] = shaped(54, 'chest', 'Baú', { model: 'chest', hardness: 2.5, faces: { top: 'chest_top', bottom: 'planks', side: 'chest_side', front: 'chest_front' }, drop: 54, lightOpacity: 0, soundCategory: 'wood' });
 BLOCKS[65] = shaped(65, 'ladder', 'Escada de Mão', { model: 'ladder', hardness: 0.4, faces: { all: 'ladder' }, drop: 65, render: 'cutout', lightOpacity: 0, soundCategory: 'wood', climbable: true });
 BLOCKS[96] = shaped(96, 'trapdoor', 'Alçapão', { model: 'trapdoor', hardness: 3.0, faces: { all: 'trapdoor' }, drop: 96, render: 'cutout', lightOpacity: 0, soundCategory: 'wood' });
+for (const [id, kind, on] of [[93, 'repeater', false], [94, 'repeater', true], [149, 'comparator', false], [150, 'comparator', true]]) BLOCKS[id].diode = { kind, on };
+registerMoreBlocks({ BLOCKS, B, shaped });
 export const SLAB_IDS = [44, 126, 182];
 export const STAIR_IDS = STAIRS.map(s => s[0]);
 
@@ -301,7 +317,7 @@ export const STAIR_IDS = STAIRS.map(s => s[0]);
 export function blockDisplayName(id, meta = 0) {
   const b = BLOCKS[id];
   if (!b) return null;
-  if (b.variantNames) return b.variantNames[meta & 7] || b.namePt;
+  if (b.variantNames) return b.variantNames[meta & (b.variantMask ?? 7)] || b.namePt;
   return b.namePt;
 }
 

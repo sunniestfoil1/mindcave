@@ -5,6 +5,13 @@ import { moveEntity, unstickPlayer, pushOutOfBlocks, collidesAt, chunkLoadedAt, 
 import { packState, stateId, stateMeta, chunkCoord } from './chunk';
 import { getBlock, BLOCKS, isWater, isLava, isFluid, isReplaceable, isSolid, BLOCK_NAMES, getSelectionBox } from './blocks';
 import { blockBoxes, rayBox, hasShape, isSlabBlock, isStairsBlock, computePlacement, bedPartner, BED_DIRS, DOOR_FACES, isDoorBlock } from './shapes';
+
+// Itens que viram bloco ao colocar (o id do item é diferente do id do bloco)
+const ITEM_TO_BLOCK = { 323: 63, 380: 118, 379: 117, 390: 140, 356: 93, 404: 149, 372: 115, 338: 83, 354: 92, 397: 144 };
+// Itens de porta → bloco da porta (madeiras de 1.8: carvalho 324/64, ferro 330/71, pinheiro 427/193 … carvalho escuro 431/197)
+const DOOR_ITEMS = { 324: 64, 330: 71, 427: 193, 428: 194, 429: 195, 430: 196, 431: 197 };
+// Blocos que no 1.8.9 abrem uma tela e que ainda não têm tela aqui: o clique avisa em vez de colocar bloco
+const SEM_TELA = new Set([116, 145, 117, 23, 158, 154, 138, 84]);
 import { Sky } from './sky';
 import { skyBrightnessFactor, sunsetFactor, sunBrightness } from './lighting';
 import { tickFluids } from './fluids';
@@ -909,7 +916,7 @@ export class GameEngine {
     const hit = this.raycast();
     if (!hit) return;
     const block = getBlock(hit.id);
-    if (block.hardness < 0) return;
+    if (block.hardness < 0 && this.player.gameMode !== 'creative') return;   // no criativo quebra até bedrock e bloco de comando, como no 1.8.9
     this.particles?.spawnBlockBreak(hit.x, hit.y, hit.z, hit.id, hit.meta || 0);
     playBlockBreakSound(hit.id, { x: hit.x, y: hit.y, z: hit.z });
     const _brokenState = this.world.getBlock(hit.x, hit.y, hit.z);
@@ -932,11 +939,13 @@ export class GameEngine {
     const hit = this.raycast();
     if (!hit) return false;
     const blockId = hit.id;
-    if (blockId === 64 || blockId === 107 || blockId === 96) { // porta de madeira, portão e alçapão: abrem/fecham com o botão direito (a de ferro só com redstone)
+    const blk = getBlock(blockId);
+    const meta = hit.meta || 0;
+    if (blk.model === 'gate' || blk.model === 'trapdoor' || blk.model === 'door') { // madeira abre/fecha com o botão direito; ferro só com redstone
+      if (blockId === 71 || blockId === 167) return true;
       this.toggleOpenable(hit.x, hit.y, hit.z);
       return true;
     }
-    if (blockId === 71) return true; // porta de ferro: não abre à mão, mas o clique não coloca bloco
     if (blockId === 26) { // Cama
       this.trySleep(hit.x, hit.y, hit.z);
       return true;
@@ -949,11 +958,85 @@ export class GameEngine {
       this.onOpenFurnace?.(hit.x, hit.y, hit.z);
       return true;
     }
-    if (blockId === 54) { // Baú
+    if (blockId === 54 || blockId === 146) { // Baú e baú armadilhado
       this.onOpenChest?.(hit.x, hit.y, hit.z);
       return true;
     }
+    if (blockId === 130) { // Baú do Ender: todos os baús do Ender abrem o mesmo conteúdo
+      this.onOpenChest?.(hit.x, hit.y, hit.z, true);
+      return true;
+    }
+    const at = { pos: { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 } };
+    if (blockId === 69) { // Alavanca: liga/desliga
+      this._setBlockSync(hit.x, hit.y, hit.z, packState(69, meta ^ 8));
+      playEvent('block.lever.click', { ...at, pitch: (meta & 8) ? 0.5 : 0.6 });
+      return true;
+    }
+    if ((blockId === 77 || blockId === 143) && !(meta & 8)) { // Botão: aperta e solta sozinho (pedra 1 s, madeira 1,5 s)
+      this._setBlockSync(hit.x, hit.y, hit.z, packState(blockId, meta | 8));
+      const ev = blockId === 77 ? 'stone_button' : 'wooden_button';
+      playEvent(`block.${ev}.click_on`, at);
+      this._schedule(blockId === 77 ? 20 : 30, () => {
+        const cur = this.world.getBlock(hit.x, hit.y, hit.z);
+        if (stateId(cur) !== blockId) return;
+        this._setBlockSync(hit.x, hit.y, hit.z, packState(blockId, stateMeta(cur) & 7));
+        playEvent(`block.${ev}.click_off`, at);
+      });
+      return true;
+    }
+    if (blockId === 77 || blockId === 143) return true;
+    if (blockId === 92) { // Bolo: uma fatia por clique
+      if (p.hunger >= 20 && p.gameMode !== 'creative') return true;
+      p.hunger = Math.min(20, (p.hunger ?? 20) + 2);
+      p.saturation = Math.min(p.hunger, (p.saturation ?? 0) + 0.4);
+      playEatSound(p.pos);
+      this._setBlockSync(hit.x, hit.y, hit.z, (meta & 7) >= 6 ? 0 : packState(92, (meta & 7) + 1));
+      return true;
+    }
+    if (blockId === 25) { // Bloco de notas: cada clique sobe um tom
+      const n = (meta + 1) % 25;
+      this._setBlockSync(hit.x, hit.y, hit.z, packState(25, n));
+      playEvent('block.note_block.harp', { ...at, pitch: Math.pow(2, (n - 12) / 12) });
+      return true;
+    }
+    if (blockId === 93 || blockId === 94) { // Repetidor: cada clique aumenta o atraso (bits 2-3)
+      const d = (((meta >> 2) & 3) + 1) & 3;
+      this._setBlockSync(hit.x, hit.y, hit.z, packState(blockId, (meta & 3) | (d << 2)));
+      playEvent('block.comparator.click', at);
+      return true;
+    }
+    if (SEM_TELA.has(blockId)) { this.onChatMessage?.({ type: 'system', text: `§7${blk.namePt}: a tela deste bloco ainda não existe no jogo`, timestamp: Date.now() }); return true; }
     return false;
+  }
+
+  // Placa de pressão (de pedra e de madeira): liga (meta 1) enquanto o jogador está em cima e desliga quando ele sai
+  _tickPlates() {
+    const p = this.player.pos;
+    const x = Math.floor(p.x), y = Math.floor(p.y + 0.001), z = Math.floor(p.z);
+    const id = stateId(this.world.getBlock(x, y, z));
+    const on = (id === 70 || id === 72) ? { x, y, z, id } : null;
+    const prev = this._plate;
+    const click = (pl, state) => playEvent(`block.${pl.id === 70 ? 'stone' : 'wooden'}_pressure_plate.click_${state}`, { pos: { x: pl.x + 0.5, y: pl.y + 0.1, z: pl.z + 0.5 } });
+    if (prev && (!on || prev.x !== on.x || prev.y !== on.y || prev.z !== on.z)) {
+      const cur = this.world.getBlock(prev.x, prev.y, prev.z);
+      if (stateId(cur) === prev.id) { this._setBlockSync(prev.x, prev.y, prev.z, packState(prev.id, 0)); click(prev, 'off'); }
+      this._plate = null;
+    }
+    if (on && !this._plate) {
+      this._setBlockSync(x, y, z, packState(id, 1));
+      click(on, 'on');
+      this._plate = on;
+    }
+  }
+
+  // Tarefas para daqui a N ticks (botão que solta sozinho, p. ex.); roda no tick do jogo
+  _schedule(ticks, fn) { (this._sched || (this._sched = [])).push({ at: this.worldTime + ticks, fn }); }
+  _tickScheduled() {
+    if (!this._sched || !this._sched.length) return;
+    const due = this._sched.filter(t => t.at <= this.worldTime);
+    if (!due.length) return;
+    this._sched = this._sched.filter(t => t.at > this.worldTime);
+    for (const t of due) t.fn();
   }
 
   placeBlock() {
@@ -962,30 +1045,44 @@ export class GameEngine {
     const slot = this.player.hotbar[this.player.selectedSlot];
     if (!slot || !slot.id) return;
     // getBlock() devolve PEDRA para id desconhecido: item que não é bloco (graveto, balde, comida) nunca pode ser colocado
-    if (slot.id !== 355 && slot.id !== 324 && slot.id !== 330 && !BLOCKS[slot.id]) return;
+    if (slot.id !== 355 && !DOOR_ITEMS[slot.id] && !ITEM_TO_BLOCK[slot.id] && !BLOCKS[slot.id]) return;
     let px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
-    if (slot.id === 324 || slot.id === 330) { this.placeDoor(hit, slot, px, py, pz); return; }
-    const placing = getBlock(slot.id);
+    if (DOOR_ITEMS[slot.id]) { this.placeDoor(hit, slot, px, py, pz); return; }
+    // o item da placa vira placa na parede quando se clica na lateral de um bloco, e em pé quando se clica em cima
+    const blockId = slot.id === 323 && hit.ny === 0 ? 68 : (ITEM_TO_BLOCK[slot.id] ?? slot.id);
+    const placing = getBlock(blockId);
     let meta = slot.meta || 0;
-    let placeId = slot.id;
+    let placeId = blockId;
     if (slot.id === 355) { this.placeBed(hit, slot, px, py, pz); return; }
-    const plan = computePlacement(placing, meta, hit, this.player.yaw, (a, b, c) => this.world.getBlock(a, b, c));
+    const getS = (a, b, c) => this.world.getBlock(a, b, c);
+    let plan = computePlacement(placing, meta, hit, this.player.yaw, getS);
+    if (!plan && (blockId === 93 || blockId === 94 || blockId === 149 || blockId === 150)) {
+      // repetidor e comparador: a saída aponta para onde o jogador olha; só assentam em bloco sólido
+      const below = getBlock(stateId(getS(px, py - 1, pz)));
+      if (!below || !below.solid) return;
+      plan = { x: px, y: py, z: pz, id: blockId, meta: Math.floor(this.player.yaw * 2 / Math.PI + 0.5) & 3 };
+    }
+    if (!plan && blockId === 115) { // verruga do Nether: só em areia das almas
+      if (stateId(getS(px, py - 1, pz)) !== 88) return;
+    }
     if (plan && plan.invalid) return; // ex.: escada de mão sem parede
     if (plan) { px = plan.x; py = plan.y; pz = plan.z; placeId = plan.id; meta = plan.meta; }
     if (hasShape(getBlock(placeId))) { if (this._shapeHitsPlayer(placeId, meta, px, py, pz)) return; }
     else if (this.intersectsPlayer(px, py, pz)) return;
     const targetState = this.world.getBlock(px, py, pz);
     const targetId = stateId(targetState);
-    const mergingInPlace = placeId !== slot.id; // laje dupla: o bloco existente é a laje que está sendo completada
+    const mergingInPlace = placeId !== blockId; // laje dupla: o bloco existente é a laje que está sendo completada
     if (!mergingInPlace && targetId !== 0 && !isFluid(targetId) && !isReplaceable(targetId)) return;
-    if (slot.id === 17) {
-      if (hit.ny !== 0) meta = 0;
-      else if (hit.nx !== 0) meta = 1;
-      else meta = 2;
+    if (slot.id === 17 || slot.id === 162) {
+      // tronco: a variante (bits 0-1) vem do item e o eixo (bits 2-3) da face clicada: 0 vertical, 1 leste-oeste, 2 norte-sul
+      const variant = meta & (getBlock(slot.id).variantMask ?? 3);
+      meta = variant | ((hit.ny !== 0 ? 0 : hit.nx !== 0 ? 1 : 2) << 2);
     }
+    if (placing.hugeMushroom) meta = 14;   // cogumelo gigante: pele nos seis lados, como o do criativo
     const newState = packState(placeId, meta);
     playBlockPlaceSound(placeId, { x: px, y: py, z: pz });
     this.world.setBlock(px, py, pz, newState);
+    if (placeId === 175) this._setBlockSync(px, py + 1, pz, packState(175, 8));   // planta alta: a metade de cima junto
     this._cachedRaycastFrame = -1;
     this.onBlockChange?.(px, py, pz, newState);
     this.netManager?.sendBlockChange?.(px, py, pz, newState);
@@ -1164,7 +1261,7 @@ export class GameEngine {
   // Porta (item 324 madeira / 330 ferro): 2 blocos de altura, precisa de chão sólido e espaço livre nos dois. Fica virada
   // para onde o jogador olha; se há uma porta igual à esquerda, a dobradiça vai para a direita (porta dupla espelhada).
   placeDoor(hit, slot, px, py, pz) {
-    const doorId = slot.id === 330 ? 71 : 64;
+    const doorId = DOOR_ITEMS[slot.id] || 64;
     const i = Math.floor(this.player.yaw * 2 / Math.PI + 0.5) & 3;
     const facing = [3, 0, 1, 2][i];
     for (const yy of [py, py + 1]) {
@@ -1189,14 +1286,15 @@ export class GameEngine {
   toggleOpenable(x, y, z) {
     const st = this.world.getBlock(x, y, z);
     const id = stateId(st);
+    const model = getBlock(id).model;
     let ty = y;
-    if (id !== 107 && id !== 96 && (stateMeta(st) & 8)) ty = y - 1; // porta: o estado fica na metade de baixo
+    if (model === 'door' && (stateMeta(st) & 8)) ty = y - 1; // porta: o estado fica na metade de baixo
     const target = this.world.getBlock(x, ty, z);
     if (stateId(target) !== id) return;
     const meta = stateMeta(target) ^ 4;
     this._setBlockSync(x, ty, z, packState(id, meta));
     const open = (meta & 4) !== 0;
-    const name = id === 107 ? 'fence_gate' : id === 71 ? 'iron_door' : id === 96 ? 'wooden_trapdoor' : 'wooden_door';
+    const name = model === 'gate' ? 'fence_gate' : id === 71 ? 'iron_door' : id === 167 ? 'iron_trapdoor' : model === 'trapdoor' ? 'wooden_trapdoor' : 'wooden_door';
     playEvent(`block.${name}.${open ? 'open' : 'close'}`, { pos: { x: x + 0.5, y: ty + 0.5, z: z + 0.5 } });
   }
 
@@ -1231,7 +1329,7 @@ export class GameEngine {
 
   // Baú quebrado: o conteúdo cai no chão (o baú em si dropa pelo registro)
   spillContainer(x, y, z, state) {
-    if (stateId(state) !== 54) return;
+    if (stateId(state) !== 54 && stateId(state) !== 146) return;
     const c = getContainer(this.world, x, y, z);
     if (!c) return;
     for (const it of c.slots) {
@@ -1329,7 +1427,7 @@ export class GameEngine {
       const other = this.world.getBlock(pt.x, y, pt.z);
       if (stateId(other) !== 26) return;
       this._setBlockSync(pt.x, y, pt.z, 0);
-    } else if (isDoorBlock(getBlock(id))) {
+    } else if (isDoorBlock(getBlock(id)) || id === 175) {   // porta e planta alta: as duas metades saem juntas
       const py = (stateMeta(state) & 8) ? y - 1 : y + 1;
       if (stateId(this.world.getBlock(x, py, z)) === id) this._setBlockSync(x, py, z, 0);
     }
@@ -1825,6 +1923,8 @@ export class GameEngine {
     }
     if (this.worldTime % 2 === 0 && this.redstone) this.redstone.tick();
     this.tickTntEntities();
+    this._tickScheduled();
+    this._tickPlates();
     if (this.worldTime % 20 === 0) this.randomTickAgriculture();
 
     if (this.worldTime % AUTOSAVE_TICKS === 0) this.onAutosave();
@@ -2813,7 +2913,9 @@ export class GameEngine {
   breakBlockSurvival(hit, tool) {
     const block = getBlock(hit.id);
     if (block.hardness < 0) return;
-    const drops = getDrops(hit.id, tool, hit.meta);
+    // planta alta: o tipo mora na metade de baixo, então quebrar a de cima larga o mesmo que a de baixo
+    const dropMeta = hit.id === 175 && (hit.meta & 8) ? stateMeta(this.world.getBlock(hit.x, hit.y - 1, hit.z)) & 7 : hit.meta;
+    const drops = getDrops(hit.id, tool, dropMeta);
     for (const drop of drops) {
       const item = { id: drop.id, count: drop.count, meta: drop.meta || 0 };
       const rx = (Math.random() - 0.5) * 0.2;

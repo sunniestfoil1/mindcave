@@ -4,6 +4,7 @@ import { ITEMS, TOOL_MATERIALS, getToolMaterial } from './items';
 import { getAmplifier, Effect } from './effects';
 import { stateId } from './chunk';
 import { packState } from './chunk';
+import { CATALOG } from './blockCatalog';
 
 // Tabela de colheita: blockId → { tool: 'pickaxe'|'axe'|'shovel'|'sword'|'shears'|null, level: 0-3 }
 export const HARVEST = {
@@ -76,9 +77,30 @@ export const HARVEST = {
   106: { tool: 'shears', level: 0 },  // trepadeira
 };
 
+// Completa a tabela com os dados reais do 1.8.9 (blockCatalog.js): ferramenta e nível de todo bloco que exige ferramenta para dropar.
+// Corrige também os que estavam errados aqui (bloco de lápis e de redstone, placa de pedra, funil).
+for (const [id, c] of Object.entries(CATALOG)) {
+  if (!c.t) continue;
+  if (!HARVEST[id] || [22, 152, 70, 154].includes(Number(id))) HARVEST[id] = { tool: c.t, level: c.l };
+}
+// Blocos que não exigem ferramenta, mas saem mais rápido com uma (machado na madeira, picareta no pistão)
+for (const id of [25, 84, 63, 68, 143, 146, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197]) HARVEST[id] = HARVEST[id] || { tool: 'axe', level: 0 };
+for (const id of [33, 29, 34]) HARVEST[id] = HARVEST[id] || { tool: 'pickaxe', level: 0 };
+for (const id of [172]) HARVEST[id] = HARVEST[id] || { tool: 'pickaxe', level: 0 };
+
+function leafDrops(tool, meta, id, mask, _s, saplingBase, chance) {
+  const v = meta & mask;
+  const drops = [];
+  if (tool && tool.id === 359) { drops.push({ id, count: 1, meta: v }); return drops; }
+  if (Math.random() < (id === 18 && v === 3 ? chance / 2 : chance)) drops.push({ id: 6, count: 1, meta: saplingBase + v });   // selva: metade da chance
+  if (((id === 18 && v === 0) || (id === 161 && v === 1)) && Math.random() < 0.005) drops.push({ id: 260, count: 1 });       // maçã
+  return drops;
+}
+
 // Tabela de drops especiais: blockId → função(tool) → { id, count, meta }[] ou null para drop padrão
 export const DROP_TABLE = {
-  1: () => [{ id: 4, count: 1 }],           // pedra → pedregulho
+  1: (tool, meta) => (!canHarvest(1, tool) ? [] : (meta & 7) === 0 ? [{ id: 4, count: 1 }] : [{ id: 1, count: 1, meta: meta & 7 }]),   // pedra → pedregulho; granito, diorito e andesito dropam o próprio
+  3: (tool, meta) => [{ id: 3, count: 1, meta: (meta & 3) === 2 ? 0 : meta & 3 }],   // podzol vira terra comum; terra grossa fica grossa
   2: () => [{ id: 2, count: 1 }],           // grama → bloco de grama
   14: (tool) => canHarvest(14, tool) ? [{ id: 14, count: 1 }] : [],  // minério de ouro → bloco
   15: (tool) => canHarvest(15, tool) ? [{ id: 15, count: 1 }] : [],  // minério de ferro → bloco
@@ -90,13 +112,9 @@ export const DROP_TABLE = {
   129: (tool) => canHarvest(129, tool) ? [{ id: 388, count: 1 }] : [],  // esmeralda
   89: () => [{ id: 348, count: 2 + Math.floor(Math.random() * 3) }],   // glowstone → pó
   13: () => Math.random() < 0.1 ? [{ id: 318, count: 1 }] : [{ id: 13, count: 1 }], // cascalho → 10% sílex
-  18: (tool) => {
-    const drops = [];
-    if (tool && tool.id === 359) drops.push({ id: 18, count: 1 }); // tesoura → folhas
-    if (Math.random() < 0.05) drops.push({ id: 6, count: 1 }); // muda (1/20)
-    if (Math.random() < 0.005) drops.push({ id: 260, count: 1 }); // maçã (1/200)
-    return drops;
-  },
+  // folhas: com tesoura dropam a própria folha (na variante certa); sem ela, às vezes a muda (e a maçã no carvalho e no carvalho escuro)
+  18: (tool, meta) => leafDrops(tool, meta, 18, 3, [6], 0, 0.05),
+  161: (tool, meta) => leafDrops(tool, meta, 161, 1, [6], 4, 0.05),
   31: (tool) => {
     if (tool && tool.id === 359) return [{ id: 31, count: 1 }]; // tesoura → grama
     return Math.random() < 0.125 ? [{ id: 295, count: 1 }] : [];  // 1/8 sementes
@@ -119,6 +137,17 @@ export const DROP_TABLE = {
   51: () => [],                        // fogo → nada
   78: () => [],                        // camada de neve → nada sem pá
   7: () => [],                         // bedrock → nada
+  74: (tool) => canHarvest(74, tool) ? [{ id: 331, count: 4 + Math.floor(Math.random() * 2) }] : [], // minério de redstone aceso
+  99: () => { const n = Math.floor(Math.random() * 3); return n ? [{ id: 39, count: n }] : []; },    // cogumelo gigante → 0–2 cogumelos
+  100: () => { const n = Math.floor(Math.random() * 3); return n ? [{ id: 40, count: n }] : []; },
+  175: (tool, meta) => {   // planta alta: a grama e a samambaia dão 2 plantas com tesoura (ou sementes ao acaso); as flores dão a si mesmas
+    const t = meta & 7;
+    if (t === 2 || t === 3) return tool && tool.id === 359 ? [{ id: 31, count: 2, meta: t === 2 ? 1 : 2 }] : (Math.random() < 0.125 ? [{ id: 295, count: 1 }] : []);
+    return [{ id: 175, count: 1, meta: t }];
+  },
+  127: (tool, meta) => [{ id: 351, count: ((meta >> 2) & 3) >= 2 ? 3 : 1, meta: 3 }],               // cacau → sementes de cacau
+  92: () => [],                        // bolo → nada
+  97: () => [],                        // bloco infestado → nada (o peixe-de-prata não existe aqui)
 };
 
 // XP por minério
@@ -131,7 +160,8 @@ export const ORE_XP = {
 // Só estes blocos EXIGEM ferramenta para dropar (1.8.9: Material.isToolNotRequired() == false).
 // Terra, areia, madeira, folhas etc. dropam com a mão; HARVEST abaixo só diz qual ferramenta é mais rápida.
 const NEEDS_TOOL = new Set([
-  ...Object.entries(HARVEST).filter(([, h]) => h.tool === 'pickaxe').map(([id]) => Number(id)),
+  ...Object.entries(CATALOG).filter(([, c]) => c.t).map(([id]) => Number(id)),
+  ...Object.entries(HARVEST).filter(([id, h]) => h.tool === 'pickaxe' && ![33, 29, 34, 143].includes(Number(id))).map(([id]) => Number(id)),
   78, 80, 30, // camada de neve e bloco de neve (pá), teia (espada/tesoura)
 ]);
 
@@ -210,8 +240,10 @@ export function getDrops(blockId, tool, meta = 0) {
   // Drop padrão: o próprio bloco (se puder colher)
   if (canHarvest(blockId, tool)) {
     const block = getBlock(blockId);
+    if (block && block.drop === null) return [];   // drop: null no registro = não larga nada (vidro tingido, vidraça, gelo compactado...)
     if (block && block.drop !== null && block.drop !== undefined) {
-      return [{ id: block.drop, count: 1 }];
+      // tronco: o item leva a variante (bétula dropa bétula); o eixo (bits 2-3) não vai junto
+      return [block.dropMeta ? { id: block.drop, count: 1, meta: meta & (block.variantMask ?? 7) } : { id: block.drop, count: 1 }];
     }
     return [{ id: blockId, count: 1 }];
   }

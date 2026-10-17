@@ -14,7 +14,7 @@ try {
   const real = JSON.parse(fs.readFileSync(path.join(root, 'data/mc-1.8.9/recipes.json'), 'utf8'));
   const exists = (id) => !!(ITEMS[id] || BLOCKS[id]);
   // ids em que a meta é uma variante de verdade no jogo (cores, tipos de laje); nos demais, meta > 0 é variante que não existe (ex.: madeiras)
-  const META_OK = new Set([35, 95, 159, 160, 171, 351, 44, 126, 182, 263, 373, 397]);
+  const META_OK = new Set([35, 95, 159, 160, 171, 351, 44, 126, 182, 263, 373, 397, 1, 3, 5, 6, 12, 17, 18, 24, 97, 98, 139, 145, 155, 162, 168, 179]);
   const ours = new Set(RECIPES.map(r => `${r.result.id}:${r.result.meta || 0}`));
   const sigs = new Set();
   const out = [];

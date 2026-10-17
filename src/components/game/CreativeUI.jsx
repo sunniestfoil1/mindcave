@@ -201,13 +201,17 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
       const b = BLOCKS[id];
       if (numId === 0 || !b) continue;
       if (b.singleId || b.hiddenInCreative) continue;
-      if (b.variants && b.model === 'slab' && Array.isArray(b.variants)) {
+      // blocos com variações de nome (lajes, madeiras, lã, vidro, pedras...): um item por variação; os de estágio (plantações) não entram
+      if (Array.isArray(b.variants) && Array.isArray(b.variantNames)) {
+        const names = new Set();
         b.variants.forEach((_, meta) => {
           if (numId === 44 && meta === 2) return;
           const key = `b_${numId}_${meta}`;
           if (seen.has(key)) return;
-          seen.add(key);
           const vName = (Array.isArray(b.variantNames) && b.variantNames[meta]) || b.namePt || b.name;
+          if (names.has(vName)) return;
+          names.add(vName);
+          seen.add(key);
           list.push({
             id: numId,
             meta,

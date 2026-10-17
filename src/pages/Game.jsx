@@ -327,8 +327,9 @@ export default function Game() {
             setShowFurnace(true);
             document.exitPointerLock?.();
           },
-          onOpenChest: (x, y, z) => {
-            const c = getOrCreateContainer(cw, x, y, z);
+          onOpenChest: (x, y, z, shared) => {
+            // baú do Ender: um conteúdo só para todos os baús do Ender do mundo (guardado numa posição fixa fora do mapa)
+            const c = shared ? getOrCreateContainer(cw, 0, -1000, 0) : getOrCreateContainer(cw, x, y, z);
             playChestOpenSound({ x: x + 0.5, y: y + 0.5, z: z + 0.5 });
             setChestContainer(c);
             setShowChest(true);

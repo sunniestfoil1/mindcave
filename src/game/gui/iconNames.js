@@ -15,6 +15,8 @@ const ITEM_FILE = {
   golden_apple: 'apple_golden', golden_apple_ench: 'apple_golden', golden_carrot: 'carrot_golden',
   baked_potato: 'potato_baked', poisonous_potato: 'potato_poisonous',
   wooden_door: 'door_wood', iron_door: 'door_iron',
+  spruce_door: 'door_spruce', birch_door: 'door_birch', jungle_door: 'door_jungle', acacia_door: 'door_acacia', dark_oak_door: 'door_dark_oak',
+  skull: 'skull_skeleton',
   bucket: 'bucket_empty', water_bucket: 'bucket_water', lava_bucket: 'bucket_lava',
   minecart: 'minecart_normal',
   redstone: 'redstone_dust',

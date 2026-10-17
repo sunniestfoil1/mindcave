@@ -17,7 +17,9 @@ try {
 
   // ---- blocos: dropam e são obtíveis ----
   const best = [idOf('diamond_pickaxe'), idOf('diamond_axe'), idOf('diamond_shovel'), 359, idOf('diamond_sword')].map(id => ({ id }));
-  const noDropOk = new Set(['air', 'bedrock', 'glass', 'stained_glass', 'ice', 'fire', 'water', 'flowing_water', 'lava', 'flowing_lava', 'snow_layer', 'leaves', 'monster_egg', 'mob_spawner', 'glowstone_dust', 'web']);
+  const noDropOk = new Set(['air', 'bedrock', 'glass', 'stained_glass', 'ice', 'fire', 'water', 'flowing_water', 'lava', 'flowing_lava', 'snow_layer', 'leaves', 'monster_egg', 'mob_spawner', 'glowstone_dust', 'web',
+    // no 1.8.9 também não largam nada (ou largam ao acaso, como os cogumelos gigantes, que podem dar 0)
+    'piston_head', 'cake', 'glass_pane', 'stained_glass_pane', 'packed_ice', 'barrier', 'brown_mushroom_block', 'red_mushroom_block']);
   const semDrop = [], dropInvalido = [], semTempo = [];
   for (const [k, b] of Object.entries(BLOCKS)) {
     const id = Number(k);

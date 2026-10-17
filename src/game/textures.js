@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from './prng';
 import { loadPack, getPackCanvas, getPackJson, MC } from './pack';
+import { MORE_TILES } from './tilesMore';
 
 const TILE = 16;
 const COLS = 16;
@@ -370,6 +371,14 @@ for (const n of ['pumpkin_top', 'pumpkin_side', 'pumpkin_face_off', 'pumpkin_fac
   'hopper_top', 'hopper_outside', 'lever', 'pumpkin_stem_disconnected', 'melon_stem_disconnected', 'farmland_dry', 'farmland_wet',
   'repeater_off', 'repeater_on', 'comparator_off', 'comparator_on', 'daylight_detector_top', 'daylight_detector_side',
   'portal', 'quartz_ore']) EXTRA_TILES[n] = n;
+// troncos e folhas das outras madeiras (pinheiro, bétula, selva, acácia, carvalho escuro): textura própria de cada uma
+for (const w of ['spruce', 'birch', 'jungle', 'acacia', 'big_oak']) {
+  EXTRA_TILES['log_' + w + '_side'] = 'log_' + w;
+  EXTRA_TILES['log_' + w + '_top'] = 'log_' + w + '_top';
+  EXTRA_TILES['leaves_' + w] = 'leaves_' + w;
+}
+// ladrilhos dos blocos novos (cada nome é o do arquivo); os que já existem com outro nome de arquivo não são sobrescritos
+for (const [n, f] of Object.entries(MORE_TILES)) if (!(n in EXTRA_TILES) && !(n in MC_TEXTURE_MAP)) EXTRA_TILES[n] = f;
 for (const t of Object.keys(EXTRA_TILES)) if (!TILE_ORDER.includes(t)) TILE_ORDER.push(t);
 Object.assign(MC_TEXTURE_MAP, EXTRA_TILES);
 
@@ -415,22 +424,33 @@ async function composeGrassSide(ctx) {
   ctx.drawImage(tmp, x0, y0);
 }
 
+// Baús (comum, do Ender, armadilhado) e a cabeça: as texturas vêm do arquivo da entidade, não de textures/blocks
+function drawTile(ctx, name, fn) {
+  const idx = TILE_ORDER.indexOf(name);
+  if (idx < 0) return;
+  const { x0, y0 } = tileRect(idx);
+  ctx.clearRect(x0, y0, TILE, TILE);
+  const t = document.createElement('canvas'); t.width = TILE; t.height = TILE;
+  const c = t.getContext('2d'); c.imageSmoothingEnabled = false;
+  fn(c);
+  ctx.drawImage(t, x0, y0);
+}
+
 async function composeChest(ctx) {
-  const src = await getPackCanvas(MC + 'textures/entity/chest/normal.png');
-  if (!src) return;
-  const draw = (name, fn) => {
-    const idx = TILE_ORDER.indexOf(name);
-    const { x0, y0 } = tileRect(idx);
-    ctx.clearRect(x0, y0, TILE, TILE);
-    const t = document.createElement('canvas'); t.width = TILE; t.height = TILE;
-    const c = t.getContext('2d'); c.imageSmoothingEnabled = false;
-    fn(c);
-    ctx.drawImage(t, x0, y0);
-  };
   const lidH = TILE * 5 / 15, bodyH = TILE - lidH;
-  draw('chest_top', (c) => c.drawImage(src, 14, 0, 14, 14, 0, 0, TILE, TILE));
-  draw('chest_side', (c) => { c.drawImage(src, 0, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 0, 33, 14, 10, 0, lidH, TILE, bodyH); });
-  draw('chest_front', (c) => { c.drawImage(src, 14, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 14, 33, 14, 10, 0, lidH, TILE, bodyH); c.drawImage(src, 1, 1, 2, 4, 7, lidH - 1, 2, 4); });
+  for (const [file, prefix] of [['normal', 'chest'], ['ender', 'ender_chest'], ['trapped', 'trapped_chest']]) {
+    const src = await getPackCanvas(MC + `textures/entity/chest/${file}.png`);
+    if (!src) continue;
+    drawTile(ctx, prefix + '_top', (c) => c.drawImage(src, 14, 0, 14, 14, 0, 0, TILE, TILE));
+    drawTile(ctx, prefix + '_side', (c) => { c.drawImage(src, 0, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 0, 33, 14, 10, 0, lidH, TILE, bodyH); });
+    drawTile(ctx, prefix + '_front', (c) => { c.drawImage(src, 14, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 14, 33, 14, 10, 0, lidH, TILE, bodyH); c.drawImage(src, 1, 1, 2, 4, 7, lidH - 1, 2, 4); });
+  }
+  const skull = await getPackCanvas(MC + 'textures/entity/skeleton/skeleton.png');
+  if (skull) {
+    drawTile(ctx, 'skull_front', (c) => c.drawImage(skull, 8, 8, 8, 8, 0, 0, TILE, TILE));
+    drawTile(ctx, 'skull_top', (c) => c.drawImage(skull, 8, 0, 8, 8, 0, 0, TILE, TILE));
+    drawTile(ctx, 'skull_side', (c) => c.drawImage(skull, 0, 8, 8, 8, 0, 0, TILE, TILE));
+  }
 }
 
 export function loadRealTextures(force = false, onProgress = null) {

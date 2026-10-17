@@ -102,7 +102,7 @@ export class RedstoneSystem {
     if (id === LEVER && (meta & 8)) return 15;
     if (id === STONE_PLATE && (meta & 1)) return 15;
     if (id === WOOD_PLATE && (meta & 1)) return 15;
-    if (id === STONE_BUTTON && (meta & 8)) return 15;
+    if ((id === STONE_BUTTON || id === 143) && (meta & 8)) return 15;
     if (id === DAYLIGHT_SENSOR) return meta;
     if (id === TORCH_ON) return 15;
     if (id === REPEATER_ON || id === COMPARATOR_ON) return 15;
@@ -215,7 +215,7 @@ export class RedstoneSystem {
     else if (id === COMPARATOR_OFF || id === COMPARATOR_ON) this.evalComparator(x, y, z, meta, id);
     else if (id === LAMP_OFF || id === LAMP_ON) this.evalLamp(x, y, z);
     else if (id === TNT) this.evalTNT(x, y, z);
-    else if (id === 64 || id === 71) this.evalDoor(x, y, z, meta);
+    else if (id === 64 || id === 71 || (id >= 193 && id <= 197)) this.evalDoor(x, y, z, meta);
   }
 
   // Porta: abre quando passa a receber energia e fecha quando deixa de receber (BlockDoor). Só reage à MUDANÇA de energia, então
@@ -224,7 +224,7 @@ export class RedstoneSystem {
     const ly = (meta & 8) ? y - 1 : y;
     const lower = this.world.getBlock(x, ly, z);
     const id = stateId(lower);
-    if (id !== 64 && id !== 71) return;
+    if (id !== 64 && id !== 71 && !(id >= 193 && id <= 197)) return;
     if (!this.doorPower) this.doorPower = new Map();
     const k = this.key(x, ly, z);
     const powered = this.isPowered(x, ly, z) || this.isPowered(x, ly + 1, z);
@@ -289,7 +289,7 @@ export class RedstoneSystem {
         maxIn = Math.max(maxIn, 15);
       } else if (nid === WOOD_PLATE && (nmeta & 1)) {
         maxIn = Math.max(maxIn, 15);
-      } else if (nid === STONE_BUTTON && (nmeta & 8)) {
+      } else if ((nid === STONE_BUTTON || nid === 143) && (nmeta & 8)) {
         maxIn = Math.max(maxIn, 15);
       } else if (nid === DAYLIGHT_SENSOR) {
         maxIn = Math.max(maxIn, nmeta);

@@ -3,6 +3,8 @@ import { CHUNK_SIZE, WORLD_HEIGHT, WATER_FILL_LEVEL, SEA_LEVEL } from './constan
 import { hash3, mulberry32, javaRandom, decorationChunkSeed } from './prng';
 import { chunkIndex, packState, stateId } from './chunk';
 import { isWater } from './blocks';
+import { JRandom } from './jrandom';
+import * as T from './trees';
 
 const AIR = 0, GRASS = 2, DIRT = 3, STONE = 1, SAND = 12;
 const LOG = 17, LEAVES = 18, LOG2 = 162, LEAVES2 = 161;
@@ -55,7 +57,7 @@ export function populateChunk(seed, cx, cz, data, getBiome, terrainGen, params =
           if (groundY < 2 || groundY > SEA_LEVEL + 60) continue;
           const gb = stateId(writer.get(tx, groundY, tz));
           if (gb !== GRASS && gb !== DIRT && gb !== SAND) continue;
-          placeTree(writer, tx, groundY + 1, tz, biome.trees.type, nRng, seed);
+          placeTree(data, cx, cz, tx, groundY, tz, biome, seed);
         }
       }
     }
@@ -164,144 +166,76 @@ function treeCount(biome, rng) {
   return Math.floor(d) + (rng.nextFloat() < (d % 1) ? 1 : 0);
 }
 
-// === Árvores ===
-function placeTree(w, x, y, z, type, rng, seed) {
+// === Árvores (geradores do 1.8.9 em trees.js; aqui só a escolha por bioma, na mesma regra do genBigTreeChance de cada classe) ===
+const oak = (w, r, x, y, z) => T.genTrees(w, r, x, y, z);
+const bigOak = (w, r, x, y, z) => T.genBigTree(w, r, x, y, z, 5);
+const birchSmall = (w, r, x, y, z) => T.genBirch(w, r, x, y, z, false);
+const birchTall = (w, r, x, y, z) => T.genBirch(w, r, x, y, z, true);
+const taiga1 = (w, r, x, y, z) => T.genTaiga1(w, r, x, y, z);
+const taiga2 = (w, r, x, y, z) => T.genTaiga2(w, r, x, y, z);
+const defaultTree = (r) => (r.nextInt(10) === 0 ? bigOak : oak);   // BiomeGenBase.genBigTreeChance
+const FOREST_IDS = new Set([10, 11, 12]), HILLS_IDS = new Set([7, 8, 9]);
+
+function pickTree(type, biomeId, r) {
   switch (type) {
-    case 'oak': placeOak(w, x, y, z, rng, 0); break;
-    case 'birch': placeBirch(w, x, y, z, rng, 2, false); break;
-    case 'birch_tall': placeBirch(w, x, y, z, rng, 2, true); break;
-    case 'spruce': placeSpruce(w, x, y, z, rng, 1); break;
-    case 'spruce_giant': placeGiantSpruce(w, x, y, z, rng, 1); break;
-    case 'jungle': placeJungle(w, x, y, z, rng, 3); break;
-    case 'jungle_small': placeOak(w, x, y, z, rng, 3); break;
-    case 'acacia': placeAcacia(w, x, y, z, rng, 0); break;
-    case 'dark_oak': placeDarkOak(w, x, y, z, rng, 1); break;
-    case 'swamp_oak': placeSwampOak(w, x, y, z, rng, 0); break;
-    case 'mushroom': placeMushroom(w, x, y, z, rng); break;
-    default: placeOak(w, x, y, z, rng, 0);
-  }
-}
-
-// Copa do carvalho/bétula como no WorldGenTrees da 1.8.9: 4 camadas de topY-3 a topY, raio 2,2,1,1;
-// cantos da copa só entram com 50% de chance, e nunca na camada de cima.
-function placeOakCanopy(w, x, topY, z, rng, meta) {
-  for (let yy = topY - 3; yy <= topY; yy++) {
-    const dy = yy - topY;                    // -3..0
-    const r = 1 - Math.trunc(dy / 2);        // 2, 2, 1, 1
-    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
-      const corner = Math.abs(dx) === r && Math.abs(dz) === r;
-      if (corner && (dy === 0 || rng.nextInt(2) === 0)) continue;
-      if (w.get(x + dx, yy, z + dz) === 0) w.set(x + dx, yy, z + dz, packState(LEAVES, meta));
+    case 'oak':
+      if (FOREST_IDS.has(biomeId)) return r.nextInt(5) !== 0 ? oak : birchSmall;            // BiomeGenForest
+      if (HILLS_IDS.has(biomeId)) return r.nextInt(3) > 0 ? taiga2 : defaultTree(r);        // BiomeGenHills
+      return defaultTree(r);
+    case 'birch': return birchSmall;
+    case 'birch_tall': return r.nextBoolean() ? birchTall : birchSmall;                    // floresta de bétulas M
+    case 'spruce':
+      if (HILLS_IDS.has(biomeId)) return r.nextInt(3) > 0 ? taiga2 : defaultTree(r);
+      return r.nextInt(3) === 0 ? taiga1 : taiga2;                                          // BiomeGenTaiga
+    case 'spruce_giant':
+      if (r.nextInt(3) === 0) return r.nextInt(13) !== 0 ? (w, rr, x, y, z) => T.genMegaPine(w, rr, x, y, z, false) : (w, rr, x, y, z) => T.genMegaPine(w, rr, x, y, z, true);
+      return r.nextInt(3) === 0 ? taiga1 : taiga2;
+    case 'jungle': case 'jungle_small': {
+      if (r.nextInt(10) === 0) return bigOak;
+      if (r.nextInt(2) === 0) return (w, rr, x, y, z) => T.genShrub(w, rr, x, y, z);
+      if (type === 'jungle' && r.nextInt(3) === 0) return (w, rr, x, y, z) => T.genMegaJungle(w, rr, x, y, z);
+      const minHeight = 4 + r.nextInt(7);
+      return (w, rr, x, y, z) => T.genTrees(w, rr, x, y, z, { minHeight, wood: 3, leaf: 3, vines: true });
     }
+    case 'acacia': return r.nextInt(5) > 0 ? (w, rr, x, y, z) => T.genSavannaTree(w, rr, x, y, z) : oak;
+    case 'dark_oak':
+      if (r.nextInt(3) > 0) return (w, rr, x, y, z) => T.genCanopy(w, rr, x, y, z);          // BiomeGenForest roofed
+      return r.nextInt(5) !== 0 ? oak : birchSmall;
+    case 'swamp_oak': return (w, rr, x, y, z) => T.genSwamp(w, rr, x, y, z);
+    default: return defaultTree(r);
   }
 }
 
-function placeOak(w, x, y, z, rng, leafMeta) {
-  const trunk = 4 + rng.nextInt(3);
-  for (let i = 0; i < trunk; i++) w.set(x, y + i, z, packState(LOG, leafMeta & 3));
-  placeOakCanopy(w, x, y + trunk, z, rng, leafMeta & 3);
+// "Mundo" que os geradores de árvore enxergam: o chunk atual de verdade; fora dele, ar acima do chão da raiz e grama abaixo
+// (a árvore de um chunk vizinho só precisa saber que há chão sob o tronco e que o ar em volta está livre).
+function treeWorld(data, cx, cz, rootGroundY) {
+  const baseX = cx * CHUNK_SIZE, baseZ = cz * CHUNK_SIZE;
+  const GROUND = packState(GRASS, 0);
+  const get = (x, y, z) => {
+    if (y < 0 || y >= WORLD_HEIGHT) return 0;
+    const lx = x - baseX, lz = z - baseZ;
+    if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE) return y <= rootGroundY ? GROUND : 0;
+    return data[chunkIndex(lx, y, lz)];
+  };
+  return {
+    get,
+    id: (x, y, z) => (get(x, y, z) >> 4) & 0xfff,
+    isAir: (x, y, z) => get(x, y, z) === 0,
+    set(x, y, z, s) {
+      const lx = x - baseX, lz = z - baseZ;
+      if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
+      data[chunkIndex(lx, y, lz)] = s;
+    },
+  };
 }
 
-function placeBirch(w, x, y, z, rng, logMeta, tall) {
-  const trunk = tall ? 7 + rng.nextInt(3) : 5 + rng.nextInt(3);
-  for (let i = 0; i < trunk; i++) w.set(x, y + i, z, packState(LOG, logMeta));
-  placeOakCanopy(w, x, y + trunk, z, rng, logMeta);
-}
-
-function placeSpruce(w, x, y, z, rng, logMeta) {
-  const trunk = 5 + Math.floor(rng.nextFloat() * 3);
-  for (let i = 0; i < trunk; i++) w.set(x, y + i, z, packState(LOG, logMeta));
-  const topY = y + trunk;
-  for (let ly = 2; ly < trunk; ly++) {
-    const yy = y + ly;
-    const r = (ly % 2 === 0) ? 2 : 1;
-    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
-      if (Math.abs(dx) === r && Math.abs(dz) === r && rng.nextFloat() < 0.5) continue;
-      if (w.get(x + dx, yy, z + dz) === 0) w.set(x + dx, yy, z + dz, packState(LEAVES, logMeta));
-    }
-  }
-  for (let ly = 0; ly <= 2; ly++) {
-    const r = 2 - ly;
-    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
-      if (w.get(x + dx, topY + ly, z + dz) === 0) w.set(x + dx, topY + ly, z + dz, packState(LEAVES, logMeta));
-    }
-  }
-  w.set(x, topY + 2, z, packState(LEAVES, logMeta));
-}
-
-function placeGiantSpruce(w, x, y, z, rng, logMeta) {
-  const trunk = 18 + Math.floor(rng.nextFloat() * 12);
-  for (let i = 0; i < trunk; i++) {
-    w.set(x, y + i, z, packState(LOG, logMeta));
-    w.set(x + 1, y + i, z, packState(LOG, logMeta));
-    w.set(x, y + i, z + 1, packState(LOG, logMeta));
-    w.set(x + 1, y + i, z + 1, packState(LOG, logMeta));
-  }
-  for (let ly = 3; ly < trunk; ly += 3) {
-    const yy = y + ly, r = 2;
-    for (let dx = -r; dx <= r + 1; dx++) for (let dz = -r; dz <= r + 1; dz++) {
-      if (w.get(x + dx, yy, z + dz) === 0) w.set(x + dx, yy, z + dz, packState(LEAVES, logMeta));
-    }
-  }
-  const topY = y + trunk;
-  for (let dx = -1; dx <= 2; dx++) for (let dz = -1; dz <= 2; dz++)
-    if (w.get(x + dx, topY, z + dz) === 0) w.set(x + dx, topY, z + dz, packState(LEAVES, logMeta));
-}
-
-function placeJungle(w, x, y, z, rng, logMeta) {
-  const trunk = 4 + Math.floor(rng.nextFloat() * 4);
-  for (let i = 0; i < trunk; i++) w.set(x, y + i, z, packState(LOG, logMeta));
-  const topY = y + trunk;
-  for (let ly = -2; ly <= 2; ly++) {
-    const yy = topY + ly, r = ly <= 0 ? 2 : 1;
-    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++)
-      if (w.get(x + dx, yy, z + dz) === 0) w.set(x + dx, yy, z + dz, packState(LEAVES, logMeta));
-  }
-}
-
-function placeAcacia(w, x, y, z, rng, logMeta) {
-  const trunk = 3 + Math.floor(rng.nextFloat() * 2);
-  const dir = Math.floor(rng.nextFloat() * 4);
-  const dx = [0, 1, 0, -1][dir], dz = [1, 0, -1, 0][dir];
-  for (let i = 0; i < trunk; i++)
-    w.set(x + Math.round(dx * i * 0.3), y + i, z + Math.round(dz * i * 0.3), packState(LOG2, logMeta));
-  const topY = y + trunk;
-  const topX = x + Math.round(dx * trunk * 0.3), topZ = z + Math.round(dz * trunk * 0.3);
-  for (let lx = -2; lx <= 2; lx++) for (let lz = -2; lz <= 2; lz++) {
-    if (Math.abs(lx) === 2 && Math.abs(lz) === 2 && rng.nextFloat() < 0.7) continue;
-    if (w.get(topX + lx, topY, topZ + lz) === 0) w.set(topX + lx, topY, topZ + lz, packState(LEAVES2, logMeta));
-  }
-  for (let lx = -1; lx <= 1; lx++) for (let lz = -1; lz <= 1; lz++)
-    if (w.get(topX + lx, topY + 1, topZ + lz) === 0) w.set(topX + lx, topY + 1, topZ + lz, packState(LEAVES2, logMeta));
-}
-
-function placeDarkOak(w, x, y, z, rng, logMeta) {
-  const trunk = 5 + Math.floor(rng.nextFloat() * 3);
-  for (let i = 0; i < trunk; i++) {
-    w.set(x, y + i, z, packState(LOG2, logMeta));
-    w.set(x + 1, y + i, z, packState(LOG2, logMeta));
-    w.set(x, y + i, z + 1, packState(LOG2, logMeta));
-    w.set(x + 1, y + i, z + 1, packState(LOG2, logMeta));
-  }
-  const topY = y + trunk;
-  for (let ly = -1; ly <= 1; ly++) {
-    const yy = topY + ly;
-    for (let dx = -2; dx <= 3; dx++) for (let dz = -2; dz <= 3; dz++) {
-      if (Math.abs(dx) + Math.abs(dz) > 4) continue;
-      if (w.get(x + dx, yy, z + dz) === 0) w.set(x + dx, yy, z + dz, packState(LEAVES2, logMeta));
-    }
-  }
-}
-
-function placeSwampOak(w, x, y, z, rng, leafMeta) {
-  placeOak(w, x, y, z, rng, leafMeta);
-  for (const [dx, dz] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) {
-    if (rng.nextFloat() < 0.3) {
-      const vy = y + 3;
-      if (w.get(x + dx, vy, z + dz) !== 0 && w.get(x + dx, vy - 1, z + dz) === 0)
-        w.set(x + dx, vy - 1, z + dz, packState(VINE, 0));
-    }
-  }
+// Cada árvore tem o próprio Random (semente pela posição): o formato não depende de quantas árvores o chunk vizinho já tentou
+function placeTree(data, cx, cz, x, groundY, z, biome, seed) {
+  const w = treeWorld(data, cx, cz, groundY);
+  const r = new JRandom(BigInt(hash3(x, 0x5f3, z, (seed >>> 0) ^ 0x7ee5)));
+  const type = biome.trees.type;
+  if (type === 'mushroom') { placeMushroom(w, x, groundY + 1, z, r); return; }
+  pickTree(type, biome.id, r)(w, r, x, groundY + 1, z);
 }
 
 function placeMushroom(w, x, y, z, rng) {
@@ -312,7 +246,7 @@ function placeMushroom(w, x, y, z, rng) {
   const capY = y + stem;
   for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
     if (dx * dx + dz * dz > 5) continue;
-    w.set(x + dx, capY, z + dz, packState(capBlock, 0));
-    if (isRed && dx * dx + dz * dz <= 1) w.set(x + dx, capY + 1, z + dz, packState(capBlock, 0));
+    w.set(x + dx, capY, z + dz, packState(capBlock, 14));   // 14 = pele nos seis lados; 10 = caule
+    if (isRed && dx * dx + dz * dz <= 1) w.set(x + dx, capY + 1, z + dz, packState(capBlock, 14));
   }
 }

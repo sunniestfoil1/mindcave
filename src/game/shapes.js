@@ -5,6 +5,7 @@
 // Escada: meta & 3 = direção em que sobe (0 leste +x, 1 oeste −x, 2 sul +z, 3 norte −z), meta & 4 = de cabeça para baixo.
 // A forma da escada (reta, canto interno, canto externo) depende das escadas vizinhas, como em BlockStairs.getStairsShape.
 import { BLOCKS } from './blocks';
+import { WALL_META_DIR, DIR_WALL_META } from './blocksMore';
 
 const FULL = [0, 0, 0, 1, 1, 1];
 
@@ -19,7 +20,8 @@ const opposite = (d) => dirIndex(-DIRS[d][0], -DIRS[d][1]);
 export function isSlabBlock(block) { return !!block && block.model === 'slab'; }
 export function isStairsBlock(block) { return !!block && block.model === 'stairs'; }
 export const BED_HEIGHT = 0.5625; // 9/16
-const SHAPED_MODELS = new Set(['slab', 'stairs', 'bed', 'door', 'fence', 'gate', 'chest', 'ladder', 'trapdoor']);
+const SHAPED_MODELS = new Set(['slab', 'stairs', 'bed', 'door', 'fence', 'gate', 'chest', 'ladder', 'trapdoor', 'multi']);
+export const RAIL_IDS = new Set([27, 28, 66, 157]);
 export function hasShape(block) { return !!block && SHAPED_MODELS.has(block.model); }
 
 const stateIdOf = (s) => (s >> 4) & 0xfff;
@@ -126,13 +128,17 @@ export function doorBoxes(info) {
 
 // Cerca: conecta com cercas da mesma família, portões de lado e blocos cheios opacos (BlockFence.canConnectTo)
 export function isFenceBlock(b) { return !!b && b.model === 'fence'; }
+// todas as cercas de madeira (carvalho, pinheiro, bétula, selva, acácia, carvalho escuro) se conectam entre si; a do Nether só com ela mesma
+export const WOOD_FENCES = new Set([85, 188, 189, 190, 191, 192]);
+export const WOOD_GATES = new Set([107, 183, 184, 185, 186, 187]);
+const sameFenceFamily = (a, b) => a === b || (WOOD_FENCES.has(a) && WOOD_FENCES.has(b));
 function fenceConnects(fenceId, n) {
   const id = stateIdOf(n);
   if (id === 0) return false;
   const b = BLOCKS[id];
   if (!b) return false;
-  if (b.model === 'fence') return id === fenceId;
-  if (b.model === 'gate') return fenceId === 85;
+  if (b.model === 'fence') return sameFenceFamily(id, fenceId);
+  if (b.model === 'gate') return WOOD_FENCES.has(fenceId);
   return !!(b.solid && b.opaque && b.model === 'cube');
 }
 // índices 0 oeste, 1 norte, 2 leste, 3 sul
@@ -142,7 +148,7 @@ export function fenceConnections(fenceId, getState, x, y, z) {
     const nb = BLOCKS[stateIdOf(n)];
     if (nb && nb.model === 'gate') {
       const gf = DOOR_FACES[stateMetaOf(n) & 3];
-      return fenceId === 85 && (gf[0] !== 0) !== (dx !== 0); // portão de lado: o vão do portão tem de apontar para a cerca
+      return WOOD_FENCES.has(fenceId) && (gf[0] !== 0) !== (dx !== 0); // portão de lado: o vão do portão tem de apontar para a cerca
     }
     return fenceConnects(fenceId, n);
   });
@@ -205,6 +211,31 @@ export function trapdoorBox(meta) {
 }
 export function isLadderBlock(b) { return !!b && b.model === 'ladder'; }
 
+
+// === Trilhos (1.8.9) === a forma sai dos trilhos vizinhos (BlockRailBase): reta, curva (só o trilho comum) ou subida.
+// Devolve { rot, rise, curve }: rot gira a textura (0 norte-sul, 1 leste-oeste; curvas: 0 NE, 1 SE, 2 SO, 3 NO); rise 1 sobe para leste, 2 oeste, 3 norte, 4 sul.
+export function railShape(state, getState, x, y, z) {
+  const id = stateIdOf(state);
+  const at = (dx, dy, dz) => RAIL_IDS.has(stateIdOf(getState(x + dx, y + dy, z + dz)));
+  const link = (dx, dz) => at(dx, 0, dz) || at(dx, 1, dz) || at(dx, -1, dz);
+  const E = link(1, 0), W = link(-1, 0), N = link(0, -1), S = link(0, 1);
+  if (id === 66) {
+    if (S && E && !N && !W) return { rot: 1, rise: 0, curve: true };
+    if (S && W && !N && !E) return { rot: 2, rise: 0, curve: true };
+    if (N && W && !S && !E) return { rot: 3, rise: 0, curve: true };
+    if (N && E && !S && !W) return { rot: 0, rise: 0, curve: true };
+  }
+  const alongX = (E || W) && !(N || S) ? true : (N || S) && !(E || W) ? false : (E && W) ? true : (N && S) ? false : (E || W);
+  if (alongX) {
+    if (at(1, 1, 0)) return { rot: 1, rise: 1, curve: false };
+    if (at(-1, 1, 0)) return { rot: 1, rise: 2, curve: false };
+    return { rot: 1, rise: 0, curve: false };
+  }
+  if (at(0, 1, -1)) return { rot: 0, rise: 3, curve: false };
+  if (at(0, 1, 1)) return { rot: 0, rise: 4, curve: false };
+  return { rot: 0, rise: 0, curve: false };
+}
+
 // Caixas do bloco em (x, y, z) no estado dado (relativas ao bloco). getState(x, y, z) devolve o estado do vizinho.
 // kind: 'collide' (física), 'select' (mira e contorno) ou 'render' (malha). Lajes, escadas e cama usam a mesma caixa nos três.
 // Para blocos sem forma própria devolve null (quem chama usa o cubo/caixa do registro).
@@ -220,6 +251,7 @@ export function blockBoxes(state, getState, x, y, z, kind = 'select') {
   if (b.model === 'chest') return [CHEST_BOX];
   if (b.model === 'ladder') return [ladderBox(stateMetaOf(state))];
   if (b.model === 'trapdoor') return [trapdoorBox(stateMetaOf(state))];
+  if (b.model === 'multi') return b.multi(stateMetaOf(state), getState, x, y, z, kind);
   return null;
 }
 
@@ -244,6 +276,67 @@ export function rayBox(ox, oy, oz, dx, dy, dz, box, maxT) {
   return { t: tmin, nx, ny, nz };
 }
 
+
+// Blocos que dependem de onde se clicou: presos na parede (tocha, alavanca, botão, placa, gancho), de pé no chão (placa em pé)
+// e orientados pelo olhar (bigorna, trilho). Devolve { invalid: true } quando não há onde prender.
+const WALL_BOUND = new Set([50, 75, 76, 69, 77, 143, 68, 131]);
+export const isWallBound = (id) => WALL_BOUND.has(id);
+const solidCube = (b) => !!b && b.solid && b.opaque && (b.model || 'cube') === 'cube';
+export function placeSpecial(placing, slotMeta, hit, yaw, getState) {
+  if (!placing) return null;
+  const id = placing.id;
+  const px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
+  const lookIdx = [3, 0, 1, 2][Math.floor(yaw * 2 / Math.PI + 0.5) & 3]; // direção do olhar, na ordem de DOOR_FACES
+  const clicked = BLOCKS[stateIdOf(getState(hit.x, hit.y, hit.z))];
+  if (WALL_BOUND.has(id)) {
+    // tocha, alavanca, botão, placa na parede, gancho: o lado clicado decide onde prende
+    const sideIdx = hit.ny === 0 ? DOOR_FACES.findIndex(d => d[0] === -hit.nx && d[1] === -hit.nz) : -1;
+    const floorOk = hit.ny === 1 && (solidCube(clicked) || (id === 50 || id === 75 || id === 76) && clicked && (clicked.model === 'fence' || clicked.model === 'multi' && clicked.wallLike));
+    if (sideIdx >= 0 && solidCube(clicked)) {
+      const meta = DIR_WALL_META[sideIdx];
+      return { x: px, y: py, z: pz, id, meta };
+    }
+    if (id === 68 || id === 131) return { invalid: true };
+    if (floorOk) return { x: px, y: py, z: pz, id, meta: id === 50 || id === 75 || id === 76 ? 5 : 0 };
+    if (hit.ny === -1 && (id === 69 || id === 77 || id === 143) && solidCube(clicked)) return { x: px, y: py, z: pz, id, meta: 5 };
+    return { invalid: true };
+  }
+  if (id === 106) { // trepadeira: cola no lado clicado (bits 1 sul, 2 oeste, 4 norte, 8 leste) ou pende da face de baixo de um bloco; clicar de novo no mesmo vão soma os lados
+    if (hit.ny === 1 || !solidCube(clicked)) return { invalid: true };
+    const bit = hit.ny === -1 ? 0 : (-hit.nz === 1 ? 1 : -hit.nx === -1 ? 2 : -hit.nz === -1 ? 4 : 8);
+    const here = getState(px, py, pz);
+    const cur = stateIdOf(here) === 106 ? stateMetaOf(here) : 0;
+    return { x: px, y: py, z: pz, id, meta: cur | bit };
+  }
+  if (id === 175) { // planta alta: precisa de grama, terra ou terra arada embaixo e de espaço para as duas metades
+    const below = stateIdOf(getState(px, py - 1, pz));
+    const up = getState(px, py + 1, pz);
+    const upB = BLOCKS[stateIdOf(up)];
+    if (![2, 3, 60].includes(below) || (stateIdOf(up) !== 0 && !(upB && upB.replaceable))) return { invalid: true };
+    return { x: px, y: py, z: pz, id, meta: slotMeta & 7 };
+  }
+  if (id === 63) { // placa em pé: aponta para o jogador; meta bit 2 = eixo (0 leste-oeste, 1 norte-sul)
+    if (hit.ny !== 1 || !clicked || !clicked.solid) return { invalid: true };
+    return { x: px, y: py, z: pz, id, meta: (lookIdx & 1) << 2 };
+  }
+  if (id === 145) return { x: px, y: py, z: pz, id, meta: (lookIdx & 1) | ((slotMeta & 3) << 2) }; // bigorna: o eixo gira com o olhar, o dano vem do item
+  if (RAIL_IDS.has(id)) {
+    if (hit.ny !== 1 || !clicked || !clicked.solid || !clicked.opaque) return { invalid: true };
+    return { x: px, y: py, z: pz, id, meta: 0 };
+  }
+  if (id === 131) return null;
+  // blocos que precisam de chão sólido embaixo (placas, tapetes, bolo, vaso...) — a regra única fica em needsFloor()
+  if (needsFloor(id)) {
+    const below = BLOCKS[stateIdOf(getState(px, py - 1, pz))];
+    if (!below || !(below.solid && (below.opaque || below.model === 'slab' || below.model === 'stairs' || below.model === 'fence'))) return { invalid: true };
+  }
+  return null;
+}
+// blocos que quebram sem chão sólido embaixo
+const FLOOR_BOUND = new Set([63, 66, 27, 28, 157, 70, 72, 147, 148, 171, 55, 92, 140, 93, 94, 149, 150, 151, 178, 132, 144]);
+export const needsFloor = (id) => FLOOR_BOUND.has(id);
+export const FLOOR_BOUND_IDS = FLOOR_BOUND;
+
 // Onde e como colocar uma laje/escada. hit = { x, y, z, nx, ny, nz, hy } (hy = altura absoluta do ponto clicado).
 // Devolve { x, y, z, id, meta } ou null se o bloco não tem forma própria.
 //  · laje: metade de cima se clicou na face de baixo ou na metade de cima de uma face lateral; clicar na face aberta
@@ -254,6 +347,8 @@ export function computePlacement(placing, slotMeta, hit, yaw, getState) {
     const li = [3, 0, 1, 2][Math.floor(yaw * 2 / Math.PI + 0.5) & 3];
     return { x: hit.x + hit.nx, y: hit.y + hit.ny, z: hit.z + hit.nz, id: placing.id, meta: (li + 2) & 3 };
   }
+  const special = placeSpecial(placing, slotMeta, hit, yaw, getState);
+  if (special) return special;
   if (!placing || !['slab', 'stairs', 'gate', 'chest', 'ladder', 'trapdoor'].includes(placing.model)) return null;
   const px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
   const fracY = hit.hy !== undefined ? hit.hy - hit.y : 0.5;

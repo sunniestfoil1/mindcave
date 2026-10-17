@@ -2,8 +2,9 @@
 //  · buffers estáticos reutilizados para máscara 16x16, visitação, retângulos e iluminação por canto;
 //  · saída compacta: cores/luz/ao em Uint8 normalizado (menos memória e menos bytes para a GPU).
 import { stateId, chunkIndex } from './chunk';
-import { getBlock, isOpaque, tileForFace, getModelBox, WOOL_COLORS } from './blocks';
-import { blockBoxes, BED_HEIGHT, BED_DIRS, DOOR_FACES } from './shapes';
+import { getBlock, isOpaque, tileForFace, getModelBox } from './blocks';
+import { blockBoxes, BED_HEIGHT, BED_DIRS, DOOR_FACES, railShape } from './shapes';
+import { WALL_META_DIR } from './blocksMore';
 
 const NB = [[0, 1, 0], [0, -1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
 const SS = 16;
@@ -21,6 +22,14 @@ const UV_CORNER = [[0, 0], [0, 1], [1, 1], [1, 0]];
 // Folhas: esconder ou não a face entre duas folhas iguais (opção Gráficos > Folhas; vale também dentro do worker)
 let LEAF_CULL = false;
 export function setLeafMode(mode) { LEAF_CULL = mode === 'fast' || mode === 'smart'; }
+const VINE_BITS = [1, 2, 4, 8];
+const VINE_PLANES = [
+  [[0, 0, 0.9375], [0, 1, 0.9375], [1, 1, 0.9375], [1, 0, 0.9375]],      // sul (+z)
+  [[0.0625, 0, 0], [0.0625, 1, 0], [0.0625, 1, 1], [0.0625, 0, 1]],      // oeste (-x)
+  [[1, 0, 0.0625], [1, 1, 0.0625], [0, 1, 0.0625], [0, 0, 0.0625]],      // norte (-z)
+  [[0.9375, 0, 1], [0.9375, 1, 1], [0.9375, 1, 0], [0.9375, 0, 0]],      // leste (+x)
+  [[0, 0.9375, 0], [0, 0.9375, 1], [1, 0.9375, 1], [1, 0.9375, 0]],      // teto
+];
 const CROSS_PLANES = [
   [[0.05, 0, 0.05], [0.05, 1, 0.05], [0.95, 1, 0.95], [0.95, 0, 0.95]],
   [[0.95, 0, 0.05], [0.95, 1, 0.05], [0.05, 1, 0.95], [0.05, 0, 0.95]],
@@ -71,11 +80,6 @@ const BIRCH = [0.502, 0.655, 0.333];
 
 function tintFor(block, face, meta, tint, lx, lz) {
   const id = block.id;
-  if (id === 35 || id === 95 || id === 159 || id === 171) {
-    const c = (WOOL_COLORS[meta & 15] || WOOL_COLORS[0])[0];
-    TC[0] = ((c >> 16) & 255) / 255; TC[1] = ((c >> 8) & 255) / 255; TC[2] = (c & 255) / 255;
-    return TC;
-  }
   if (block.tintColor) return block.tintColor;
   const kind = block.tint;
   if (!kind) return null;
@@ -210,7 +214,8 @@ function pushVert(t, x, y, z, u, v, tile, tr, tg, tb, lb, ls, ao) {
   t.ao.push(clamp8(ao));
 }
 
-function emitBox(t, tTop, tBottom, tSide, tint, wx, wy, wz, box, l, getBlockAbs) {
+// lean = [ax, az, ox, oy, oz]: cada vértice desloca x += ox + ax·y e z += oz + az·y (tocha na parede: base perto do bloco, topo para fora)
+function emitBox(t, tTop, tBottom, tSide, tint, wx, wy, wz, box, l, getBlockAbs, lean, topDir, vShift) {
   const tr = tint ? tint[0] : 1, tg = tint ? tint[1] : 1, tb = tint ? tint[2] : 1;
   for (let fi = 0; fi < 6; fi++) {
     const f = FACES[fi];
@@ -225,21 +230,68 @@ function emitBox(t, tTop, tBottom, tSide, tint, wx, wy, wz, box, l, getBlockAbs)
       const c = f.c[i];
       const px = c[0] ? box[3] : box[0], py = c[1] ? box[4] : box[1], pz = c[2] ? box[5] : box[2];
       let u, v;
-      if (d[1] === 1) { u = px; v = pz; }
+      if (d[1] === 1) {
+        if (topDir) { const cx = px - 0.5, cz = pz - 0.5; v = 0.5 + cx * topDir[0] + cz * topDir[1]; u = 0.5 + cx * topDir[1] - cz * topDir[0]; }   // a ponta de cima da textura aponta para a saída
+        else { u = px; v = pz; }
+      }
       else if (d[1] === -1) { u = pz; v = px; }
       else if (d[2] === -1) { u = px; v = py; }
       else if (d[2] === 1) { u = 1 - px; v = py; }
       else if (d[0] === -1) { u = 1 - pz; v = py; }
       else { u = pz; v = py; }
-      pushVert(t, wx + px, wy + py, wz + pz, u, v, tile, tr, tg, tb, l.block / 15, l.sky / 15, f.sh);
+      if (vShift && d[1] === 0) v += vShift;   // desloca a janela da textura (a ponta acesa da tocha fica 3/16 acima da base)
+      if (lean) pushVert(t, wx + px + lean[2] + lean[0] * py, wy + py + lean[3], wz + pz + lean[4] + lean[1] * py, u, v, tile, tr, tg, tb, l.block / 15, l.sky / 15, f.sh);
+      else pushVert(t, wx + px, wy + py, wz + pz, u, v, tile, tr, tg, tb, l.block / 15, l.sky / 15, f.sh);
     }
     t.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
 }
 
+// brilho de um bloco que não é cubo cheio: o maior entre a própria célula e as vizinhas (a célula de um bloco sólido fica escura e deixaria o modelo preto)
+function neighborMaxLight(getLightAbs, wx, wy, wz) {
+  const own = getLightAbs(wx, wy, wz);
+  let lb = own.block, ls = own.sky;
+  for (let d = 0; d < 6; d++) {
+    const nl = getLightAbs(wx + NB[d][0], wy + NB[d][1], wz + NB[d][2]);
+    if (nl.block > lb) lb = nl.block;
+    if (nl.sky > ls) ls = nl.sky;
+  }
+  return { block: lb, sky: ls };
+}
+
+// ladrilho de cada face de uma caixa do modelo 'multi': box[6] pode trazer um ladrilho ou { top, bottom, side }; sem isso vale o do bloco
+function boxTiles(tiles, block, meta, box) {
+  const x = box[6];
+  if (!x) return null;
+  const f = typeof x === 'string' ? { all: x } : x;
+  const side = f.all || f.side || f.top;
+  return [tiles[f.top || side] || tiles.error, tiles[f.bottom || f.top || side] || tiles.error, tiles[side] || tiles.error];
+}
+
+// trilho: um quadrado no chão (1/16 acima), girado conforme a forma; subida inclina o quadrado
+const RAIL_UV = [[[0, 0], [0, 1], [1, 1], [1, 0]], [[0, 1], [1, 1], [1, 0], [0, 0]], [[1, 1], [1, 0], [0, 0], [0, 1]], [[1, 0], [0, 0], [0, 1], [1, 1]]];
+function emitRail(t, tile, wx, wy, wz, rot, rise, l) {
+  // cantos do quadrado (x, z) na mesma ordem de UV_CORNER; rise: elevação do lado +x/-x/-z/+z (1 = sobe para esse lado)
+  const C = [[0, 0], [0, 1], [1, 1], [1, 0]];
+  const uv = RAIL_UV[rot & 3];
+  const base = t.pos.length / 3;
+  for (let i = 0; i < 4; i++) {
+    const [cx, cz] = C[i];
+    let y = 0.0625;
+    if (rise === 1) y += cx;            // sobe para leste
+    else if (rise === 2) y += 1 - cx;   // sobe para oeste
+    else if (rise === 3) y += 1 - cz;   // sobe para norte
+    else if (rise === 4) y += cz;       // sobe para sul
+    pushVert(t, wx + cx, wy + y, wz + cz, uv[i][0], uv[i][1], tile, 1, 1, 1, l.block / 15, l.sky / 15, 1.0);
+  }
+  t.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  t.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+}
+
 function emitChest(t, tiles, block, meta, wx, wy, wz, l, getBlockAbs, box) {
   const front = DOOR_FACES[meta & 3];
-  const tTop = tiles.chest_top || tiles.error, tSide = tiles.chest_side || tiles.error, tFront = tiles.chest_front || tiles.error, tBot = tiles.planks || tiles.error;
+  const ct = block.chestTiles || ['chest_top', 'chest_side', 'chest_front'];
+  const tTop = tiles[ct[0]] || tiles.error, tSide = tiles[ct[1]] || tiles.error, tFront = tiles[ct[2]] || tiles.error, tBot = tiles.planks || tiles.error;
   for (let fi = 0; fi < 6; fi++) {
     const f = FACES[fi], d = f.dir;
     const tile = d[1] === 1 ? tTop : d[1] === -1 ? tBot : (d[0] === front[0] && d[2] === front[1]) ? tFront : tSide;
@@ -324,7 +376,7 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
         const meta = s & 0xf;
         const wx = baseX + x, wy = yBase + ly, wz = baseZ + z;
         const isWaterBlk = id === 8 || id === 9;
-        const target = isWaterBlk ? wa : op;
+        const target = (isWaterBlk || block.render === 'translucent') ? wa : op;   // vidro tingido e gelo são translúcidos: vão na malha com mistura de transparência
 
         if (model === 'cross') {
           const l = getLightAbs(wx, wy, wz);
@@ -332,6 +384,39 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
           const tr = tint ? tint[0] : 1, tg = tint ? tint[1] : 1, tb = tint ? tint[2] : 1;
           const t = tiles[tileForFace(block, 'side', meta)] || tiles.error;
           for (const plane of CROSS_PLANES) {
+            const base = target.pos.length / 3;
+            for (let i = 0; i < 4; i++) {
+              const c = plane[i];
+              pushVert(target, wx + c[0], wy + c[1], wz + c[2], UV_CORNER[i][0], UV_CORNER[i][1], t, tr, tg, tb, l.block / 15, l.sky / 15, 1.0);
+            }
+            target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+            target.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+          }
+        } else if (model === 'doubleplant') {
+          // planta alta: duas cruzes empilhadas; o tipo vem da metade de baixo (a de cima só marca o bit 8)
+          const l = getLightAbs(wx, wy, wz);
+          const upper = (meta & 8) !== 0;
+          const type = upper ? (getBlockAbs(wx, wy - 1, wz) & 7) : (meta & 7);
+          const name = block.doublePlant[type] || block.doublePlant[0];
+          const t = tiles[`double_plant_${name}_${upper ? 'top' : 'bottom'}`] || tiles.error;
+          const tintKind = (name === 'grass' || name === 'fern');
+          const tint = tintKind ? tintFor({ id: 31, tint: 'grass' }, 'side', 0, tintArr, x, z) : null;
+          const tr = tint ? tint[0] : 1, tg = tint ? tint[1] : 1, tb = tint ? tint[2] : 1;
+          for (const plane of CROSS_PLANES) {
+            const base = target.pos.length / 3;
+            for (let i = 0; i < 4; i++) { const c = plane[i]; pushVert(target, wx + c[0], wy + c[1], wz + c[2], UV_CORNER[i][0], UV_CORNER[i][1], t, tr, tg, tb, l.block / 15, l.sky / 15, 1.0); }
+            target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+            target.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+          }
+        } else if (model === 'vine') {
+          // Trepadeira: um plano fino colado em cada lado marcado na meta (1 sul, 2 oeste, 4 norte, 8 leste); meta 0 = plano no teto
+          const l = getLightAbs(wx, wy, wz);
+          const tint = tintFor(block, 'side', meta, tintArr, x, z);
+          const tr = tint ? tint[0] : 1, tg = tint ? tint[1] : 1, tb = tint ? tint[2] : 1;
+          const t = tiles[tileForFace(block, 'side', meta)] || tiles.error;
+          for (let k = 0; k < 5; k++) {
+            if (k < 4 ? !(meta & VINE_BITS[k]) : meta !== 0) continue;
+            const plane = VINE_PLANES[k];
             const base = target.pos.length / 3;
             for (let i = 0; i < 4; i++) {
               const c = plane[i];
@@ -412,8 +497,56 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
           const tBottom = tiles[tileForFace(block, 'bottom', meta)] || tiles.error;
           const tSide = tiles[tileForFace(block, 'side', meta)] || tiles.error;
           for (const box of boxes) emitBox(target, tTop, tBottom, tSide, null, wx, wy, wz, box, l, getBlockAbs);
-        } else {
+        } else if (model === 'multi') {
+          const l = neighborMaxLight(getLightAbs, wx, wy, wz);
+          const tint = tintFor(block, 'side', meta, tintArr, x, z);
+          const dTop = tiles[tileForFace(block, 'top', meta)] || tiles.error;
+          const dBottom = tiles[tileForFace(block, 'bottom', meta)] || tiles.error;
+          const dSide = tiles[tileForFace(block, 'side', meta)] || tiles.error;
+          for (const box of blockBoxes(s, getBlockAbs, wx, wy, wz, 'render')) {
+            const bt = boxTiles(tiles, block, meta, box);
+            if (bt) emitBox(target, bt[0], bt[1], bt[2], tint, wx, wy, wz, box, l, getBlockAbs);
+            else emitBox(target, dTop, dBottom, dSide, tint, wx, wy, wz, box, l, getBlockAbs);
+          }
+        } else if (model === 'rail') {
           const l = getLightAbs(wx, wy, wz);
+          const sh = railShape(s, getBlockAbs, wx, wy, wz);
+          const r = block.rail;
+          const curved = sh.curve && !r.powered;
+          const tile = tiles[curved ? r.tiles[1] : (r.powered && (meta & 8) ? r.tiles[1] : r.tiles[0])] || tiles.error;
+          emitRail(target, tile, wx, wy, wz, sh.rot, sh.rise, l);
+        } else if (block.diode) {
+          // repetidor e comparador: placa de 2/16 com a textura girada para a saída (meta & 3: 0 sul, 1 oeste, 2 norte, 3 leste) e as tochas em cima
+          const l = neighborMaxLight(getLightAbs, wx, wy, wz);
+          const o = [[0, 1], [-1, 0], [0, -1], [1, 0]][meta & 3];
+          const r = [o[1], -o[0]];
+          const tTop = tiles[tileForFace(block, 'top', meta)] || tiles.error, tBot = tiles[tileForFace(block, 'bottom', meta)] || tiles.error, tSide = tiles[tileForFace(block, 'side', meta)] || tiles.error;
+          emitBox(target, tTop, tBot, tSide, null, wx, wy, wz, [0, 0, 0, 1, 0.125, 1], l, getBlockAbs, null, o);
+          const torch = tiles[block.diode.on ? 'redstone_torch_on' : 'redstone_torch_off'] || tiles.error;
+          const at = (d0, a0, d1, a1, y0, y1) => {   // d: distância da borda da saída, a: posição lateral (em 16 avos)
+            const P = (d, a) => [0.5 + o[0] * (0.5 - d / 16) + r[0] * (a / 16 - 0.5), 0.5 + o[1] * (0.5 - d / 16) + r[1] * (a / 16 - 0.5)];
+            const A = P(d0, a0), B = P(d1, a1);
+            emitBox(target, torch, torch, torch, null, wx, wy, wz, [Math.min(A[0], B[0]), y0 / 16, Math.min(A[1], B[1]), Math.max(A[0], B[0]), y1 / 16, Math.max(A[1], B[1])], l, getBlockAbs, null, null, 3 / 16);
+          };
+          if (block.diode.kind === 'repeater') {
+            at(2, 7, 4, 9, 2, 7);                                      // fixa, no fim da saída
+            const dl = 6 + 2 * ((meta >> 2) & 3);                        // móvel: 1 a 4 de atraso
+            at(dl, 7, dl + 2, 9, 2, 7);
+          } else {
+            at(2, 7, 4, 9, 2, block.diode.on ? 7 : 4);                   // da frente (sobe quando ligado)
+            at(11, 4, 13, 6, 2, 8); at(11, 10, 13, 12, 2, 8);            // as duas de trás
+          }
+        } else if (model === 'torch' && (meta & 7) >= 1 && (meta & 7) <= 4) {
+          // tocha na parede: inclinada, com a base encostada no bloco onde está presa
+          const l = neighborMaxLight(getLightAbs, wx, wy, wz);
+          const wall = WALL_META_DIR[meta & 7];
+          const dx = [-1, 0, 1, 0][wall], dz = [0, -1, 0, 1][wall];
+          const t = tiles[tileForFace(block, 'side', meta)] || tiles.error;
+          const H = 0.625;
+          emitBox(target, t, t, t, null, wx, wy, wz, [0.4375, 0, 0.4375, 0.5625, H, 0.5625], l, getBlockAbs, [-dx * 0.3 / H, -dz * 0.3 / H, dx * 0.4, 0.2, dz * 0.4]);
+        } else {
+          // bloco com caixa própria: se for sólido (terra arada, cacto) o brilho vem das vizinhas, senão a célula escura o deixava preto
+          const l = block.solid ? neighborMaxLight(getLightAbs, wx, wy, wz) : getLightAbs(wx, wy, wz);
           const tint = tintFor(block, 'side', meta, tintArr, x, z);
           const box = getModelBox(block, meta);
           const tTop = tiles[tileForFace(block, 'top', meta)] || tiles.error;
@@ -472,7 +605,7 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
         const meta = state & 0xf;
         const block = getBlock(id);
         const isWaterBlk = id === 8 || id === 9;
-        const target = isWaterBlk ? wa : op;
+        const target = (isWaterBlk || block.render === 'translucent') ? wa : op;
         const t = tiles[tileForFace(block, f.face, meta, f.dir)] || tiles.error;
         const sh = f.sh;
 
