@@ -27,7 +27,7 @@ const result = await page.evaluate(async () => {
   const React = (await import(dev)).default;
   const rdc = await import(dev.replace('react.js', 'react-dom_client.js')); const createRoot = rdc.createRoot || (rdc.default && rdc.default.createRoot);
   const ItemSlot = (await import('/src/components/game/ItemSlot.jsx')).default;
-  const ids = new Set([...Object.keys(ITEMS), ...Object.keys(BLOCKS)].map(Number).filter(n => n > 0));
+  const ids = new Set([...Object.keys(ITEMS), ...Object.keys(BLOCKS)].map(Number).filter(n => n > 0 && !(BLOCKS[n] && BLOCKS[n].model === 'none' && BLOCKS[n].hiddenInCreative)));   // bloco técnico invisível (pistão em movimento) não tem ícone nem item
   // lista de entradas: blocos com variantes viram uma entrada por variante
   const entries = [];
   for (const id of [...ids].sort((a, b) => a - b)) {

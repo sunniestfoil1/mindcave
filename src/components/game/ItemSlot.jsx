@@ -169,6 +169,11 @@ const ItemSlot = React.memo(function ItemSlot({ item, onClick, onRightClick, onS
     };
     const isBlock = item.id < 256;
     const b = isBlock ? BLOCKS[item.id] : null;
+    if (b && b.model === 'none') {   // bloco invisível (barreira): o ícone vem do arquivo de item do pacote
+      let alive = true;
+      getPackUrl(MC + 'textures/items/' + b.name + '.png').then((u) => { if (alive) setImgUrl(u || null); });
+      return () => { alive = false; };
+    }
     if (b) {
       if (!showBlock(b)) setImgUrl(null);
       return;
