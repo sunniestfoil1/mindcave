@@ -6,7 +6,7 @@ const names = [];
 for (const w of ['spruce', 'birch', 'jungle', 'acacia', 'dark_oak']) names.push(`door_${w}_lower`, `door_${w}_upper`);
 for (const c of DYES) names.push('wool_colored_' + c, 'glass_' + c, 'glass_pane_top_' + c, 'hardened_clay_stained_' + c);
 names.push(
-  'glass_pane_top', 'hardened_clay', 'tnt_bottom', 'ice_packed', 'grass_side_snowed',
+  'glass_pane_top', 'hardened_clay', 'tnt_bottom', 'fire_layer_0', 'fire_layer_1', 'ice_packed', 'grass_side_snowed',
   'stone_granite', 'stone_diorite', 'stone_andesite', 'stone_granite_smooth', 'stone_diorite_smooth', 'stone_andesite_smooth',
   'coarse_dirt', 'dirt_podzol_top', 'dirt_podzol_side', 'red_sand', 'sponge_wet',
   'sapling_oak', 'sapling_spruce', 'sapling_birch', 'sapling_jungle', 'sapling_acacia', 'sapling_roofed_oak',

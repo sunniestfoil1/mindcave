@@ -3,6 +3,7 @@
 //  · saída compacta: cores/luz/ao em Uint8 normalizado (menos memória e menos bytes para a GPU).
 import { stateId, chunkIndex } from './chunk';
 import { getBlock, isOpaque, tileForFace, getModelBox } from './blocks';
+import { fireSides } from './fire';
 import { blockBoxes, BED_HEIGHT, BED_DIRS, DOOR_FACES, railShape } from './shapes';
 import { WALL_META_DIR } from './blocksMore';
 
@@ -248,6 +249,9 @@ function emitBox(t, tTop, tBottom, tSide, tint, wx, wy, wz, box, l, getBlockAbs,
 }
 
 // brilho de um bloco que não é cubo cheio: o maior entre a própria célula e as vizinhas (a célula de um bloco sólido fica escura e deixaria o modelo preto)
+// o fogo lê vizinhos pelo getBlockAbs do mesher (estado) e precisa de getBlock(x,y,z) com o mesmo formato do mundo
+function getBlockAbsAdapter(getBlockAbs) { return { getBlock: getBlockAbs }; }
+
 function neighborMaxLight(getLightAbs, wx, wy, wz) {
   const own = getLightAbs(wx, wy, wz);
   let lb = own.block, ls = own.sky;
@@ -414,6 +418,35 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
             }
             target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
             target.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+          }
+        } else if (model === 'fire') {
+          // Fogo (modelos do pacote): sem chão sólido, só as chamas coladas nos vizinhos inflamáveis (e no teto); com chão, os planos em X
+          // levemente inclinados mais as quatro bordas da célula, todos com 1,4 de altura. A camada da animação (0 ou 1) sai da posição.
+          const l = { block: 15, sky: getLightAbs(wx, wy, wz).sky };
+          const alt = ((wx * 31 + wy * 17 + wz * 13) & 1) === 1;
+          const t = tiles[alt ? 'fire_layer_1' : 'fire_layer_0'] || tiles.fire_layer_0 || tiles.fire || tiles.error;
+          const sd = fireSides(getBlockAbsAdapter(getBlockAbs), wx, wy, wz);
+          const any = sd.n || sd.s || sd.e || sd.w || sd.up;
+          const H = 1.4;
+          const quad = (a, b, c, d2) => {
+            const base = target.pos.length / 3;
+            const P = [a, b, c, d2];
+            for (let i = 0; i < 4; i++) pushVert(target, wx + P[i][0], wy + P[i][1], wz + P[i][2], UV_CORNER[i][0], UV_CORNER[i][1], t, 1, 1, 1, l.block / 15, l.sky / 15, 1.0);
+            target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+            target.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+          };
+          // plano vertical de pé em z = zc (ao longo de x) ou em x = xc (ao longo de z), inclinado `lean` em blocos no topo
+          const planeZ = (zc, lean) => quad([0, 0, zc], [0, H, zc + lean], [1, H, zc + lean], [1, 0, zc]);
+          const planeX = (xc, lean) => quad([xc, 0, 0], [xc + lean, H, 0], [xc + lean, H, 1], [xc, 0, 1]);
+          if (!any) {
+            planeZ(0.55, -0.4); planeZ(0.45, 0.4); planeX(0.55, -0.4); planeX(0.45, 0.4);
+            planeZ(0.999, 0); planeZ(0.001, 0); planeX(0.001, 0); planeX(0.999, 0);
+          } else {
+            if (sd.n) planeZ(0.001, 0);
+            if (sd.s) planeZ(0.999, 0);
+            if (sd.w) planeX(0.001, 0);
+            if (sd.e) planeX(0.999, 0);
+            if (sd.up) { quad([0, 0.999, 0], [1, 0.999, 0], [1, 0.999, 1], [0, 0.999, 1]); }
           }
         } else if (model === 'doubleplant') {
           // planta alta: duas cruzes empilhadas; o tipo vem da metade de baixo (a de cima só marca o bit 8)

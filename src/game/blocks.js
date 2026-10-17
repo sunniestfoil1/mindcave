@@ -93,7 +93,7 @@ export const BLOCKS = {
   50: B(50, 'torch', 'Tocha', { hardness: 0, faces: { all: 'torch' }, drop: 50, lightEmission: 14, lightOpacity: 0, model: 'torch', solid: false, replaceable: true, soundCategory: 'wood' }),
   19: B(19, 'sponge', 'Esponja', { hardness: 0.6, faces: { all: 'sponge' }, drop: 19 }),
   30: B(30, 'web', 'Teia', { hardness: 4.0, faces: { all: 'web' }, drop: 30, render: 'cutout', lightOpacity: 1, model: 'cross', solid: false, speedFactor: 0.25 }),
-  51: B(51, 'fire', 'Fogo', { solid: false, opaque: false, render: 'cutout', faces: { all: 'fire' }, drop: null, lightEmission: 15, lightOpacity: 0, model: 'cross', replaceable: true }),
+  51: B(51, 'fire', 'Fogo', { solid: false, opaque: false, render: 'cutout', faces: { all: 'fire' }, drop: null, lightEmission: 15, lightOpacity: 0, model: 'fire', replaceable: true, hardness: 0 }),
   165: B(165, 'slime', 'Bloco de Slime', { hardness: 0, faces: { all: 'slime' }, drop: 165, slipperiness: 0.8, soundCategory: 'slime' }),
 
   // Plantas (cruz)

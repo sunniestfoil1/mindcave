@@ -3,6 +3,7 @@ import { musicManager } from "@/game/musicManager";
 import { settingsStore } from "@/game/settingsStore";
 import { McText, usePackTexture, useGuiScaleValue } from "./GuiSprite";
 import { playClickSound } from "@/game/sounds";
+import { radioBus } from "@/game/radioBus";
 import { measureMcText } from "@/game/gui/font";
 
 export const RADIO_PLAYLIST = [
@@ -18,6 +19,22 @@ export const RADIO_PLAYLIST = [
   { id: "piano1", title: "Dry Hands", artist: "C418", disc: "record_13", src: "/assets/sounds/music/game/piano1.ogg" },
   { id: "nuance1", title: "Key", artist: "C418", disc: "record_wait", src: "/assets/sounds/music/game/nuance1.ogg" },
   { id: "nuance2", title: "Oxygène", artist: "C418", disc: "record_11", src: "/assets/sounds/music/game/nuance2.ogg" },
+  // as faixas dos discos de música (as mesmas que tocam no jukebox)
+  { id: "r13", title: "13", artist: "C418", disc: "record_13", src: "/assets/sounds/records/13.ogg" },
+  { id: "rcat", title: "cat", artist: "C418", disc: "record_cat", src: "/assets/sounds/records/cat.ogg" },
+  { id: "rblocks", title: "blocks", artist: "C418", disc: "record_blocks", src: "/assets/sounds/records/blocks.ogg" },
+  { id: "rchirp", title: "chirp", artist: "C418", disc: "record_chirp", src: "/assets/sounds/records/chirp.ogg" },
+  { id: "rfar", title: "far", artist: "C418", disc: "record_far", src: "/assets/sounds/records/far.ogg" },
+  { id: "rmall", title: "mall", artist: "C418", disc: "record_mall", src: "/assets/sounds/records/mall.ogg" },
+  { id: "rmellohi", title: "mellohi", artist: "C418", disc: "record_mellohi", src: "/assets/sounds/records/mellohi.ogg" },
+  { id: "rstal", title: "stal", artist: "C418", disc: "record_stal", src: "/assets/sounds/records/stal.ogg" },
+  { id: "rstrad", title: "strad", artist: "C418", disc: "record_strad", src: "/assets/sounds/records/strad.ogg" },
+  { id: "rward", title: "ward", artist: "C418", disc: "record_ward", src: "/assets/sounds/records/ward.ogg" },
+  { id: "r11", title: "11", artist: "C418", disc: "record_11", src: "/assets/sounds/records/11.ogg" },
+  { id: "rwait", title: "wait", artist: "C418", disc: "record_wait", src: "/assets/sounds/records/wait.ogg" },
+  { id: "r5", title: "5", artist: "Samuel Aberg", disc: "record_13", src: "/assets/sounds/records/5.ogg" },
+  { id: "rotherside", title: "otherside", artist: "Lena Raine", disc: "record_cat", src: "/assets/sounds/records/otherside.ogg" },
+  { id: "rpigstep", title: "Pigstep", artist: "Lena Raine", disc: "record_blocks", src: "/assets/sounds/records/pigstep.ogg" },
 ];
 
 const CROSSFADE_TIME = 0.35;
@@ -58,6 +75,7 @@ function createRadioEngine(playlist) {
   let playing = false;
   let crossfadeTimer = null;
   let unlockHandler = null;
+  let gameHeld = false;   // o jogo (jukebox perto) abafou o rádio; se o jogador pausar nesse meio tempo, o jogo NÃO religa
   const listeners = new Set();
   const level = () => volume * baseVolume;
   const snapshot = () => ({ index, playing, volume, track: playlist[index] });
@@ -196,7 +214,27 @@ function createRadioEngine(playlist) {
     },
     setBaseVolume(value) {
       baseVolume = clamp(value, 0, 1);
-      if (master) master.gain.value = level();
+      if (master && !gameHeld) master.gain.value = level();
+    },
+    // O jogo abafa o rádio (jukebox perto): desce a 0 em 1 s e pausa; ao soltar, volta com 1,5 s de subida — só se o jogador não pausou no meio
+    duck() {
+      if (!ctx || !playing || gameHeld) return;
+      gameHeld = true;
+      const now = ctx.currentTime;
+      master.gain.cancelScheduledValues(now);
+      master.gain.setValueAtTime(master.gain.value, now);
+      master.gain.linearRampToValueAtTime(0, now + 1);
+      setTimeout(() => { if (gameHeld && players) players[active].el.pause(); }, 1050);
+    },
+    unduck() {
+      if (!gameHeld) return;
+      gameHeld = false;
+      if (!ctx || !playing) return;   // o jogador pausou enquanto isso: continua pausado
+      const now = ctx.currentTime;
+      players[active].el.play().catch(() => {});
+      master.gain.cancelScheduledValues(now);
+      master.gain.setValueAtTime(0, now);
+      master.gain.linearRampToValueAtTime(level(), now + 1.5);
     },
     getSpectrum() {
       if (!analyser) return new Array(8).fill(0);
@@ -617,8 +655,10 @@ export default function RadioWidget({ visible = true }) {
     });
     engine.setBaseVolume(musicVolumeFromSettings());
     const offSettings = settingsStore.subscribe(() => engine.setBaseVolume(musicVolumeFromSettings()));
+    const offBus = radioBus.subscribe((ducked) => (ducked ? engine.duck() : engine.unduck()));
     engine.start();
     return () => {
+      offBus();
       musicManager.disabled = false;
       offSettings();
       unsubscribe();

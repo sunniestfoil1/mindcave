@@ -19,6 +19,7 @@ import CreativeUI from "@/components/game/CreativeUI";
 import MindClientMenu from "@/components/client/MindClientMenu";
 import ClientHud from "@/components/client/ClientHud";
 import TouchControls from "@/components/game/TouchControls";
+import SignEditor from "@/components/game/SignEditor";
 import LoadingScreen from "@/components/game/LoadingScreen";
 import CraftingTableUI from "@/components/game/CraftingTableUI";
 import FurnaceUI from "@/components/game/FurnaceUI";
@@ -108,6 +109,7 @@ export default function Game() {
   const [showCreative, setShowCreative] = useState(false);
   const [showCraftingTable, setShowCraftingTable] = useState(false);
   const [showFurnace, setShowFurnace] = useState(false);
+  const [signPos, setSignPos] = useState(null);   // placa em edição
   const [showChest, setShowChest] = useState(false);
   const [furnaceState, setFurnaceState] = useState(null);
   const [chestContainer, setChestContainer] = useState(null);
@@ -130,6 +132,7 @@ export default function Game() {
   const showCreativeRef = useRef(false);
   const showCraftingTableRef = useRef(false);
   const showFurnaceRef = useRef(false);
+  const signPosRef = useRef(null);
   const showChestRef = useRef(false);
   const showStatsRef = useRef(false);
   const showOptionsRef = useRef(false);
@@ -142,6 +145,7 @@ export default function Game() {
   useEffect(() => { showCreativeRef.current = showCreative; }, [showCreative]);
   useEffect(() => { showCraftingTableRef.current = showCraftingTable; }, [showCraftingTable]);
   useEffect(() => { showFurnaceRef.current = showFurnace; }, [showFurnace]);
+  useEffect(() => { signPosRef.current = signPos; }, [signPos]);
   useEffect(() => { showChestRef.current = showChest; }, [showChest]);
   useEffect(() => { showStatsRef.current = showStats; }, [showStats]);
   useEffect(() => { showOptionsRef.current = showOptions; }, [showOptions]);
@@ -154,6 +158,7 @@ export default function Game() {
     setShowCreative(false);
     setShowCraftingTable(false);
     setShowFurnace(false);
+    setSignPos(null);
     setShowChest(false);
     setShowStats(false);
     setShowOpenToLAN(false);
@@ -328,6 +333,7 @@ export default function Game() {
             setShowFurnace(true);
             document.exitPointerLock?.();
           },
+          onOpenSign: (x, y, z) => { setSignPos({ x, y, z }); document.exitPointerLock?.(); },
           onOpenChest: (x, y, z, shared) => {
             // baú do Ender: um conteúdo só para todos os baús do Ender do mundo (guardado numa posição fixa fora do mapa)
             const c = shared ? getOrCreateContainer(cw, 0, -1000, 0) : getOrCreateContainer(cw, x, y, z);
@@ -378,8 +384,8 @@ export default function Game() {
 
         engineRef.current = engine;
         if (import.meta.env.DEV) window.__mindcave = { get engine() { return engineRef.current; } }; // ganchos só para os testes de navegador
-        engine.containerOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showClientMenuRef.current;
-        engine.guiOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showClientMenuRef.current || showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current;
+        engine.containerOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showClientMenuRef.current || !!signPosRef.current;
+        engine.guiOpenFn = () => !!signPosRef.current || showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showClientMenuRef.current || showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current;
         await engine.start();
         if (engine.touch) engine.touchResume(); // celular não tem trava de ponteiro: o jogo começa rodando
         console.log('[Game] Spawn:', spawn, 'Player pos:', pState.pos, 'Flying:', pState.flying, 'GameMode:', pState.gameMode);
@@ -501,7 +507,7 @@ export default function Game() {
     safePointerLock(canvasRef.current);
   };
 
-  const isAnyGuiOpen = showInventory || showCreative || showCraftingTable || showFurnace || showChest || showClientMenu || showStats || showOptions || showOpenToLAN || showFeedback;
+  const isAnyGuiOpen = !!signPos || showInventory || showCreative || showCraftingTable || showFurnace || showChest || showClientMenu || showStats || showOptions || showOpenToLAN || showFeedback;
 
   return (
     <div className="fixed inset-0 bg-black">
@@ -565,6 +571,7 @@ export default function Game() {
       {showFurnace && furnaceState && !hud?.isDead && engineRef.current?.inventory && (
         <FurnaceUI furnace={furnaceState} inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} />
       )}
+      {signPos && !hud?.isDead && <SignEditor pos={signPos} onClose={closeAllGuis} />}
       {/* Baú (PRD 06) */}
       {showChest && chestContainer && !hud?.isDead && engineRef.current?.inventory && (
         <ChestUI container={chestContainer} inv={engineRef.current.inventory} onUpdate={() => setInvRev(r => r + 1)} onClose={closeAllGuis} />

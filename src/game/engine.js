@@ -13,7 +13,7 @@ const ITEM_TO_BLOCK = { 323: 63, 380: 118, 379: 117, 390: 140, 356: 93, 404: 149
 // Itens de porta → bloco da porta (madeiras de 1.8: carvalho 324/64, ferro 330/71, pinheiro 427/193 … carvalho escuro 431/197)
 const DOOR_ITEMS = { 324: 64, 330: 71, 427: 193, 428: 194, 429: 195, 430: 196, 431: 197 };
 // Blocos que no 1.8.9 abrem uma tela e que ainda não têm tela aqui: o clique avisa em vez de colocar bloco
-const SEM_TELA = new Set([116, 145, 117, 23, 158, 154, 138, 84]);
+const SEM_TELA = new Set([116, 145, 117, 23, 158, 154, 138]);
 import { Sky } from './sky';
 import { skyBrightnessFactor, sunsetFactor, sunBrightness } from './lighting';
 import { tickFluids } from './fluids';
@@ -21,7 +21,7 @@ import { settingsStore } from './settingsStore';
 import { createSurvivalState, applyDamage, tickSurvival, addXP, getXPProgress, respawn as respawnPlayer, serializeSurvival, deserializeSurvival, getDeathMessage, getDroppedXP, FOODS, canEat, eatFood, canSleep, isFood } from './survival';
 import { tickEffects, getSpeedModifier, getMiningSpeedModifier, clearEffects, Effect } from './effects';
 import { WeatherSystem } from './weather';
-import { tickFire, igniteEntity } from './fire';
+import { tickFire, igniteEntity, canPlaceFire, firesNear } from './fire';
 import { processCommand } from './commands';
 import { getMiningTime, getDrops, damageTool, isToolBroken, getToolDamage, ORE_XP } from './mining';
 import { addItem, createInventory, serializeInventory, deserializeInventory, stack } from './inventory';
@@ -47,6 +47,8 @@ import { tickAgriculture, applyBonemeal, trampleFarmland, harvestCrop } from './
 import { createStats, serializeStats, deserializeStats, addStat, addStatByType } from './stats';
 import { createAchievementState, serializeAchievements, deserializeAchievements, tryUnlock, checkStatAchievements } from './achievements';
 import { TntRenderer } from './tntRender';
+import { SignRenderer } from './signRender';
+import { JukeboxManager, DISCS, discMetaForItem } from './jukebox';
 import { loadRealTextures, reloadRealTextures, isRealTexturesLoaded, tickTextureAnimations } from './textures';
 import { lookDirFromAngles } from './viewMath';
 import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel, setModelHeldItem, setModelCape, setModelArmor, armorCodeFromSlots } from './playerModel';
@@ -69,7 +71,7 @@ import { perfMonitor } from './perfMonitor';
 import { musicManager } from './musicManager';
 import { voiceChat } from './net/voiceChat';
 import { createVoiceIcon, setVoiceIconState, disposeVoiceIcon } from './voiceIcon';
-import { getContainer, removeContainer } from './containers';
+import { getContainer, removeContainer, removeSign } from './containers';
 import { handleBlockBreakPhysics, tickNearbyFallingBlocks, FALLING_BLOCK_IDS, canFallThrough, triggerFallingColumn } from './fallingBlocks';
 
 // MC24-RF-032: valores sRGB crus em tudo (texturas, cores, saída) — sem conversão dupla
@@ -140,6 +142,7 @@ export class GameEngine {
     this.onOpenCraftingTable = opts.onOpenCraftingTable || null;
     this.onOpenFurnace = opts.onOpenFurnace || null;
     this.onOpenChest = opts.onOpenChest || null;
+    this.onOpenSign = opts.onOpenSign || null;
     this.netManager = null;
     this.miningTarget = null;
     this.miningProgress = 0;
@@ -247,6 +250,9 @@ export class GameEngine {
 
     // Projéteis e combate (PRD 07)
     this.projectiles = new ProjectileManager(this.scene, this.world);
+    this.signs = new SignRenderer(this.scene);
+    this.jukebox = new JukeboxManager(this.scene);
+    this.jukebox.onNowPlaying = (title) => { this.recordNote = { text: title, ticks: 100 }; this.emitHud(); };
     // Recolher flecha cravada (1.8.9): disparada em sobrevivência (modo 1) o sobrevivente recolhe 1 flecha; disparada no criativo (modo 2) só
     // o criativo recolhe, sem ganhar item. probe = só pergunta se pode (a flecha ainda voa até o jogador antes de ser recolhida).
     this.projectiles.onPickup = (proj, probe = false) => {
@@ -1002,6 +1008,27 @@ export class GameEngine {
       return true;
     }
     const at = { pos: { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 } };
+    if (blockId === 84) { // jukebox: disco na mão entra e toca; com disco dentro, o clique tira o disco
+      const sendNet = (disc, startMs) => { const pkt = { t: 'jukebox', x: hit.x, y: hit.y, z: hit.z, disc, startMs }; if (this.netManager) { if (this.netManager.broadcast) this.netManager.broadcast(pkt); else this.netManager.conn?.send(pkt); } };
+      if (meta > 0) {
+        const d = DISCS[meta];
+        this._setBlockSync(hit.x, hit.y, hit.z, packState(84, 0));
+        this.jukebox.stop(hit.x, hit.y, hit.z);
+        if (d) this.itemEntities?.spawnItem({ id: d.item, count: 1, meta: 0 }, { x: hit.x + 0.5, y: hit.y + 1.1, z: hit.z + 0.5 }, { x: 0, y: 1.2, z: 0 }, 10);
+        sendNet(0, 0);
+        return true;
+      }
+      const held = this.getHeldItem();
+      const dm = held ? discMetaForItem(held.id) : 0;
+      if (!dm) return true;
+      const startMs = Date.now();
+      this._setBlockSync(hit.x, hit.y, hit.z, packState(84, dm));
+      this._consumeHeld(held);
+      this.jukebox.play(hit.x, hit.y, hit.z, dm, startMs, true);
+      sendNet(dm, startMs);
+      return true;
+    }
+    if (blockId === 63 || blockId === 68) { this.onOpenSign?.(hit.x, hit.y, hit.z); return true; }   // placa: abre a edição do texto
     if (blockId === 140) { // vaso de flor: planta o que está na mão (muda, flor, cogumelo, cacto, arbusto morto, samambaia) ou devolve o que tinha
       const held = this.getHeldItem();
       if (meta === 0) {
@@ -1059,6 +1086,17 @@ export class GameEngine {
     }
     if (SEM_TELA.has(blockId)) { this.onChatMessage?.({ type: 'system', text: `§7${blk.namePt}: a tela deste bloco ainda não existe no jogo`, timestamp: Date.now() }); return true; }
     return false;
+  }
+
+  // Fogo perto: o estalo (BlockFire.randomDisplayTick) e uma fumaça de vez em quando
+  _tickFireAmbient() {
+    if (this.worldTime % 10 !== 0) return;
+    const p = this.player.pos;
+    const near = firesNear(this.world, p.x, p.y, p.z, 12);
+    if (!near.length) return;
+    const [fx, fy, fz] = near[Math.floor(Math.random() * near.length)];
+    if (Math.random() < 0.25) playEvent('block.fire.ambient', { pos: { x: fx + 0.5, y: fy + 0.5, z: fz + 0.5 }, volume: 1 + Math.random(), pitch: 0.3 + Math.random() * 0.7 });
+    if (this.particles && Math.random() < 0.5) this.particles.spawnNamed?.('smoke', fx + Math.random(), fy + 0.9, fz + Math.random(), 1);
   }
 
   // Placa de pressão (de pedra e de madeira): liga (meta 1) enquanto o jogador está em cima e desliga quando ele sai
@@ -1148,6 +1186,7 @@ export class GameEngine {
     const newState = packState(placeId, meta);
     playBlockPlaceSound(placeId, { x: px, y: py, z: pz });
     this.world.setBlock(px, py, pz, newState);
+    if (placeId === 63 || placeId === 68) this.onOpenSign?.(px, py, pz);   // recém-colocada: já abre para escrever
     if (placeId === 175) this._setBlockSync(px, py + 1, pz, packState(175, 8));   // planta alta: a metade de cima junto
     this._cachedRaycastFrame = -1;
     this.onBlockChange?.(px, py, pz, newState);
@@ -1325,7 +1364,7 @@ export class GameEngine {
         return true;
       }
       const fx = hit.x + hit.nx, fy = hit.y + hit.ny, fz = hit.z + hit.nz;
-      if (stateId(this.world.getBlock(fx, fy, fz)) !== 0) return false;
+      if (stateId(this.world.getBlock(fx, fy, fz)) !== 0 || !canPlaceFire(this.world, fx, fy, fz)) return false;   // só acende onde o fogo pode existir (chão sólido ou vizinho inflamável)
       this._setBlockSync(fx, fy, fz, packState(51, 0));
       playEvent('fire.ignite', { pos: { x: fx + 0.5, y: fy + 0.5, z: fz + 0.5 } });
       this._wearHeld(slot);
@@ -1589,6 +1628,14 @@ export class GameEngine {
 
   breakBedPartner(x, y, z, state) {
     this.spillContainer(x, y, z, state);
+    if (stateId(state) === 63 || stateId(state) === 68) removeSign(x, y, z);
+    if (stateId(state) === 84 && stateMeta(state) > 0) {   // quebrou o jukebox com disco: a música para e o disco cai
+      const d = DISCS[stateMeta(state)];
+      this.jukebox?.stop(x, y, z);
+      if (d) this.itemEntities?.spawnItem({ id: d.item, count: 1, meta: 0 }, { x: x + 0.5, y: y + 0.6, z: z + 0.5 }, { x: 0, y: 1.2, z: 0 }, 10);
+      const pkt = { t: 'jukebox', x, y, z, disc: 0, startMs: 0 };
+      if (this.netManager) { if (this.netManager.broadcast) this.netManager.broadcast(pkt); else this.netManager.conn?.send(pkt); }
+    }
     if (stateId(state) === 49 || stateId(state) === 90) this._portalIntegrity(x, y, z);
     const id = stateId(state);
     if (id === 26) {
@@ -2017,7 +2064,11 @@ export class GameEngine {
     }
 
     // Fogo (PRD 05)
-    if (this.worldTime % 30 === 0) tickFire(this.world, this.worldTime, this.weather, this.gameRules);
+    tickFire(this.world, this.worldTime, this.weather, this.gameRules, this.difficulty);
+    this.signs?.update(this.world, this.player.pos);
+    this.jukebox?.update(this.world, this.player.pos);
+    if (this.recordNote && --this.recordNote.ticks <= 0) { this.recordNote = null; this.emitHud(); }
+    this._tickFireAmbient();
 
     // Atualizar velocidade por efeitos
     const speedMod = getSpeedModifier(p);
@@ -3032,6 +3083,7 @@ export class GameEngine {
       realTextures: isRealTexturesLoaded(),
       // aviso no HUD só quando há algo carregando de verdade: download das texturas ou os chunks restantes até a distância de renderização
       dimLoading: this.dimLoading || null,
+      recordNote: this.recordNote ? this.recordNote.text : null,
       portalProgress: this._portalTicks > 0 && !this._switching ? Math.min(1, this._portalTicks / 80) : 0,
       loadingNote: isPackDownloading() ? 'Carregando texturas...' : (this.loadingRadius < this.targetRadius ? 'Carregando chunks...' : null),
       build: 'PRD-21',
@@ -3850,6 +3902,8 @@ export class GameEngine {
     if (this.gunController) this.gunController = null;
     if (this._bulletDecals) this._bulletDecals = [];
     this._tntRender?.dispose(); this._tntRender = null;
+    this.signs?.dispose(); this.signs = null;
+    this.jukebox?.dispose(); this.jukebox = null;
     this.tntEntities = [];
     this.pendingTnt = [];
     this.crosshair?.dispose();

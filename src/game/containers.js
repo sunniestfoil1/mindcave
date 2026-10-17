@@ -66,12 +66,23 @@ export function getEnderChest(userId) {
 
 // Limpa contêineres ao descarregar
 export function clearContainers() {
-  _containers.clear();
+  _containers.clear(); _signs.clear();
 }
+
+// Texto das placas (4 linhas de até 15 letras): chave = posição; salvo junto dos contêineres, sob a chave "__placas"
+const _signs = new Map();
+export function getSign(x, y, z) { return _signs.get(posKey(x, y, z)) || null; }
+export function setSign(x, y, z, lines) {
+  const clean = [0, 1, 2, 3].map((i) => String((lines && lines[i]) || '').slice(0, 15));
+  if (clean.every((l) => !l)) _signs.delete(posKey(x, y, z)); else _signs.set(posKey(x, y, z), clean);
+}
+export function removeSign(x, y, z) { _signs.delete(posKey(x, y, z)); }
+export function allSigns() { return [..._signs.entries()].map(([k, lines]) => { const [x, y, z] = k.split(',').map(Number); return { x, y, z, lines }; }); }
 
 // Serialização dos contêineres para salvamento completo do mundo
 export function serializeContainers() {
   const data = {};
+  if (_signs.size) data.__placas = Object.fromEntries(_signs.entries());
   for (const [key, c] of _containers.entries()) {
     if (c && c.slots) {
       data[key] = {
@@ -85,8 +96,9 @@ export function serializeContainers() {
 
 // Restauração dos contêineres a partir dos dados salvos
 export function deserializeContainers(data) {
-  _containers.clear();
+  _containers.clear(); _signs.clear();
   if (!data || typeof data !== 'object') return;
+  if (data.__placas && typeof data.__placas === 'object') for (const [k, v] of Object.entries(data.__placas)) if (Array.isArray(v)) _signs.set(k, v.map((l) => String(l || '').slice(0, 15)));
   for (const [key, c] of Object.entries(data)) {
     if (c && Array.isArray(c.slots)) {
       _containers.set(key, {

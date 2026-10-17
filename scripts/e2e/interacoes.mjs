@@ -37,7 +37,8 @@ const r = await page.evaluate(async () => {
   const cw = new ClientWorld(seedFromString('88888'), new Map(), { generatorId: 'open_world', params: {} });
   const spawn = { x: 8.5, y: 110, z: 8.5 };
   const ps = { pos: { ...spawn }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, onGround: false, flying: true, sneaking: false, sprinting: false, gameMode: 'creative', hotbar: DEFAULT_HOTBAR.slice(), selectedSlot: 0, nomeJogador: 'T', hunger: 20, saturation: 5 };
-  const eng = new GameEngine(canvas, { world: cw, player: ps, spawn, worldTime: 1000, gameRules: {}, difficulty: 'normal', onHud: () => {}, onProgress: () => {}, onChatMessage: () => {}, onDeath: () => {}, onAutosave: async () => {} });
+  const opened = [];
+  const eng = new GameEngine(canvas, { world: cw, player: ps, spawn, worldTime: 1000, gameRules: {}, difficulty: 'normal', onHud: () => {}, onProgress: () => {}, onChatMessage: () => {}, onDeath: () => {}, onAutosave: async () => {}, onOpenSign: (x, y, z) => opened.push([x, y, z]) });
   await eng.start();
   eng.paused = false;
   for (let i = 0; i < 240 && cw.chunks.size < 9; i++) await new Promise((r) => setTimeout(r, 250));
@@ -134,6 +135,21 @@ const r = await page.evaluate(async () => {
   eng.useHeldItem(ps.hotbar[0]); res.trocou = { armor: inv.armor[3] && inv.armor[3].id, mao: ps.hotbar[0] && ps.hotbar[0].id };
   ps.gameMode = 'creative';
 
+  // placa: colocar abre a edição; o texto é salvo e volta do salvamento; a malha do texto aparece; quebrar apaga o texto
+  const C = await import('/src/game/containers.js');
+  put(36, 0, 10, 1); put(36, 1, 10, 0); opened.length = 0; placeOn(323, 0, 36, 10);
+  res.placa = { id: get(36, 1, 10) >> 4, abriu: opened.length };
+  C.setSign(36, G + 1, 10, ['Ola', 'Mundo', '', 'x'.repeat(30)]);
+  const ser = JSON.parse(JSON.stringify(C.serializeContainers()));
+  C.clearContainers(); C.deserializeContainers(ser);
+  res.placaTexto = C.getSign(36, G + 1, 10);
+  look(36.5, G + 3.2, 13.5, 36.5, G + 1.5, 10.5); opened.length = 0; hold(1, 0, 1); eng._cachedRaycastFrame = -1; eng.interactBlock(ps);
+  res.placaClique = opened.length;
+  eng.signs.tick = 9; eng.signs.update(cw, { x: 36, y: G + 1, z: 10 });
+  res.placaMalha = eng.signs.meshes.size;
+  eng.breakBedPartner(36, G + 1, 10, cw.getBlock(36, G + 1, 10)); cw.setBlock(36, G + 1, 10, 0);
+  res.placaApagou = C.getSign(36, G + 1, 10);
+
   // Nether: só porcos-zumbis
   const spawnSys = new MobSpawnSystem(); const mobs = [];
   const nw = eng._worldFor('nether');
@@ -160,6 +176,10 @@ ok(r.agua > 5, `água colocada corre (${r.agua} células depois de 200 ticks)`);
 ok(r.aguaNether === 0, 'no Nether a água colocada evapora');
 ok(r.caldeirao.meta === 3 && r.caldeirao.balde === 325, `balde de água enche o caldeirão (nível ${r.caldeirao.meta}) e fica vazio`);
 ok(r.vestiu === 309 && r.trocou.armor === 313 && r.trocou.mao === 309, `botão direito veste a bota de ferro (${r.vestiu}); com a de ouro troca e a de ferro vai para a mão (${r.trocou.mao})`);
+ok(r.placa.id === 63 && r.placa.abriu === 1, `placa: colocar abre o editor de texto (bloco ${r.placa.id}, editor abriu ${r.placa.abriu}×)`);
+ok(r.placaTexto && r.placaTexto[0] === 'Ola' && r.placaTexto[1] === 'Mundo' && r.placaTexto[3].length === 15, `texto da placa volta do salvamento (linha longa cortada em ${r.placaTexto && r.placaTexto[3].length} letras)`);
+ok(r.placaClique === 1 && r.placaMalha === 1, `botão direito na placa abre a edição (${r.placaClique}×) e o texto vira malha na placa (${r.placaMalha})`);
+ok(r.placaApagou === null, 'quebrar a placa apaga o texto');
 ok(r.nether.total > 5 && r.nether.tipos.length === 1 && r.nether.tipos[0] === 'zombie_pigman', `no Nether só nasce porco-zumbi: ${r.nether.total} mobs, tipos ${r.nether.tipos}`);
 ok(errors.length === 0, `sem erro de página (${errors[0] || ''})`);
 console.log(out.join('\n'));

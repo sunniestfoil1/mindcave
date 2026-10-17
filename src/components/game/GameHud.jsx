@@ -261,6 +261,11 @@ export default function GameHud({ hud, onPause }) {
       {hud.portalProgress > 0 && (   // dentro do portal: o roxo vai tomando a tela até a travessia (o enjoo do Nether)
         <div data-portal-overlay style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: `radial-gradient(ellipse at center, rgba(150,70,220,${0.25 * hud.portalProgress}) 0%, rgba(90,30,170,${0.85 * hud.portalProgress}) 100%)`, mixBlendMode: 'screen' }} />
       )}
+      {hud.recordNote && (   // "Tocando: ..." acima da hotbar, como o 1.8.9
+        <div style={{ position: 'absolute', bottom: 68 * S, left: '50%', transform: 'translateX(-50%)' }}>
+          <McText text={`Tocando: ${hud.recordNote}`} x={0} y={0} S={S} color="#55FFFF" shadow align="center" />
+        </div>
+      )}
       {hud.loadingNote && (
         <div style={{ position: 'absolute', top: 4 * S, left: '50%', transform: 'translateX(-50%)' }}>
           <McText text={hud.loadingNote} x={0} y={0} S={S} color="#FFFF55" shadow align="center" />

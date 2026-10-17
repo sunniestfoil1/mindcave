@@ -239,6 +239,9 @@ export const ITEMS = {
   2265: I(2265, 'record_ward', 'Disco ward', { maxStack:1, color:0x707070, category:'misc' }),
   2266: I(2266, 'record_11', 'Disco 11', { maxStack:1, color:0x909090, category:'misc' }),
   2267: I(2267, 'record_wait', 'Disco wait', { maxStack:1, color:0xb0b0b0, category:'misc' }),
+  2268: I(2268, 'record_5', 'Disco 5', { maxStack:1, color:0x606878, category:'misc' }),
+  2269: I(2269, 'record_otherside', 'Disco otherside', { maxStack:1, color:0x3a6a8a, category:'misc' }),
+  2270: I(2270, 'record_pigstep', 'Disco Pigstep', { maxStack:1, color:0x8a4a4a, category:'misc' }),
 
   // === PRD 09: Tecnologia e Armas de Fogo ===
   450: I(450, 'iron_nugget', 'Pepita de Ferro', { color: 0xddddaa, category: 'materials' }),
