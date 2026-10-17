@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getGuiScale } from '@/game/gui/scale';
+import { getMenuScale } from '@/game/gui/scale';
 import { settingsStore } from '@/game/settingsStore';
 
 import { viewSize } from '@/game/touch';
@@ -21,7 +21,7 @@ export function GuiProvider({ children }) {
 
   const guiScaleSetting = settingsStore.get('device.guiScale');
   const maxFactor = guiScaleSetting === 'auto' || !guiScaleSetting ? 0 : parseInt(guiScaleSetting);
-  const scale = getGuiScale(dims.width, dims.height, maxFactor);
+  const scale = getMenuScale(dims.width, dims.height, maxFactor);
   const guiWidth = Math.floor(dims.width / scale);
   const guiHeight = Math.floor(dims.height / scale);
 

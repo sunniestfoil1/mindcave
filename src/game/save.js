@@ -156,6 +156,13 @@ export async function touchWorld(world) {
 
 export async function loadDeltas(worldId) {
   const map = new Map();
+  // A nuvem sai junto com a leitura local (antes esperava a local terminar) e só as colunas usadas; rede lenta não segura o mundo por mais de
+  // CLOUD_WAIT_MS: o local manda (a nuvem só completa o que falta) e o mundo abre com o que já chegou.
+  const CLOUD_WAIT_MS = 2500;
+  const cloudP = Promise.race([
+    Promise.resolve(supabase.from('chunk_deltas').select('cx,cz,data').eq('world_id', worldId)).catch(() => ({ data: null, error: true })),
+    new Promise((r) => setTimeout(() => r({ data: null, error: true }), CLOUD_WAIT_MS)),
+  ]);
   // 1. IndexedDB Local
   try {
     const db = await openDB();
@@ -174,7 +181,7 @@ export async function loadDeltas(worldId) {
 
   // 2. Cloud Supabase Sync
   try {
-    const { data, error } = await supabase.from('chunk_deltas').select('*').eq('world_id', worldId);
+    const { data, error } = await cloudP;
     if (!error && data && data.length > 0) {
       for (const d of data) {
         const key = (d.cx + 32768) * 65536 + (d.cz + 32768);

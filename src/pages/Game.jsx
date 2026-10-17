@@ -9,7 +9,7 @@ import { seedFromString } from "@/game/prng";
 import { preloadLocalSkin } from "@/game/skinStore";
 import { DEFAULT_HOTBAR, CREATIVE_DEFAULT_HOTBAR } from "@/game/hotbar";
 import { stateId, chunkCoord } from "@/game/chunk";
-import { isWater, getBlock } from "@/game/blocks";
+import { isWater } from "@/game/blocks";
 import GameHud from "@/components/game/GameHud";
 import RadioWidget from "@/components/game/RadioWidget";
 import Options from "@/pages/Options";
@@ -19,10 +19,11 @@ import CreativeUI from "@/components/game/CreativeUI";
 import MindClientMenu from "@/components/client/MindClientMenu";
 import ClientHud from "@/components/client/ClientHud";
 import TouchControls from "@/components/game/TouchControls";
+import LoadingScreen from "@/components/game/LoadingScreen";
 import CraftingTableUI from "@/components/game/CraftingTableUI";
 import FurnaceUI from "@/components/game/FurnaceUI";
 import ChestUI from "@/components/game/ChestUI";
-import { playChestOpenSound } from "@/game/sounds";
+import { playChestOpenSound, prewarmEvents } from "@/game/sounds";
 import DeathScreen from "@/components/game/DeathScreen";
 import AchievementToast from "@/components/game/AchievementToast";
 import StatsScreen from "@/components/game/StatsScreen";
@@ -99,7 +100,7 @@ export default function Game() {
   const engineRef = useRef(null);
   const [hud, setHud] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [loadingProgress, setLoadingProgress] = useState({ percent: 0, status: 'Carregando mundo...' });
+  const [loadingProgress, setLoadingProgress] = useState({ percent: 0, status: 'Lendo o mundo salvo...' });
   const [error, setError] = useState(null);
   const [chatText, setChatText] = useState('');
   const [showOptions, setShowOptions] = useState(false);
@@ -189,11 +190,18 @@ export default function Game() {
     (async () => {
       try {
         saveQueueRef.current.onUpdate = ({ pending }) => setSavePending(pending);
-        const { user: u } = await resolveUser();
+        // Tudo que não depende de outra coisa sai ao mesmo tempo (antes eram 6 idas e voltas em fila ao banco/nuvem antes do primeiro chunk)
+        const userP = resolveUser();
+        const worldP = getWorld(worldId);
+        const deltasP = loadDeltas(worldId);
+        preloadLocalSkin(); // decodifica a skin já, em paralelo com o banco e os chunks
+        const { user: u } = await userP;
         setUser(u);
-        await settingsStore.initCloud(u);
         const userId = u?.id;
-        const world = await getWorld(worldId);
+        const cloudP = settingsStore.initCloud(u);
+        const playerP = loadPlayer(worldId, userId);
+        const statsP = Promise.resolve().then(() => mindcaveApi.entities.PlayerStats.filter({ worldId, userId: userId }, { limit: 1 })).catch(() => null);
+        const world = await worldP;
         if (!world || !world.seed) {
           setError("Mundo não encontrado ou corrompido");
           setLoading(false);
@@ -201,8 +209,8 @@ export default function Game() {
         }
         worldRecRef.current = world;
         const seed = seedFromString(world.seed);
-        preloadLocalSkin(); // decodifica a skin já, em paralelo com o banco e os chunks
-        const deltas = await loadDeltas(worldId);
+        await cloudP; // as opções (distância de renderização etc.) precisam estar prontas antes do motor
+        const deltas = await deltasP;
         let genParams = {};
         try { genParams = JSON.parse(world.genParams || '{}'); } catch {}
         const generatorOpts = {
@@ -215,12 +223,9 @@ export default function Game() {
         try { gameRules = JSON.parse(world.gameRules || '{}'); } catch {}
 
         const spawn = findSpawn(seed, generatorOpts, world.spawnX || 0, world.spawnZ || 0);
-        let player = await loadPlayer(worldId, userId);
-        let playerStatsRec = null;
-        try {
-          const res = await mindcaveApi.entities.PlayerStats.filter({ worldId, userId: userId }, { limit: 1 });
-          playerStatsRec = res.items?.[0] || res[0] || null;
-        } catch {}
+        let player = await playerP;
+        const statsRes = await statsP;
+        let playerStatsRec = statsRes ? (statsRes.items?.[0] || statsRes[0] || null) : null;
         const nome = sanitizeName(u.full_name || u.email);
         if (!player) {
           player = {
@@ -378,6 +383,8 @@ export default function Game() {
         console.log('[Game] Spawn:', spawn, 'Player pos:', pState.pos, 'Flying:', pState.flying, 'GameMode:', pState.gameMode);
         console.log('[Game] Chunks loaded:', cw.chunks.size, 'Render distance:', engine.renderDistance);
         setLoading(false);
+        // sons de uso imediato (quebrar, colocar, passos) já decodificados, em segundo plano
+        setTimeout(() => { prewarmEvents(['block.stone.break', 'block.stone.place', 'block.stone.step', 'block.grass.break', 'block.grass.place', 'block.grass.step', 'block.wood.break', 'block.wood.step', 'block.gravel.step', 'block.sand.step']).catch(() => {}); }, 1500);
 
         // Multiplayer: check if joining a room
         const urlParams = new URLSearchParams(window.location.search);
@@ -496,25 +503,7 @@ export default function Game() {
   return (
     <div className="fixed inset-0 bg-black">
       <canvas ref={canvasRef} className="w-full h-full block" />
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-900 text-white z-50">
-          <div className="text-center w-80 p-6 bg-slate-800/80 rounded-lg border border-slate-700 shadow-2xl backdrop-blur-sm">
-            <h2 className="text-xl font-minecraft tracking-wider mb-2 text-yellow-400">MIND-CAVE</h2>
-            <div className="text-sm font-sans mb-4 text-slate-300">{loadingProgress.status}</div>
-            
-            {/* Minecraft Style Progress Bar */}
-            <div className="w-full bg-slate-950 h-5 rounded-full border border-slate-700 overflow-hidden p-0.5 relative">
-              <div 
-                className="h-full bg-gradient-to-r from-green-600 to-emerald-400 rounded-full transition-all duration-150 ease-out" 
-                style={{ width: `${Math.max(5, loadingProgress.percent)}%` }} 
-              />
-              <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
-                {loadingProgress.percent}%
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      {loading && <LoadingScreen percent={loadingProgress.percent} status={loadingProgress.status} />}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-900 text-white p-6 text-center">
           <div>
@@ -529,6 +518,8 @@ export default function Game() {
             ...hud,
             hasGuiOpen: isAnyGuiOpen,
             onExit: handleExit,
+            // celular não tem Shift direito: o menu de pausa abre o Mind Client
+            onClientMenu: engineRef.current?.touch ? () => { if (engineRef.current) { engineRef.current.paused = false; engineRef.current.emitHud(); } setShowClientMenu(true); } : undefined,
             onOptions: () => { document.exitPointerLock?.(); setShowOptions(true); },
             onStats: () => { document.exitPointerLock?.(); setShowStats(true); },
             onOpenToLAN: () => { document.exitPointerLock?.(); setShowOpenToLAN(true); },

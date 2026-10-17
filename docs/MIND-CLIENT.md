@@ -11,6 +11,7 @@ Clicar no cartão liga/desliga o módulo. A engrenagem do cartão abre os ajuste
 | FPS, CPS, Coordinates, Direction Hud, Memory, Ping Display | texto no HUD (fonte do jogo) | `src/components/client/ClientHud.jsx` |
 | Keystrokes | W A S D, mouse e espaço, lidos do motor a cada quadro | `ClientHud.jsx` (`Keystrokes`) |
 | Armor HUD | peças de armadura vestidas e durabilidade | `ClientHud.jsx` (`ArmorHud`) |
+| Pack Overlay | nome do pacote de recursos ativo, no canto superior esquerdo; só liga/desliga (desligado por padrão) | `ClientHud.jsx` (`PackOverlay`) |
 | Hitbox | caixas de colisão (igual ao F3 + B) | `engine.showHitboxes` |
 | Hit Color | cor do flash de dano dos mobs: vermelho (padrão do jogo), RGB (tabela de 256 cores calculada uma vez) ou personalizada, com intensidade | `src/game/hitFlash.js`, `mobManager.renderUpdate` |
 | Item Physics | item solto cai girando e fica deitado no chão | `itemEntity.js` (`update`) |

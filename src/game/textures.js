@@ -433,7 +433,7 @@ async function composeChest(ctx) {
   draw('chest_front', (c) => { c.drawImage(src, 14, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 14, 33, 14, 10, 0, lidH, TILE, bodyH); c.drawImage(src, 1, 1, 2, 4, 7, lidH - 1, 2, 4); });
 }
 
-export function loadRealTextures(force = false) {
+export function loadRealTextures(force = false, onProgress = null) {
   if (_realLoaded && !force) return Promise.resolve(true);
   if (_loadingPromise) return _loadingPromise;
   _loadingPromise = (async () => {
@@ -443,11 +443,14 @@ export function loadRealTextures(force = false) {
       if (!ok) return false;
       const { ctx, texture } = _cache;
       _anims.length = 0;
+      let done = 0;
+      const total = TILE_ORDER.length;
       await Promise.all(TILE_ORDER.map(async (name, idx) => {
         const mc = MC_TEXTURE_MAP[name];
-        if (!mc || name === 'grass_side') return;
+        if (!mc || name === 'grass_side') { onProgress?.(++done, total); return; }
         const path = MC + 'textures/blocks/' + mc + '.png';
         const cv = await getPackCanvas(path);
+        onProgress?.(++done, total);
         if (!cv) return;
         drawFrame(ctx, cv, 0, idx);
         const frames = Math.floor(cv.height / cv.width);

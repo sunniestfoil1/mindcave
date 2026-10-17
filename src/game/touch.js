@@ -11,10 +11,18 @@ export function isTouchDevice() {
 
 const isRotated = () => typeof document !== 'undefined' && document.documentElement.classList.contains('mc-rotate');
 
-// Tamanho da área de jogo (já trocado quando a página está girada por CSS)
+// Tamanho da área de jogo (já trocado quando a página está girada por CSS). Com o teclado virtual aberto (campo de texto em foco, como o
+// chat) o navegador encolhe a janela; a GUI NÃO acompanha: o tamanho de antes do teclado vale até ele fechar, senão todos os botões encolhem.
+let stable = null;
+const typing = () => { const t = typeof document !== 'undefined' ? document.activeElement?.tagName : null; return t === 'INPUT' || t === 'TEXTAREA'; };
 export function viewSize() {
   const w = window.innerWidth, h = window.innerHeight;
-  return isRotated() ? { w: h, h: w } : { w, h };
+  const cur = isRotated() ? { w: h, h: w } : { w, h };
+  if (typeof document !== 'undefined' && document.documentElement.classList.contains('mc-touch')) {
+    if (typing() && stable) return stable;
+    stable = cur;
+  }
+  return cur;
 }
 
 // Posição do dedo no sistema de coordenadas do jogo. A página girada 90° no sentido horário com origem no canto superior esquerdo
@@ -43,6 +51,10 @@ export function initTouch() {
   if (!isTouchDevice()) return;
   const root = document.documentElement;
   root.classList.add('mc-touch');
+  // iOS: segurar o dedo num controle seleciona texto/imagem ou abre o menu de contexto; nada disso vale no jogo (campos de texto continuam normais)
+  const inField = (e) => !!(e.target && e.target.closest && e.target.closest('input, textarea'));
+  document.addEventListener('selectstart', (e) => { if (!inField(e)) e.preventDefault(); });
+  document.addEventListener('contextmenu', (e) => { if (!inField(e)) e.preventDefault(); });
   window.addEventListener('click', (e) => { if (performance.now() < swallowUntil) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
   const update = () => root.classList.toggle('mc-rotate', portrait());
   update();

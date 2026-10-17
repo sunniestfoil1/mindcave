@@ -7,14 +7,16 @@ import { playClickSound } from '@/game/sounds';
 
 // Java 1.8.9 button — PRD 19 RF-004
 // x is relative to screen center; y is from top; all in GUI pixels
-export default function GuiButton({ x, y, width = 200, label, onClick, disabled, title, icon, onPointerDown, onPointerUp, onPointerCancel }) {
+export default function GuiButton({ x, y, width = 200, label, onClick, disabled, title, icon, active, onPointerDown, onPointerUp, onPointerCancel }) {
   const gui = useGui();
   const scale = gui?.scale || 1;
   const guiWidth = gui?.guiWidth || 0;
   const [hover, setHover] = useState(false);
 
-  const stateY = disabled ? 46 : hover ? 86 : 66;
-  const textColor = disabled ? '#A0A0A0' : hover ? '#FFFFA0' : '#E0E0E0';
+  // "active" = botão de liga/desliga ligado: usa o visual de destaque do jogo (o mesmo do mouse em cima)
+  const lit = hover || active;
+  const stateY = disabled ? 46 : lit ? 86 : 66;
+  const textColor = disabled ? '#A0A0A0' : lit ? '#FFFFA0' : '#E0E0E0';
   const texUrl = getWidgetsTexture();
   const halfW = width / 2;
 
@@ -39,15 +41,16 @@ export default function GuiButton({ x, y, width = 200, label, onClick, disabled,
         touchAction: 'none',
         pointerEvents: 'auto',
       }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      // só o mouse destaca ao passar por cima: no toque o navegador finge um "mouseenter" e deixa o botão aceso depois do dedo sair
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHover(true); }}
+      onPointerLeave={() => setHover(false)}
       onClick={handleClick}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       title={title}
       role="button"
-      aria-label={typeof label === 'string' ? label.replace(/§./g, '') : undefined}
+      aria-label={typeof label === 'string' ? label.replace(/§./g, '') : title}
       aria-disabled={disabled ? 'true' : undefined}
     >
       <div style={{

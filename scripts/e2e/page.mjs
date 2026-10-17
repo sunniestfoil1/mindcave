@@ -39,7 +39,7 @@ const worldId = await page.evaluate(async () => {
 });
 await page.goto(`http://localhost:${port}/play/${worldId}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 // espera o motor existir e a tela de carregamento (que tem "NN%") sumir: checar só o texto falhava antes de a tela aparecer
-await page.waitForFunction(() => window.__mindcave && window.__mindcave.engine && !/\d%/.test(document.body.innerText), { timeout: 240000, polling: 500 });
+await page.waitForFunction(() => window.__mindcave && window.__mindcave.engine && !document.querySelector('[data-loading-screen]'), { timeout: 240000, polling: 500 });
 await sleep(2500);
 const text = () => page.evaluate(() => document.body.innerText);
 const hasPauseMenu = async () => /Menu do jogo/.test(await text());
@@ -66,7 +66,9 @@ ok(!afterChatPause, `após Enter no chat o menu de pausa NÃO aparece (pausa=${a
 const chatSent = await page.evaluate(() => /ola mundo/.test(document.body.innerText));
 ok(chatSent, 'mensagem aparece no chat');
 // comando
-await page.keyboard.press('Slash'); await sleep(200);
+await page.keyboard.press('Slash');
+await page.waitForFunction(() => document.querySelector('input[data-chat-input]')?.value === '/', { timeout: 5000 }).catch(() => {});
+await sleep(200);
 ok(await page.evaluate(() => document.querySelector('input[data-chat-input]')?.value === '/'), 'a tecla "/" abre o chat já com a barra digitada');
 ok(await page.evaluate(() => { const i = document.querySelector('input[data-chat-input]'); return !!i && i.selectionStart === 1 && !i.placeholder; }), 'o cursor fica depois da barra e o campo não tem texto de aviso');
 await page.keyboard.type('time set day'); await page.keyboard.press('Enter'); await sleep(500);

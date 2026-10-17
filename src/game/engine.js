@@ -46,7 +46,7 @@ let _activeEngine = null;
 export function getActiveEngine() { return _activeEngine; }
 import { onSkinChange, onCapeChange, getCapeChoice, preloadLocalSkin } from './skinStore';
 import { fetchCraftheadCape, fetchCraftheadSkin } from './crafthead';
-import { loadPack, ensurePack, isPackReady, getPackUrl, MC } from './pack';
+import { loadPack, ensurePack, isPackReady, isPackDownloading, getPackUrl, MC } from './pack';
 import { createCrosshair } from './crosshair';
 import { createMotionBlur } from './motionBlur';
 import { clientStore } from './client/clientStore';
@@ -203,6 +203,12 @@ export class GameEngine {
     this.scene = new THREE.Scene();
 
     this.camera = new THREE.PerspectiveCamera(PLAYER.fov, w / h, 0.05, 1000);
+    // O tamanho da tela pode mudar sem evento de janela (barra do navegador do celular, página girada por CSS, teclado): o buffer do WebGL
+    // acompanha o tamanho real do canvas, senão a imagem sai esticada/achatada
+    if (typeof ResizeObserver !== 'undefined') {
+      this._resizeObs = new ResizeObserver(() => this.onResize());
+      this._resizeObs.observe(this.canvas);
+    }
 
     this.sky = new Sky(this.scene, this.world.seed);
 
@@ -252,7 +258,7 @@ export class GameEngine {
     this._bulletDecals = [];
 
     // Partículas (blocos quebrados, respingos) — estilo 1.8.9
-    this.particles = new ParticleManager(this.scene);
+    this.particles = new ParticleManager(this.scene, this.world);
     this.itemEntities = new ItemEntityManager(this.scene, this.world);
     if (this._savedItemEntities) {
       this.itemEntities.deserialize(this._savedItemEntities);
@@ -334,13 +340,23 @@ export class GameEngine {
     // Skins/capas dos jogadores da sala: todas em paralelo, enquanto o mundo carrega
     this._prefetchRemoteSkins([...(this.netManager?.room?.playerNames || [])].filter((n) => n && n !== this.player.nomeJogador));
 
-    // PRD 04: Carregar pacote de recursos de 106MB com barra de progresso em tempo real (Cache API garante 0ms nas próximas visitas)
-    if (this.onProgress) this.onProgress(0, 'Carregando pacote de recursos 1.8.9...');
-    await ensurePack((prog) => {
-      if (this.onProgress && prog) {
-        this.onProgress(prog.percent, prog.status);
-      }
-    });
+    // ===== Carregamento com progresso real =====
+    // Pesos (somam 100): pacote 30 · texturas 20 · chunks 42 · GPU 8. Cada etapa mede a própria fração (bytes baixados, texturas decodificadas,
+    // chunks prontos, shaders compilados) e a barra é a soma ponderada: sobe só com trabalho de verdade, nunca por tempo. Texturas e chunks
+    // andam juntos (não dependem um do outro); a GPU é aquecida por último, com tudo pronto.
+    const WT = { pack: 30, tex: 20, chunks: 42, gpu: 8 };
+    const fr = { pack: 0, tex: 0, chunks: 0, gpu: 0 };
+    const mark = (n) => { try { performance.mark('mc:' + n); } catch { /* sem User Timing */ } };
+    const report = (stage, f, msg) => {
+      fr[stage] = Math.max(fr[stage], Math.min(1, f));
+      const pct = WT.pack * fr.pack + WT.tex * fr.tex + WT.chunks * fr.chunks + WT.gpu * fr.gpu;
+      this.onProgress?.(Math.min(100, Math.floor(pct)), msg);
+    };
+    mark('renderer');
+    report('pack', 0, 'Carregando pacote de recursos...');
+    await ensurePack((prog) => { if (prog) report('pack', prog.percent / 100, prog.status); });
+    report('pack', 1, 'Pacote de recursos pronto');
+    mark('pack');
 
     // PRD 21 RF-020: carregamento em fases — gerar só 5×5 chunks (radius 2) para a área inicial jogável.
     // O resto carrega progressivamente via growth do loadingRadius no loop (RF-021).
@@ -348,17 +364,16 @@ export class GameEngine {
     this.loadingRadius = 2;
     this.targetRadius = settingsStore.get('device.renderDistance') || this.renderDistance;
     this.world._lastLoadingRadius = this.loadingRadius;
+    // texturas reais do pacote (o atlas é compartilhado por todos os materiais: needsUpdate basta, sem refazer malhas)
+    const texReady = isPackReady()
+      ? loadRealTextures(false, (d, t) => report('tex', d / t, `Carregando texturas (${d}/${t})...`)).then(() => { report('tex', 1, 'Texturas prontas'); mark('textures'); })
+      : Promise.resolve().then(() => report('tex', 1, 'Texturas prontas'));
     // PRD 23: as malhas chegam dos workers de forma assíncrona — espera curta pela área inicial
-    await this.world.warmUp(this.scene, p.x, p.z, this.loadingRadius, p.y, 4000, this.onProgress);
-    await skinReady;
+    const chunksReady = this.world.warmUp(this.scene, p.x, p.z, this.loadingRadius, p.y, 4000, (pct) => report('chunks', pct / 100, `Preparando área de spawn: ${pct}%`)).then(() => mark('chunks'));
+    await Promise.all([texReady, chunksReady, skinReady]);
     if (this.disposed) return; // a tela foi fechada durante o carregamento
     perfMonitor.detectGpu(this.renderer.getContext());
 
-    // Carregar texturas reais do Minecraft 1.8.9 (atualiza o atlas em segundo plano)
-    // A textura é compartilhada por todos os materiais — needsUpdate basta, sem re-meshing
-    loadRealTextures().then(() => {
-      if (this.world?.atlas?.texture) this.world.atlas.texture.needsUpdate = true;
-    });
     // Pacote: céu, skin e mapas de cor. Se o pacote chegou depois da geração, refaz a tinta e as malhas.
     const applyPackToScene = () => {
       this.sky.applyPack();
@@ -371,9 +386,14 @@ export class GameEngine {
         await initBiomeTint();
         this.world.refreshTints();
         applyPackToScene();
-        loadRealTextures();
+        loadRealTextures().then(() => { if (this.world?.atlas?.texture) this.world.atlas.texture.needsUpdate = true; });
       });
     }
+    // Shaders e texturas na GPU antes de o jogador ver o jogo: sem engasgo no primeiro quadro, no primeiro bloco quebrado, na primeira mão
+    report('gpu', 0, 'Compilando shaders...');
+    await this._warmGpu();
+    report('gpu', 1, 'Mundo pronto!');
+    mark('gpu');
 
     this._onBeforeUnload = (e) => {
       if (this.onAutosave) {
@@ -675,12 +695,13 @@ export class GameEngine {
   // ===== Controles de toque (celular). Reaproveitam as mesmas rotas do teclado e do mouse, com as teclas que o jogador configurou =====
   _touchBlocked() { return this.paused || this.chatOpen || !!this.player?.isDead || !!this.player?.sleeping; }
 
-  // Arrastar o dedo na tela: 0,25°/px a 100% (o 1.8.9 usa 0,15°/px com mouse; o dedo percorre menos tela). A sensibilidade é ajustável em Controles.
+  // Arrastar o dedo na tela: 0,5°/px a 100% (o 1.8.9 usa 0,15°/px com mouse; o dedo percorre muito menos tela, e 0,25 ficou lento no teste em iPhone).
+  // A sensibilidade é ajustável em Controles (10–300%).
   touchLook(dx, dy) {
     if (this._touchBlocked()) return;
     const sens = settingsStore.get('user.touchLookSensitivity') ?? 100;
-    const rad = (0.25 * Math.PI / 180) * (sens / 100);
-    const m = 40;   // um quadro congelado não vira uma volta inteira
+    const rad = (0.5 * Math.PI / 180) * (sens / 100);
+    const m = 60;   // um quadro congelado não vira uma volta inteira
     this._lookBy(Math.max(-m, Math.min(m, dx)) * rad, Math.max(-m, Math.min(m, dy)) * rad);
   }
 
@@ -720,6 +741,25 @@ export class GameEngine {
   touchPause() { this.paused = true; this.touchReset(); this.emitHud(); }
   touchResume() { this.paused = false; this.touchReset(); this.emitHud(); }
   touchReset() { this.keys = {}; this.mouseBtn = {}; this.sprintToggled = false; }
+
+  // Aquece a GPU: compila os shaders de tudo que a cena já tem (e de objetos que só aparecem depois de uma ação, como as partículas),
+  // sobe o atlas com as texturas reais e desenha um quadro. Roda atrás da tela de carregamento.
+  async _warmGpu() {
+    const r = this.renderer;
+    try {
+      r.initTexture?.(this.world.atlas.texture);
+      const pm = this.particles;
+      const wasVisible = pm.mesh.visible, wasCount = pm.geometry.instanceCount;
+      pm.mesh.visible = true; pm.geometry.instanceCount = 1;     // só para o compile enxergar o material
+      this.camera.updateMatrixWorld();
+      if (r.compileAsync) await r.compileAsync(this.scene, this.camera); else r.compile(this.scene, this.camera);
+      pm.mesh.visible = wasVisible; pm.geometry.instanceCount = wasCount;
+      if (this.fpsScene && this.fpsCamera) {
+        if (r.compileAsync) await r.compileAsync(this.fpsScene, this.fpsCamera); else r.compile(this.fpsScene, this.fpsCamera);
+      }
+      r.render(this.scene, this.camera);
+    } catch (e) { console.warn('[GPU] aquecimento falhou (o jogo segue normal):', e); }
+  }
 
   startFreeLook() {
     if (this.freeLook.on) return;
@@ -870,7 +910,7 @@ export class GameEngine {
     if (!hit) return;
     const block = getBlock(hit.id);
     if (block.hardness < 0) return;
-    this.particles?.spawnBlockBreak(hit.x, hit.y, hit.z, hit.id);
+    this.particles?.spawnBlockBreak(hit.x, hit.y, hit.z, hit.id, hit.meta || 0);
     playBlockBreakSound(hit.id, { x: hit.x, y: hit.y, z: hit.z });
     const _brokenState = this.world.getBlock(hit.x, hit.y, hit.z);
     this.world.setBlock(hit.x, hit.y, hit.z, 0);
@@ -881,7 +921,7 @@ export class GameEngine {
     this.breakCd = 5;
 
     handleBlockBreakPhysics(this.world, hit.x, hit.y, hit.z, (dropItem, pos) => {
-      this.particles?.spawnBlockBreak(pos.x, pos.y, pos.z, dropItem.id);
+      this.particles?.spawnBlockBreak(pos.x, pos.y, pos.z, dropItem.id, dropItem.meta || 0);
       this.onBlockChange?.(pos.x, pos.y, pos.z, 0);
       this.netManager?.sendBlockChange?.(pos.x, pos.y, pos.z, 0);
     });
@@ -2691,6 +2731,8 @@ export class GameEngine {
       showHitboxes: this.showHitboxes,
       showChunkBorders: this.showChunkBorders,
       realTextures: isRealTexturesLoaded(),
+      // aviso no HUD só quando há algo carregando de verdade: download das texturas ou os chunks restantes até a distância de renderização
+      loadingNote: isPackDownloading() ? 'Carregando texturas...' : (this.loadingRadius < this.targetRadius ? 'Carregando chunks...' : null),
       build: 'PRD-21',
       title: this.titleTicks > 0 ? this.titleText : null,
       subtitle: this.titleTicks > 0 ? this.subtitleText : null,
@@ -2815,7 +2857,7 @@ export class GameEngine {
       if (hit.id === 56) this.player.stats.diamondsCollected++;
       checkStatAchievements(this.player.achievements, this.player.stats);
     }
-    this.particles?.spawnBlockBreak(hit.x, hit.y, hit.z, hit.id);
+    this.particles?.spawnBlockBreak(hit.x, hit.y, hit.z, hit.id, hit.meta || 0);
     playBlockBreakSound(hit.id, { x: hit.x, y: hit.y, z: hit.z });
     const _brokenState = this.world.getBlock(hit.x, hit.y, hit.z);
     this.world.setBlock(hit.x, hit.y, hit.z, 0);
@@ -2837,7 +2879,7 @@ export class GameEngine {
         addItem(this.inventory, dropItem);
       }
       playPopSound(pos);
-      this.particles?.spawnBlockBreak(pos.x, pos.y, pos.z, dropItem.id);
+      this.particles?.spawnBlockBreak(pos.x, pos.y, pos.z, dropItem.id, dropItem.meta || 0);
       this.onBlockChange?.(pos.x, pos.y, pos.z, 0);
       this.netManager?.sendBlockChange?.(pos.x, pos.y, pos.z, 0);
     });
@@ -3473,6 +3515,7 @@ export class GameEngine {
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
     window.removeEventListener('blur', this._onBlur);
+    this._resizeObs?.disconnect();
     window.removeEventListener('mousedown', this._onMouseDown);
     window.removeEventListener('mouseup', this._onMouseUp);
     window.removeEventListener('mousemove', this._onMouseMove);

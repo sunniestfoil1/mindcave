@@ -10,6 +10,7 @@ let _entries = null;
 let _buf = null;
 let _promise = null;
 let _ready = false;
+let _downloading = false;   // true só enquanto há download de verdade (leitura do cache local não conta)
 const _listeners = new Set();
 const _canvasCache = new Map();
 const _urlCache = new Map();
@@ -41,6 +42,7 @@ async function fetchBufferWithProgress(url, onProgress) {
   } catch { /* sem Cache API */ }
 
   try {
+    _downloading = true;
     onProgress?.({ percent: 0, loaded: 0, total: 100, status: 'Conectando ao Supabase Storage...' });
     const res = await fetch(url);
     if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
@@ -89,9 +91,11 @@ async function fetchBufferWithProgress(url, onProgress) {
       await cache.put(url, new Response(arrayBuf.slice(0)));
     } catch {}
 
+    _downloading = false;
     onProgress?.({ percent: 100, loaded: totalBytes, total: totalBytes, status: 'Extraindo texturas e modelos...' });
     return arrayBuf;
   } catch (e) {
+    _downloading = false;
     console.warn(`[Pack] Falha ao baixar ${url}: ${e.message}. Tentando próximo fallback...`);
     if (url === PACK_URL) {
       return fetchBufferWithProgress(FALLBACK_PACK_URL, onProgress);
@@ -198,6 +202,7 @@ export function ensurePack(onProgress, timeoutMs = 25000) {
 }
 
 export function isPackReady() { return _ready; }
+export function isPackDownloading() { return _downloading; }
 export function onPackReady(cb) {
   if (_ready) { cb(); return () => {}; }
   _listeners.add(cb);

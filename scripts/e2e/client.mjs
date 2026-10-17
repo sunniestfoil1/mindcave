@@ -124,7 +124,7 @@ const res = await page.evaluate(async () => {
 
   // Particles: quantidade
   clientStore.set('particles', 'amount', 100);
-  const live = () => engine.particles.particles.filter((p) => p.active).length;
+  const live = () => engine.particles.liveCount();
   const before = live();
   engine.particles.spawnBlockBreak(8, B0 + 1, 8, 1);
   const full = live() - before;

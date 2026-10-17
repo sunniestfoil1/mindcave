@@ -29,6 +29,7 @@ function PauseMenuContent({ hud, onPause }) {
   const { guiHeight, scale } = useGui();
   const k = Math.floor(guiHeight / 4) - 16;
   const voice = hud.voiceChat;
+  const vy = hud.onClientMenu ? 24 : 0;   // o botão Mind Client (só no celular) ocupa a linha de baixo; o chat de voz desce
   const [voiceError, setVoiceError] = useState('');
 
   const toggleVoice = async () => {
@@ -61,24 +62,25 @@ function PauseMenuContent({ hud, onPause }) {
       <GuiButton x={-100} y={k + 72} width={98} label="Opções..." onClick={hud.onOptions} />
       {hud.onOpenToLAN && <GuiButton x={2} y={k + 72} width={98} label="Abrir para LAN" onClick={hud.onOpenToLAN} />}
       <GuiButton x={-100} y={k + 96} width={200} label="Salvar e sair para o título" onClick={hud.onExit} />
+      {hud.onClientMenu && <GuiButton x={-100} y={k + 120} width={200} label="Mind Client" onClick={hud.onClientMenu} />}
       {voice && (
         <>
           <GuiButton
             x={-100}
-            y={k + 124}
+            y={k + 124 + vy}
             width={200}
             label={voice.active ? 'Desativar Chat de Voz por Aproximação' : 'Ativar Chat de Voz por Aproximação'}
             onClick={toggleVoice}
           />
           <GuiButton
             x={-124}
-            y={k + 124}
+            y={k + 124 + vy}
             width={20}
             title={voice.active ? (voice.muted ? 'Microfone mutado: clique para ligar' : 'Microfone ligado: clique para mutar') : 'Ativar o chat de voz'}
             icon={<MicImg muted={!voice.active || voice.muted} size={12 * scale} />}
             onClick={iconClick}
           />
-          <div style={{ position: 'absolute', left: 0, right: 0, top: (k + 148) * scale, display: 'flex', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, top: (k + 148 + vy) * scale, display: 'flex', justifyContent: 'center' }}>
             <GuiText
               text={voiceError || (voice.active ? tierText : 'O alcance da voz depende do seu tom: sussurro, fala normal e voz alta')}
               color={voiceError ? '#FF5555' : '#A0A0A0'}
@@ -256,9 +258,9 @@ export default function GameHud({ hud, onPause }) {
         </div>
       )}
 
-      {!hud.realTextures && (
+      {hud.loadingNote && (
         <div style={{ position: 'absolute', top: 4 * S, left: '50%', transform: 'translateX(-50%)' }}>
-          <McText text="Carregando texturas..." x={0} y={0} S={S} color="#FFFF55" shadow align="center" />
+          <McText text={hud.loadingNote} x={0} y={0} S={S} color="#FFFF55" shadow align="center" />
         </div>
       )}
 

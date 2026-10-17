@@ -1,4 +1,4 @@
-// Celular: tela emulada com toque. Confere paisagem sem aviso, zoom travado, joystick, câmera (e a sensibilidade configurável), toque rápido
+// Celular: tela emulada com toque. Confere paisagem sem aviso, zoom travado, joystick, câmera (0,5°/px a 100% e a sensibilidade configurável), toque rápido
 // x segurar, hotbar, Pular/Agachar/Inv/Pausa e a tela em pé girada por CSS (com o joystick funcionando girado). Salva prints em scripts/e2e/out.
 import { pathToFileURL } from 'url';
 import fs from 'fs';
@@ -30,7 +30,7 @@ async function open(viewport, worldId) {
     worldId = await page.evaluate(async () => { const { createWorld } = await import('/src/game/save.js'); return (await createWorld({ name: 'Toque', seed: '123', gameMode: 'survival', mapType: 'open_world' })).id; });
   }
   await page.goto(`http://localhost:${port}/play/${worldId}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.waitForFunction(() => window.__mindcave && window.__mindcave.engine && !/\d%/.test(document.body.innerText), { timeout: 240000, polling: 500 });
+  await page.waitForFunction(() => window.__mindcave && window.__mindcave.engine && !document.querySelector('[data-loading-screen]'), { timeout: 240000, polling: 500 });
   await sleep(2500);
   await page.evaluate(async () => { window.__ms = (await import('/src/game/settingsStore.js')).settingsStore; });
   return { page, worldId };
@@ -91,15 +91,15 @@ const btnRect = (page, label) => page.evaluate((l) => { const e = [...document.q
   };
   let L = await look(100, 0);
   const deg = (r) => (r * 180) / Math.PI;
-  ok(Math.abs(deg(L.yaw) - 25) < 1.5, `arrastar 100 px na horizontal gira ${deg(L.yaw).toFixed(1)}° (esperado 25° a 100%)`);
+  ok(Math.abs(deg(L.yaw) - 50) < 2, `arrastar 100 px na horizontal gira ${deg(L.yaw).toFixed(1)}° (esperado 50° a 100%)`);
   L = await look(0, 80);
-  ok(Math.abs(deg(L.pitch) - 20) < 1.5, `arrastar 80 px na vertical inclina ${deg(L.pitch).toFixed(1)}° (esperado 20°)`);
+  ok(Math.abs(deg(L.pitch) - 40) < 2, `arrastar 80 px na vertical inclina ${deg(L.pitch).toFixed(1)}° (esperado 40°)`);
   await page.evaluate(() => window.__ms.set('user.touchLookSensitivity', 200));
   L = await look(100, 0);
-  ok(Math.abs(deg(L.yaw) - 50) < 2.5, `sensibilidade 200%: ${deg(L.yaw).toFixed(1)}° (esperado 50°)`);
+  ok(Math.abs(deg(L.yaw) - 100) < 4, `sensibilidade 200%: ${deg(L.yaw).toFixed(1)}° (esperado 100°)`);
   await page.evaluate(() => window.__ms.set('user.touchLookSensitivity', 10));
   L = await look(100, 0);
-  ok(Math.abs(deg(L.yaw) - 2.5) < 0.4, `sensibilidade 10%: ${deg(L.yaw).toFixed(2)}° (esperado 2,5°)`);
+  ok(Math.abs(deg(L.yaw) - 5) < 0.6, `sensibilidade 10%: ${deg(L.yaw).toFixed(2)}° (esperado 5°)`);
   await page.evaluate(() => window.__ms.set('user.touchLookSensitivity', 100));
 
   // toque rápido x segurar (espia o botão do mouse virtual)
@@ -139,20 +139,25 @@ const btnRect = (page, label) => page.evaluate((l) => { const e = [...document.q
   const up = await eng(page, (e) => !!e.keys.Space);
   ok(down && !up, 'Pular: Espaço apertado enquanto o dedo está no botão e solto ao levantar');
 
-  // agachar alterna
+  // agachar: alterna e MOSTRA o estado (aceso = agachado); depois do toque o botão não fica aceso à toa (no iOS o "hover" grudava)
+  const lit = () => page.evaluate(() => { const b = [...document.querySelectorAll('[data-touch-controls] [role="button"]')].find((x) => x.getAttribute('aria-label') === 'Agachar'); return b ? b.firstElementChild.style.backgroundPosition : null; });
+  const dark0 = await lit();
   const sn = await btnRect(page, 'Agachar');
   await (await page.touchscreen.touchStart(sn.cx, sn.cy)).end(); await sleep(150);
   const a1 = await eng(page, (e) => !!e.keys.ShiftLeft);
+  const lit1 = await lit();
   const sn2 = await btnRect(page, 'Agachar');
   await (await page.touchscreen.touchStart(sn2.cx, sn2.cy)).end(); await sleep(150);
   const a2 = await eng(page, (e) => !!e.keys.ShiftLeft);
+  const lit2 = await lit();
   ok(a1 && !a2, 'Agachar liga no primeiro toque e desliga no segundo');
+  ok(dark0 === lit2 && lit1 !== dark0, `Agachar fica aceso só enquanto agachado (apagado "${dark0}" → aceso "${lit1}" → apagado "${lit2}")`);
 
   // inventário pelo botão: abre a tela e os controles somem
-  const inv = await btnRect(page, 'Inv');
+  const inv = await btnRect(page, 'Inventário');
   await (await page.touchscreen.touchStart(inv.cx, inv.cy)).end(); await sleep(700);
   const invOpen = await page.evaluate(() => ({ controls: !!document.querySelector('[data-touch-controls]'), txt: /Fabricação|Inventário|Crafting/i.test(document.body.innerText) || !!document.querySelector('[data-inventory], [data-container]') }));
-  ok(!invOpen.controls, 'botão Inv abre o inventário e os controles de toque saem da frente');
+  ok(!invOpen.controls, 'botão Inventário (baú) abre o inventário e os controles de toque saem da frente');
   await page.screenshot({ path: path.join(root, 'scripts', 'e2e', 'out', 'toque-inventario.png') });
   await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE' }))); await sleep(500);
   // pausa e retomada por toque
@@ -162,10 +167,41 @@ const btnRect = (page, label) => page.evaluate((l) => { const e = [...document.q
     await (await page.touchscreen.touchStart(pz.cx, pz.cy)).end(); await sleep(600);
     ok(await eng(page, (e) => e.paused) === true, 'botão Pausa pausa o jogo');
     await page.screenshot({ path: path.join(root, 'scripts', 'e2e', 'out', 'toque-pausa.png') });
+    // celular não tem Shift direito: o menu de pausa abre o Mind Client
+    const mcBtn = await page.evaluate(() => { const b = [...document.querySelectorAll('[role="button"]')].find((x) => x.getAttribute('aria-label') === 'Mind Client'); if (!b) return null; const r = b.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; });
+    ok(!!mcBtn, 'menu de pausa no celular tem o botão Mind Client');
+    if (mcBtn) {
+      await (await page.touchscreen.touchStart(mcBtn.cx, mcBtn.cy)).end(); await sleep(600);
+      ok(await page.evaluate(() => !!document.querySelector('[data-client-menu]')), 'tocar em Mind Client abre o menu do cliente');
+      await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))); await sleep(500);
+      await eng(page, (e) => e.touchPause()); await sleep(500);
+    }
     const back = await page.evaluate(() => { const b = [...document.querySelectorAll('[role="button"]')].find((x) => /Voltar ao jogo/.test(x.getAttribute('aria-label') || '')); if (!b) return null; const r = b.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; });
     if (back) { await (await page.touchscreen.touchStart(back.cx, back.cy)).end(); await sleep(600); }
     ok(back && await eng(page, (e) => e.paused) === false, 'Voltar ao jogo (por toque) retoma sem precisar de trava de ponteiro');
   }
+  // teclado virtual: com o campo do chat em foco a janela encolhe, mas a GUI não (senão todos os botões ficam pequenos)
+  const chatBtn = await btnRect(page, 'Chat');
+  await (await page.touchscreen.touchStart(chatBtn.cx, chatBtn.cy)).end(); await sleep(700);
+  const typing = await page.evaluate(() => document.activeElement && document.activeElement.tagName);
+  const vs = () => page.evaluate(async () => (await import('/src/game/touch.js')).viewSize());
+  const vBefore = await vs();
+  await page.setViewport({ width: 844, height: 200, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }); await sleep(400);
+  const vDuring = await vs();
+  await eng(page, (e) => e.closeChat()); await sleep(300);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur()); await sleep(200);
+  const vAfter = await vs();
+  await page.setViewport({ width: 844, height: 390, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }); await sleep(400);
+  ok(typing === 'INPUT' && vDuring.h === vBefore.h && vAfter.h === 200, `teclado aberto: a área da GUI fica em ${vDuring.h} px (antes ${vBefore.h}) e acompanha a janela só quando o teclado fecha (${vAfter.h})`);
+
+  // segurar o dedo no jogo não seleciona texto nem abre menu de contexto (iOS)
+  const sel = await page.evaluate(() => { const a = new Event('selectstart', { cancelable: true, bubbles: true }); document.body.dispatchEvent(a); const b = new Event('contextmenu', { cancelable: true, bubbles: true }); document.body.dispatchEvent(b); return [a.defaultPrevented, b.defaultPrevented, getComputedStyle(document.querySelector('[data-touch-stick]') || document.body).userSelect]; });
+  ok(sel[0] && sel[1] && sel[2] === 'none', `segurar o dedo não seleciona nem abre menu (selectstart bloqueado ${sel[0]}, contextmenu ${sel[1]}, user-select ${sel[2]})`);
+
+  // escalas: HUD em 2 (dedo); menus em passos de 0,25 até a tela ter 240 de altura de GUI (senão os textos se sobrepõem)
+  const sc = await page.evaluate(async () => { const m = await import('/src/game/gui/scale.js'); return { hud: m.getGuiScale(844, 330, 0), menu330: m.getMenuScale(844, 330, 0), menu390: m.getMenuScale(844, 390, 0) }; });
+  ok(sc.hud === 2 && sc.menu330 === 1.25 && sc.menu330 * 1 > 0 && 330 / sc.menu330 >= 240 && 390 / sc.menu390 >= 240, `escalas no celular: HUD ${sc.hud}; menu em 330 px de altura = ${sc.menu330} (GUI de ${Math.round(330 / sc.menu330)} px) e em 390 px = ${sc.menu390} (${Math.round(390 / sc.menu390)} px)`);
+
   await page.close();
 }
 
@@ -191,7 +227,7 @@ const btnRect = (page, label) => page.evaluate((l) => { const e = [...document.q
   for (let i = 1; i <= 10; i++) await tl.move(150, 300 + 10 * i);
   await tl.end(); await sleep(100);
   const y = await eng(page, (e) => e.player.yaw);
-  ok(Math.abs((y * 180) / Math.PI - 25) < 1.5, `câmera girada: 100 px "para a direita do jogo" = ${((y * 180) / Math.PI).toFixed(1)}° (esperado 25°)`);
+  ok(Math.abs((y * 180) / Math.PI - 50) < 2, `câmera girada: 100 px "para a direita do jogo" = ${((y * 180) / Math.PI).toFixed(1)}° (esperado 50°)`);
   await page.close();
 }
 

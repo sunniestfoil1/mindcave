@@ -57,6 +57,10 @@ function MainMenuContent({ user, onNickname, editingSkin }) {
   ) : null;
 
   const j = Math.floor(guiHeight / 4) + 16;
+  // Logo: em telas baixas (celular em paisagem) ele sobe e encolhe para não cobrir o primeiro botão (que começa em j)
+  const logoTop0 = editingSkin ? 8 : 20, logoH0 = editingSkin ? 56 : 70;
+  const logoTop = j - logoTop0 - 4 >= logoH0 ? logoTop0 : 6;
+  const logoH = Math.max(24, Math.min(logoH0, j - logoTop - 6));
 
   const handleOptimized = () => {
     settingsStore.applyOptimized();
@@ -69,7 +73,7 @@ function MainMenuContent({ user, onNickname, editingSkin }) {
     <>
       {/* Logo — na tela de editar skin encolhe 20% e sobe para dar espaço ao modal */}
       <div style={{
-        position: 'absolute', left: '50%', top: (editingSkin ? 8 : 20) * scale,
+        position: 'absolute', left: '50%', top: logoTop * scale,
         transform: 'translateX(-50%)',
         zIndex: 20,
         display: 'flex',
@@ -80,7 +84,7 @@ function MainMenuContent({ user, onNickname, editingSkin }) {
           src="/minecraft-text.png"
           alt="MIND CAVE"
           style={{
-            height: Math.round((editingSkin ? 56 : 70) * scale) + 'px',
+            height: Math.round(logoH * scale) + 'px',
             width: 'auto',
             maxHeight: '150px',
             maxWidth: '92vw',

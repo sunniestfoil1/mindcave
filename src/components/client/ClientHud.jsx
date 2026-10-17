@@ -139,14 +139,8 @@ function ArmorHud({ engine, S, editing }) {
 function PackOverlay({ S, editing }) {
   const packs = getSelectedPackIds();
   const activePackName = packs.length > 0 ? packs[0].replace('.zip', '') : 'Padrão 1.8.9';
-  const posName = clientStore.get('packoverlay', 'position') || 'top-right';
-  const base = posName === 'top-left'
-    ? { left: 4 * S, top: (clientStore.isOn('direction') ? 28 : (clientStore.isOn('coordinates') ? 16 : 4)) * S }
-    : posName === 'bottom-left'
-      ? { left: 4 * S, bottom: 44 * S }
-      : { right: 4 * S, top: ((clientStore.isOn('memory') ? 12 : 0) + (clientStore.isOn('ping') ? 12 : 0) + 4) * S };
   const w = useWidget('packoverlay', editing, {
-    position: 'absolute', ...base, display: 'flex', alignItems: 'center', gap: 3 * S,
+    position: 'absolute', left: 4 * S, top: 4 * S, display: 'flex', alignItems: 'center', gap: 3 * S,
     background: 'rgba(0, 0, 0, 0.45)', border: `${Math.max(1, S / 2)}px solid rgba(255, 255, 255, 0.25)`,
     padding: `${2 * S}px ${4 * S}px`, boxSizing: 'border-box',
   }, 'Pack Overlay');
@@ -164,11 +158,11 @@ export default function ClientHud({ hud, engine }) {
   if (clientStore.isOn('coordinates')) {
     const d = clientStore.get('coordinates', 'decimals');
     const f = (n) => Number(n).toFixed(d);
-    txt('coordinates', 'Coordinates', `XYZ: ${f(hud.px)} / ${f(hud.py)} / ${f(hud.pz)}`, { left: 4 * S, top: 4 * S });
+    txt('coordinates', 'Coordinates', `XYZ: ${f(hud.px)} / ${f(hud.py)} / ${f(hud.pz)}`, { left: 4 * S, top: (clientStore.isOn('packoverlay') ? 20 : 4) * S });
   }
   if (clientStore.isOn('direction')) {
     const yaw = ((Number(hud.yaw) % 360) + 360) % 360;
-    txt('direction', 'Direction Hud', `Direção: ${FACING[Math.round(yaw / 45) % 8]} (${yaw.toFixed(0)}°)`, { left: 4 * S, top: (clientStore.isOn('coordinates') ? 16 : 4) * S });
+    txt('direction', 'Direction Hud', `Direção: ${FACING[Math.round(yaw / 45) % 8]} (${yaw.toFixed(0)}°)`, { left: 4 * S, top: ((clientStore.isOn('packoverlay') ? 20 : 4) + (clientStore.isOn('coordinates') ? 12 : 0)) * S });
   }
   if (clientStore.isOn('cps')) txt('cps', 'CPS', `${hud.cps} CPS`, { left: 5 * S, top: '40%' });
   if (clientStore.isOn('memory')) {

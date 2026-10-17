@@ -1,15 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import GuiButton from '@/components/java/GuiButton';
-import { GuiProvider, useGui } from '@/components/java/GuiContext';
-import { Sprite } from '@/components/game/GuiSprite';
+import GuiContext, { useGui } from '@/components/java/GuiContext';
+import { Sprite, useGuiScaleValue } from '@/components/game/GuiSprite';
+import ItemSlot from '@/components/game/ItemSlot';
 import { getWidgetsTexture } from '@/game/gui/textures';
 import { settingsStore } from '@/game/settingsStore';
-import { gameXY, gameDelta, swallowNextClick } from '@/game/touch';
+import { gameXY, gameDelta, swallowNextClick, viewSize } from '@/game/touch';
 
 // Controles de toque (celular) sobre o HUD de sempre. Tudo em pixels de GUI, com os botões do jogo (GuiButton, widgets.png):
 //  · joystick à esquerda (andar; empurrar até o fim para a frente = correr)    · arrastar o dedo no resto da tela = olhar
 //  · toque rápido = usar/colocar (ou bater, se há mob na mira); segurar = quebrar/bater (comida e arco: segurar = usar)
-//  · tocar num slot da hotbar seleciona    · Pular / Agachar à direita    · Inv ao lado da hotbar    · Pausa e Chat no alto
+//  · tocar num slot da hotbar seleciona    · Pular (grande), Agachar (botas) e Inventário (baú) no canto direito    · Chat (livro e pena) e Pausa no alto à direita
 // A entrada vai para o motor pelas rotas do teclado e do mouse (engine.touch*), com as teclas que o jogador configurou.
 const R = 30;          // raio da base do joystick (px de GUI)
 const HOLD_MS = 250;   // dedo parado por este tempo vira "segurar"
@@ -110,7 +111,7 @@ function Controls({ engine }) {
 
       {/* joystick */}
       <div ref={base} data-touch-stick style={{
-        position: 'absolute', left: 10 * S, top: (H - 10 - 2 * R) * S, width: 2 * R * S, height: 2 * R * S, borderRadius: '50%', touchAction: 'none',
+        position: 'absolute', left: 18 * S, top: (H - 18 - 2 * R) * S, width: 2 * R * S, height: 2 * R * S, borderRadius: '50%', touchAction: 'none',
         background: 'rgba(0,0,0,0.35)', border: `${S}px solid rgba(255,255,255,0.45)`, boxSizing: 'border-box',
       }} onPointerDown={stickStart} onPointerMove={stickMove} onPointerUp={stickEnd} onPointerCancel={stickEnd}>
         <div ref={thumb} style={{ position: 'absolute', left: '50%', top: '50%', marginLeft: -12 * S, marginTop: -12 * S, pointerEvents: 'none' }}>
@@ -118,21 +119,43 @@ function Controls({ engine }) {
         </div>
       </div>
 
-      {/* botões do jogo */}
+      {/* botões do jogo (margem de 16 px de GUI das bordas: a barra do navegador/indicador do iPhone come os cantos) */}
       <div className="absolute inset-0" style={{ pointerEvents: 'none' }}>
-        <GuiButton x={bx(W - 62)} y={H - 46} width={52} label="Pular" {...hold('jump')} />
-        <GuiButton x={bx(W - 62)} y={H - 22} width={52} label={sneak ? '§aAgachar' : 'Agachar'} {...tap(toggleSneak)} />
-        <GuiButton x={bx(W / 2 + 94)} y={H - 22} width={30} label="Inv" {...tap(() => engine.touchKey('inventory', true))} />
-        <GuiButton x={bx(W - 56)} y={4} width={52} label="Pausa" {...tap(() => engine.touchPause())} />
-        <GuiButton x={bx(W - 110)} y={4} width={52} label="Chat" {...tap(() => engine.touchKey('chat', true))} />
+        {/* Pular: grande, no canto onde o polegar direito repousa (o botão do jogo ampliado 1,4×, mantendo os pixels da textura) */}
+        <div className="absolute inset-0" style={{ pointerEvents: 'none', transformOrigin: `${(W - 16) * S}px ${(H - 16) * S}px`, transform: 'scale(1.4)' }}>
+          <GuiButton x={bx(W - 16 - 52)} y={H - 16 - 20} width={52} label="Pular" {...hold('jump')} />
+        </div>
+        {/* acima do Pular: Agachar (botas, fica aceso enquanto agachado) e Inventário (baú). Ícones do jogo em vez de texto. */}
+        <GuiButton x={bx(W - 16 - 24)} y={H - 70} width={24} title="Inventário" {...tap(() => engine.touchKey('inventory', true))}
+          icon={<ItemSlot item={{ id: 54, count: 1 }} size={16 * S} transparent guiScale={S} />} />
+        <GuiButton x={bx(W - 16 - 24 - 4 - 24)} y={H - 70} width={24} title="Agachar" active={sneak} {...tap(toggleSneak)}
+          icon={<ItemSlot item={{ id: 301, count: 1 }} size={16 * S} transparent guiScale={S} />} />
+        {/* canto superior direito: Chat (livro e pena) e Pausa (o ícone de pausa do rádio) */}
+        <GuiButton x={bx(W - 28 - 4 - 24)} y={8} width={24} title="Chat" {...tap(() => engine.touchKey('chat', true))}
+          icon={<ItemSlot item={{ id: 386, count: 1 }} size={16 * S} transparent guiScale={S} />} />
+        <GuiButton x={bx(W - 28)} y={8} width={20} title="Pausa" {...tap(() => engine.touchPause())}
+          icon={(
+            <div style={{ display: 'flex', gap: 2 * S }}>
+              {[0, 1].map((i) => <div key={i} style={{ width: 2 * S, height: 6 * S, background: '#E0E0E0', boxShadow: `${S}px ${S}px 0 #3F3F3F` }} />)}
+            </div>
+          )} />
       </div>
     </div>
   );
 }
 
 export default function TouchControls({ engine, hud }) {
+  // Os controles seguem a escala do HUD (a mesma da hotbar que eles cobrem), não a dos menus: GuiButton lê a escala do contexto
+  const S = useGuiScaleValue();
+  const [dims, setDims] = useState(viewSize);
+  useEffect(() => {
+    const on = () => setDims(viewSize());
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
   if (!engine || !hud) return null;
   const active = !(hud.hasGuiOpen || hud.paused || hud.chatOpen || hud.isDead || hud.sleeping || hud.hideHud);
   if (!active) return null;
-  return <GuiProvider><Controls engine={engine} /></GuiProvider>;
+  const ctx = { scale: S, guiWidth: Math.floor(dims.w / S), guiHeight: Math.floor(dims.h / S), screenWidth: dims.w, screenHeight: dims.h };
+  return <GuiContext.Provider value={ctx}><Controls engine={engine} /></GuiContext.Provider>;
 }

@@ -193,6 +193,10 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
           setInput(engine.chatPrefill || '');
           engine.chatPrefill = '';
         }
+      } else if (engine.chatOpen && engine.chatPrefill) {
+        // atalho "/" apertado com o chat ainda aberto para o React (o ciclo de fechar e abrir coube entre duas leituras): aplica a barra mesmo assim
+        setInput(engine.chatPrefill);
+        engine.chatPrefill = '';
       }
     }, 50);
     return () => clearInterval(interval);

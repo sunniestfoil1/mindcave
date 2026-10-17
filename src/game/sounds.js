@@ -527,6 +527,28 @@ function pickEventSound(table, entry, depth = 0) {
   return { file: chosen.name, volume: chosen.volume ?? 1, pitch: chosen.pitch };
 }
 
+// Baixa e decodifica antes de precisar (sem tocar) os sons de uso imediato: o primeiro bloco quebrado/colocado e os primeiros passos
+// não esperam fetch + decode. Roda em lotes pequenos, quando o navegador está ocioso.
+export async function prewarmEvents(events) {
+  const table = await loadEvents();
+  const files = new Set();
+  const collect = (entry, depth = 0) => {
+    if (!entry || !entry.sounds || depth > 4) return;
+    for (const s of entry.sounds) {
+      const it = typeof s === 'string' ? { name: s } : s;
+      if (it.type === 'event') collect(table[it.name], depth + 1);
+      else files.add(`${it.name}.ogg`);
+    }
+  };
+  for (const ev of events) collect(table[ev]);
+  const idle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 50));
+  const list = [...files];
+  for (let i = 0; i < list.length; i += 3) {
+    await new Promise((r) => idle(r));
+    await Promise.all(list.slice(i, i + 3).map((f) => loadSoundBuffer(f)));
+  }
+}
+
 export async function playEvent(event, opts = {}) {
   const table = await loadEvents();
   const entry = table[event];

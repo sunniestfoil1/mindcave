@@ -1,208 +1,218 @@
-// Sistema de partículas — estilo 1.8.9 (blocos quebrados, respingos)
-// Partículas são pequenos cubos coloridos com física (gravidade, colisão, drag).
-import { clientStore } from './client/clientStore';
+// Sistema de partículas — estilo 1.8.9 (blocos quebrados, respingos, fumaça, /particle).
+// Cada partícula é um quadrado que olha para a câmera. Na quebra de bloco ele mostra um recorte de 4×4 pixels da textura do próprio bloco
+// (como o EntityDiggingFX do original); as demais são cor lisa.
+//
+// Desempenho: estado em arrays tipados (sem objeto por partícula), um único desenho instanciado e nenhuma conta de matriz na CPU. A cada quadro só
+// as partículas vivas são copiadas para o buffer da GPU, e só esse trecho sobe. Capacidade de 8192: 300 blocos quebrados no mesmo segundo
+// (~3600 partículas) cabem sem descartar nenhuma.
 import * as THREE from 'three';
-import { getBlock } from './blocks';
+import { clientStore } from './client/clientStore';
+import { getBlock, tileForFace, blockTint, isFluid } from './blocks';
 import { stateId } from './chunk';
-import { isFluid } from './blocks';
 
-const MAX_PARTICLES = 600;
-const PARTICLE_SIZE = 0.1;
-const GRAVITY = 0.04; // blocks/tick² — 1.8.9 usa ~0.04 para partículas
+const CAP = 8192;
+const GRAVITY = 0.04;       // blocos/tick²
+const STRIDE = 12;          // floats por instância: [x y z tamanho] [u v textura luzBloco] [r g b luzCéu]
+const PATCH = 4;            // recorte de 4×4 px da textura do bloco
+const TEX_BRIGHTNESS = 0.6; // EntityDiggingFX: particleRed = Green = Blue = 0.6
 
-// Cor representativa de cada bloco (derivada do center pixel das texturas procedurais)
-const BLOCK_COLORS = {
-  1: [127, 127, 127], 2: [134, 96, 67], 3: [134, 96, 67], 4: [110, 110, 110],
-  7: [85, 85, 85], 8: [50, 90, 200], 9: [50, 90, 200], 10: [220, 100, 20],
-  11: [220, 100, 20], 12: [219, 207, 163], 13: [120, 116, 112], 14: [170, 150, 130],
-  15: [170, 150, 130], 16: [100, 100, 100], 17: [150, 115, 60], 18: [60, 130, 45],
-  20: [205, 230, 235], 21: [40, 60, 180], 22: [40, 60, 180], 24: [219, 207, 163],
-  41: [220, 180, 40], 42: [220, 220, 220], 45: [150, 70, 55], 47: [160, 130, 75],
-  48: [90, 105, 80], 49: [30, 20, 40], 56: [120, 180, 180], 57: [100, 230, 230],
-  58: [160, 130, 75], 61: [127, 127, 127], 62: [127, 127, 127], 73: [160, 80, 80],
-  78: [245, 250, 255], 79: [170, 200, 230], 80: [245, 250, 255], 82: [160, 165, 170],
-  87: [120, 50, 50], 88: [100, 75, 60], 89: [200, 160, 50], 95: [205, 230, 235],
-  97: [120, 50, 50], 98: [120, 120, 120], 110: [110, 95, 105], 112: [60, 30, 30],
-  121: [220, 215, 165], 129: [60, 180, 70], 133: [40, 200, 80], 152: [200, 30, 30],
-  155: [235, 232, 225], 159: [160, 115, 90], 168: [80, 140, 130], 169: [180, 230, 220],
-  170: [200, 180, 50], 173: [30, 30, 30], 174: [120, 50, 50], 175: [80, 120, 50],
-};
-const DEFAULT_COLOR = [127, 127, 127];
+// A partícula de alguns blocos usa a textura de outro (no 1.8.9 a grama solta pedaços de terra)
+const PARTICLE_TILE = { 2: 'dirt', 110: 'dirt', 60: 'dirt', 78: 'snow' };
 
-// Paletas ricas por bloco: extrai múltiplos tons da textura oficial (ex: grama tem verde vibrante e terra marrom)
-const BLOCK_PALETTES = {
-  // Grama (bloco 2): pixels do topo verde e laterais de terra
-  2: [
-    [118, 178, 62], [102, 162, 48], [88, 148, 38], // verde da grama
-    [134, 96, 67], [120, 85, 58], [148, 108, 78],  // terra da raiz
-  ],
-  // Terra (bloco 3)
-  3: [[134, 96, 67], [120, 85, 58], [148, 108, 78]],
-  // Pedra (bloco 1)
-  1: [[125, 125, 125], [112, 112, 112], [138, 138, 138]],
-  // Pedregulho (bloco 4)
-  4: [[110, 110, 110], [95, 95, 95], [125, 125, 125], [82, 82, 82]],
-  // Tábuas de madeira (5, 53, 126, 85, 107)
-  5: [[162, 130, 78], [178, 145, 90], [145, 115, 65]],
-  // Tronco (17, 162)
-  17: [[105, 80, 50], [120, 95, 60], [165, 135, 85]],
-  // Folhas (18, 161)
-  18: [[65, 140, 48], [75, 155, 55], [55, 125, 40]],
-  // Areia (12, 24)
-  12: [[219, 207, 163], [205, 195, 150], [230, 220, 175]],
-  // Cascalho (13)
-  13: [[125, 120, 120], [140, 135, 135], [110, 105, 105]],
-  // Carvão minério (16)
-  16: [[120, 120, 120], [45, 45, 45], [30, 30, 30]],
-  // Ferro minério (15)
-  15: [[120, 120, 120], [190, 160, 140], [175, 145, 125]],
-  // Ouro minério (14)
-  14: [[120, 120, 120], [240, 210, 60], [220, 190, 45]],
-  // Diamante minério (56)
-  56: [[120, 120, 120], [90, 220, 220], [65, 195, 195]],
-  // Redstone minério (73)
-  73: [[120, 120, 120], [230, 35, 35], [195, 20, 20]],
-  // Bancada (58)
-  58: [[162, 130, 78], [140, 105, 60], [180, 145, 90]],
-  // Fornalha (61, 62)
-  61: [[125, 125, 125], [105, 105, 105], [85, 85, 85]],
-  // Baú (54)
-  54: [[160, 115, 45], [180, 130, 55], [135, 95, 35]],
-  // Vidro (20)
-  20: [[205, 230, 235], [225, 245, 250], [185, 215, 225]],
-  // Neve / Gelo (78, 79, 80)
-  78: [[245, 250, 255], [230, 240, 250]],
-  79: [[155, 195, 245], [180, 215, 255]],
-  // Obsidiana (49)
-  49: [[30, 22, 42], [22, 15, 32], [42, 30, 58]],
-  // Tijolos (45)
-  45: [[155, 75, 60], [140, 65, 50], [170, 85, 70]],
-};
-
-function getBlockParticleColor(blockId) {
-  const pal = BLOCK_PALETTES[blockId];
-  if (pal && pal.length > 0) {
-    return pal[Math.floor(Math.random() * pal.length)];
-  }
-  const simple = BLOCK_COLORS[blockId];
-  if (simple) return simple;
-  const blk = getBlock(blockId);
-  if (blk?.color) {
-    const c = blk.color;
-    return [(c >> 16) & 255, (c >> 8) & 255, c & 255];
-  }
-  return DEFAULT_COLOR;
+const VERT = `
+attribute vec4 aPos;    // xyz + tamanho
+attribute vec4 aUv;     // u, v do recorte (canto superior esquerdo), 1 = textura / 0 = cor lisa, luz de bloco
+attribute vec4 aTint;   // rgb + luz do céu
+uniform vec2 uPatch;
+varying vec2 vUv;
+varying vec4 vTint;
+varying vec2 vMode;     // textura?, luz de bloco
+void main() {
+  vec4 mv = viewMatrix * vec4(aPos.xyz, 1.0);
+  mv.xy += position.xy * aPos.w;
+  gl_Position = projectionMatrix * mv;
+  vUv = vec2(aUv.x + (position.x + 0.5) * uPatch.x, aUv.y + (0.5 - position.y) * uPatch.y);
+  vTint = aTint;
+  vMode = aUv.zw;
 }
+`;
+const FRAG = `
+precision highp float;
+uniform sampler2D map;
+uniform float uSunBright;
+uniform float uFullbright;
+varying vec2 vUv;
+varying vec4 vTint;
+varying vec2 vMode;
+float lvl(float l) { float f = 1.0 - l; return (1.0 - f) / (f * 3.0 + 1.0); }
+void main() {
+  vec3 col = vTint.rgb;
+  if (vMode.x > 0.5) {
+    vec4 tex = texture2D(map, vUv);
+    if (tex.a < 0.5) discard;
+    col *= tex.rgb;
+  }
+  float s = lvl(vTint.a) * uSunBright * 0.95 + 0.05;
+  float b = lvl(vMode.y) * 1.5;
+  float light = uFullbright > 0.5 ? 1.0 : clamp(max(s, b) * 0.96 + 0.03, 0.0, 1.0);
+  gl_FragColor = vec4(col * light, 1.0);
+}
+`;
 
 export class ParticleManager {
-  constructor(scene) {
+  constructor(scene, world) {
     this.scene = scene;
-    this.particles = [];
+    this.world = world;
+    // estado de simulação (por partícula)
+    this.px = new Float32Array(CAP); this.py = new Float32Array(CAP); this.pz = new Float32Array(CAP);
+    this.vx = new Float32Array(CAP); this.vy = new Float32Array(CAP); this.vz = new Float32Array(CAP);
+    this.life = new Uint8Array(CAP); this.maxLife = new Uint8Array(CAP);
+    this.alive = new Uint8Array(CAP); this.ground = new Uint8Array(CAP);
+    this.size = new Float32Array(CAP);
+    this.look = new Float32Array(CAP * 8);      // parte fixa da instância: u v textura luzBloco r g b luzCéu (+1 de folga)
+    this.cursor = 0;
+    this.count = 0;
 
-    const geo = new THREE.BoxGeometry(PARTICLE_SIZE, PARTICLE_SIZE, PARTICLE_SIZE);
+    this.buffer = new THREE.InstancedInterleavedBuffer(new Float32Array(CAP * STRIDE), STRIDE, 1);
+    this.buffer.setUsage(THREE.DynamicDrawUsage);
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0]), 3));
+    geo.setIndex([0, 1, 2, 0, 2, 3]);
+    geo.setAttribute('aPos', new THREE.InterleavedBufferAttribute(this.buffer, 4, 0));
+    geo.setAttribute('aUv', new THREE.InterleavedBufferAttribute(this.buffer, 4, 4));
+    geo.setAttribute('aTint', new THREE.InterleavedBufferAttribute(this.buffer, 4, 8));
+    geo.instanceCount = 0;
     this.geometry = geo;
-    this.material = new THREE.MeshBasicMaterial({ vertexColors: true });
-    this.instancedMesh = new THREE.InstancedMesh(geo, this.material, MAX_PARTICLES);
-    this.instancedMesh.count = 0;
-    this.instancedMesh.frustumCulled = false;
-    this.instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    scene.add(this.instancedMesh);
 
-    this._dummy = new THREE.Object3D();
-    this._color = new THREE.Color();
-    this._cursor = 0;
-
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-      this.particles.push({
-        active: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
-        r: 0, g: 0, b: 0, life: 0, maxLife: 0, onGround: false,
-      });
-    }
+    const atlas = world?.atlas;
+    this.patch = new THREE.Vector2(PATCH / 256, PATCH / (atlas?.canvas?.height || 256));
+    const u = world?.uniforms || {};
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        map: u.map || { value: atlas?.texture || null },
+        uSunBright: u.uSunBright || { value: 1 },
+        uFullbright: u.uFullbright || { value: 0 },
+        uPatch: { value: this.patch },
+      },
+      vertexShader: VERT, fragmentShader: FRAG, side: THREE.DoubleSide,
+    });
+    this.mesh = new THREE.Mesh(geo, this.material);
+    this.mesh.frustumCulled = false;
+    scene.add(this.mesh);
+    this._tiles = new Map();   // id:meta → { x0, y0, tint } do recorte; null = sem textura no atlas
   }
 
-  _getFreeParticle() {
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-      const idx = (this._cursor + i) % MAX_PARTICLES;
-      if (!this.particles[idx].active) {
-        this._cursor = (idx + 1) % MAX_PARTICLES;
-        return this.particles[idx];
+  liveCount() { let n = 0; for (let i = 0; i < CAP; i++) n += this.alive[i]; return n; }
+
+  _slot() {
+    const i = this.cursor;
+    this.cursor = (i + 1) % CAP;   // cheio: sobrescreve a mais antiga, como o limite de partículas do original
+    return i;
+  }
+
+  _init(i, x, y, z, vx, vy, vz, size, maxLife) {
+    this.alive[i] = 1; this.ground[i] = 0; this.life[i] = 0; this.maxLife[i] = maxLife;
+    this.px[i] = x; this.py[i] = y; this.pz[i] = z;
+    this.vx[i] = vx; this.vy[i] = vy; this.vz[i] = vz;
+    this.size[i] = size;
+  }
+
+  _look(i, u, v, tex, block, r, g, b, sky) {
+    const k = i * 8;
+    const L = this.look;
+    L[k] = u; L[k + 1] = v; L[k + 2] = tex; L[k + 3] = block; L[k + 4] = r; L[k + 5] = g; L[k + 6] = b; L[k + 7] = sky;
+  }
+
+  // luz (0..1) de uma posição: a maior entre a célula e as vizinhas abertas (o bloco quebrado em si já é opaco para a luz)
+  _light(x, y, z) {
+    const w = this.world;
+    if (!w?.getLight) return [1, 0];
+    const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
+    let sky = 0, blk = 0;
+    for (const [dx, dy, dz] of [[0, 0, 0], [0, 1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+      const l = w.getLight(bx + dx, by + dy, bz + dz);
+      if (l.sky > sky) sky = l.sky;
+      if (l.block > blk) blk = l.block;
+    }
+    return [sky / 15, blk / 15];
+  }
+
+  // pixel de origem do tile do bloco no atlas e tinta do bloco (folhas etc.); cacheado por bloco
+  _tileFor(id, meta) {
+    const key = id * 16 + meta;
+    if (this._tiles.has(key)) return this._tiles.get(key);
+    let res = null;
+    const atlas = this.world?.atlas;
+    const block = getBlock(id);
+    const name = PARTICLE_TILE[id] || tileForFace(block, 'side', meta);
+    const t = atlas?.tiles?.[name];
+    if (t && atlas.canvas) {
+      const tint = PARTICLE_TILE[id] ? null : blockTint(block, 'side', meta);
+      // u0/v1 são o canto superior esquerdo do tile (com ou sem a folga de meio texel do atlas): floor + epsilon dá o pixel inteiro
+      res = { x0: Math.floor(t.u0 * 256 + 1e-3), y0: Math.floor(t.v1 * atlas.canvas.height + 1e-3), tint };
+    }
+    this._tiles.set(key, res);
+    return res;
+  }
+
+  // Blocos quebrados — recortes 4×4 da textura do bloco, com luz do local
+  spawnBlockBreak(x, y, z, blockId, meta = 0) {
+    const n = Math.round((10 + Math.floor(Math.random() * 6)) * clientStore.particleScale()); // módulo Particles do Mind Client
+    if (n <= 0) return;
+    const tile = this._tileFor(blockId, meta & 15);
+    const [sky, blk] = this._light(x, y, z);
+    let cr = 0.5, cg = 0.5, cb = 0.5;
+    if (!tile) {   // bloco fora do atlas: cor do registro
+      const c = getBlock(blockId)?.color ?? 0x7f7f7f;
+      cr = ((c >> 16) & 255) / 255; cg = ((c >> 8) & 255) / 255; cb = (c & 255) / 255;
+    }
+    const H = this.world?.atlas?.canvas?.height || 256;
+    for (let k = 0; k < n; k++) {
+      const i = this._slot();
+      this._init(i, x + 0.15 + Math.random() * 0.7, y + 0.15 + Math.random() * 0.7, z + 0.15 + Math.random() * 0.7,
+        (Math.random() - 0.5) * 0.28, 0.14 + Math.random() * 0.22, (Math.random() - 0.5) * 0.28,
+        0.1 + Math.random() * 0.06, 24 + Math.floor(Math.random() * 16));
+      if (tile) {
+        const t = tile.tint, f = TEX_BRIGHTNESS;
+        this._look(i, (tile.x0 + Math.floor(Math.random() * 13)) / 256, (tile.y0 + Math.floor(Math.random() * 13)) / H, 1, blk,
+          f * (t ? t[0] : 1), f * (t ? t[1] : 1), f * (t ? t[2] : 1), sky);
+      } else {
+        const v = 1 + (Math.random() - 0.5) * 0.12;
+        this._look(i, 0, 0, 0, blk, cr * v, cg * v, cb * v, sky);
       }
     }
-    const p = this.particles[this._cursor];
-    this._cursor = (this._cursor + 1) % MAX_PARTICLES;
-    return p;
   }
 
-  // Blocos quebrados — cubos pequenos com amostragem real da textura do bloco (sem partículas pretas)
-  spawnBlockBreak(x, y, z, blockId) {
-    const count = Math.round((10 + Math.floor(Math.random() * 6)) * clientStore.particleScale()); // módulo Particles do Mind Client
-    for (let i = 0; i < count; i++) {
-      const color = getBlockParticleColor(blockId);
-      const p = this._getFreeParticle();
-      p.active = true;
-      p.x = x + 0.15 + Math.random() * 0.7;
-      p.y = y + 0.15 + Math.random() * 0.7;
-      p.z = z + 0.15 + Math.random() * 0.7;
-      p.vx = (Math.random() - 0.5) * 0.28;
-      p.vy = 0.14 + Math.random() * 0.22;
-      p.vz = (Math.random() - 0.5) * 0.28;
-      // Variação leve no tom dos pixels
-      const vary = (Math.random() - 0.5) * 16;
-      p.r = Math.max(10, Math.min(255, color[0] + vary));
-      p.g = Math.max(10, Math.min(255, color[1] + vary));
-      p.b = Math.max(10, Math.min(255, color[2] + vary));
-      p.life = 0;
-      p.maxLife = 24 + Math.floor(Math.random() * 16);
-      p.onGround = false;
-    }
-  }
+  _solid(i, r, g, b, sky, blk) { this._look(i, 0, 0, 0, blk, r, g, b, sky); }
 
-  // Respungos de água — partículas azul-claro ao entrar na água
+  // Respingos de água — partículas azul-claro ao entrar na água
   spawnSplash(x, y, z, intensity = 1) {
-    const count = Math.floor((8 + Math.floor(Math.random() * 8)) * intensity * clientStore.particleScale());
-    for (let i = 0; i < count; i++) {
-      const p = this._getFreeParticle();
-      p.active = true;
-      p.x = x + (Math.random() - 0.5) * 0.5;
-      p.y = y + 0.5 + Math.random() * 0.3;
-      p.z = z + (Math.random() - 0.5) * 0.5;
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 0.08 + Math.random() * 0.2;
-      p.vx = Math.cos(angle) * speed;
-      p.vy = 0.15 + Math.random() * 0.25;
-      p.vz = Math.sin(angle) * speed;
-      p.r = 100 + Math.floor(Math.random() * 40);
-      p.g = 150 + Math.floor(Math.random() * 40);
-      p.b = 220 + Math.floor(Math.random() * 35);
-      p.life = 0;
-      p.maxLife = 12 + Math.floor(Math.random() * 10);
-      p.onGround = false;
+    const n = Math.floor((8 + Math.floor(Math.random() * 8)) * intensity * clientStore.particleScale());
+    const [sky, blk] = this._light(x, y + 1, z);
+    for (let k = 0; k < n; k++) {
+      const i = this._slot();
+      const angle = Math.random() * Math.PI * 2, speed = 0.08 + Math.random() * 0.2;
+      this._init(i, x + (Math.random() - 0.5) * 0.5, y + 0.5 + Math.random() * 0.3, z + (Math.random() - 0.5) * 0.5,
+        Math.cos(angle) * speed, 0.15 + Math.random() * 0.25, Math.sin(angle) * speed, 0.1, 12 + Math.floor(Math.random() * 10));
+      this._solid(i, (100 + Math.random() * 40) / 255, (150 + Math.random() * 40) / 255, (220 + Math.random() * 35) / 255, sky, blk);
     }
   }
 
   // Efeito clássico de morte (nuvem branca de fumaça / poof da 1.8.9)
   spawnDeathPoof(x, y, z) {
-    const count = Math.round(16 * clientStore.particleScale());
-    for (let i = 0; i < count; i++) {
-      const p = this._getFreeParticle();
-      p.active = true;
-      p.x = x + (Math.random() - 0.5) * 0.6;
-      p.y = y + 0.2 + Math.random() * 0.6;
-      p.z = z + (Math.random() - 0.5) * 0.6;
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 0.04 + Math.random() * 0.08;
-      p.vx = Math.cos(angle) * speed;
-      p.vy = 0.06 + Math.random() * 0.1;
-      p.vz = Math.sin(angle) * speed;
-      const shade = 220 + Math.floor(Math.random() * 35);
-      p.r = shade; p.g = shade; p.b = shade;
-      p.life = 0;
-      p.maxLife = 18 + Math.floor(Math.random() * 12);
-      p.onGround = false;
+    const n = Math.round(16 * clientStore.particleScale());
+    const [sky, blk] = this._light(x, y + 0.5, z);
+    for (let k = 0; k < n; k++) {
+      const i = this._slot();
+      const angle = Math.random() * Math.PI * 2, speed = 0.04 + Math.random() * 0.08;
+      this._init(i, x + (Math.random() - 0.5) * 0.6, y + 0.2 + Math.random() * 0.6, z + (Math.random() - 0.5) * 0.6,
+        Math.cos(angle) * speed, 0.06 + Math.random() * 0.1, Math.sin(angle) * speed, 0.1, 18 + Math.floor(Math.random() * 12));
+      const s = (220 + Math.random() * 35) / 255;
+      this._solid(i, s, s, s, sky, blk);
     }
   }
 
-  // Partículas por nome (comando /particle) — cores representativas da 1.8.9
+  // Partículas por nome (comando /particle) — cores representativas da 1.8.9; brilham sozinhas
   spawnNamed(name, x, y, z, count = 10) {
     const COLORS = {
       flame: [255, 140, 40], smoke: [120, 120, 120], largesmoke: [90, 90, 90],
@@ -222,95 +232,67 @@ export class ParticleManager {
     const color = COLORS[key] || [200, 200, 200];
     const n = Math.max(1, Math.min(50, count | 0));
     const rise = RISE.has(key);
-    for (let i = 0; i < n; i++) {
-      const p = this._getFreeParticle();
-      p.active = true;
-      p.x = x + (Math.random() - 0.5) * 0.5;
-      p.y = y + (Math.random() - 0.5) * 0.5;
-      p.z = z + (Math.random() - 0.5) * 0.5;
-      p.vx = (Math.random() - 0.5) * 0.04;
-      p.vy = rise ? 0.02 + Math.random() * 0.03 : (Math.random() - 0.5) * 0.04;
-      p.vz = (Math.random() - 0.5) * 0.04;
-      const vary = (Math.random() - 0.5) * 20;
-      p.r = Math.max(10, Math.min(255, color[0] + vary));
-      p.g = Math.max(10, Math.min(255, color[1] + vary));
-      p.b = Math.max(10, Math.min(255, color[2] + vary));
-      p.life = 0;
-      p.maxLife = 12 + Math.floor(Math.random() * 14);
-      p.onGround = false;
+    for (let k = 0; k < n; k++) {
+      const i = this._slot();
+      this._init(i, x + (Math.random() - 0.5) * 0.5, y + (Math.random() - 0.5) * 0.5, z + (Math.random() - 0.5) * 0.5,
+        (Math.random() - 0.5) * 0.04, rise ? 0.02 + Math.random() * 0.03 : (Math.random() - 0.5) * 0.04, (Math.random() - 0.5) * 0.04,
+        0.1, 12 + Math.floor(Math.random() * 14));
+      const v = 1 + (Math.random() - 0.5) * 0.15;
+      this._solid(i, Math.min(1, color[0] / 255 * v), Math.min(1, color[1] / 255 * v), Math.min(1, color[2] / 255 * v), 1, 1);
     }
     return true;
   }
 
   tick(world) {
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-      const p = this.particles[i];
-      if (!p.active) continue;
-
-      // Física
-      if (!p.onGround) {
-        p.vy -= GRAVITY;
+    const { px, py, pz, vx, vy, vz, life, maxLife, alive, ground } = this;
+    for (let i = 0; i < CAP; i++) {
+      if (!alive[i]) continue;
+      if (ground[i] && vx[i] * vx[i] + vz[i] * vz[i] < 1e-6) {   // parada no chão: só envelhece
+        if (++life[i] >= maxLife[i]) alive[i] = 0;
+        continue;
       }
-      p.x += p.vx;
-      p.y += p.vy;
-      p.z += p.vz;
-
-      // Resistência do ar
-      p.vx *= 0.96;
-      p.vz *= 0.96;
-
-      // Colisão com blocos sólidos (chão)
-      if (world && p.vy <= 0 && p.y > 0 && p.y < 256) {
-        const bx = Math.floor(p.x);
-        const by = Math.floor(p.y - 0.06);
-        const bz = Math.floor(p.z);
-        const block = world.getBlock(bx, by, bz);
-        const bid = stateId(block);
+      if (!ground[i]) vy[i] -= GRAVITY;
+      px[i] += vx[i]; py[i] += vy[i]; pz[i] += vz[i];
+      vx[i] *= 0.96; vz[i] *= 0.96;
+      // colisão com o chão
+      if (world && vy[i] <= 0 && py[i] > 0 && py[i] < 256) {
+        const by = Math.floor(py[i] - 0.06);
+        const bid = stateId(world.getBlock(Math.floor(px[i]), by, Math.floor(pz[i])));
         if (bid !== 0 && !isFluid(bid)) {
-          p.y = by + 1;
-          p.vy = 0;
-          p.vx *= 0.5;
-          p.vz *= 0.5;
-          p.onGround = true;
-        } else {
-          p.onGround = false;
-        }
+          py[i] = by + 1; vy[i] = 0; vx[i] *= 0.5; vz[i] *= 0.5; ground[i] = 1;
+        } else ground[i] = 0;
       }
-
-      p.life++;
-      if (p.life >= p.maxLife) {
-        p.active = false;
-      }
+      if (++life[i] >= maxLife[i]) alive[i] = 0;
     }
   }
 
+  // Copia só as partículas vivas para o buffer da GPU (e sobe só esse trecho)
   renderUpdate() {
-    let idx = 0;
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-      const p = this.particles[i];
-      if (!p.active) continue;
-
-      this._dummy.position.set(p.x, p.y, p.z);
-
-      // Encolhe e desaparece no final da vida
-      const lifeRatio = p.life / p.maxLife;
-      const scale = lifeRatio > 0.75 ? Math.max(0.01, 1 - (lifeRatio - 0.75) * 4) : 1;
-      this._dummy.scale.setScalar(scale);
-      this._dummy.rotation.set(0, 0, 0);
-      this._dummy.updateMatrix();
-      this.instancedMesh.setMatrixAt(idx, this._dummy.matrix);
-
-      this._color.setRGB(p.r / 255, p.g / 255, p.b / 255);
-      this.instancedMesh.setColorAt(idx, this._color);
-      idx++;
+    const { px, py, pz, life, maxLife, alive, size, look } = this;
+    const out = this.buffer.array;
+    let n = 0;
+    for (let i = 0; i < CAP; i++) {
+      if (!alive[i]) continue;
+      const o = n * STRIDE, k = i * 8;
+      const r = life[i] / maxLife[i];
+      out[o] = px[i]; out[o + 1] = py[i]; out[o + 2] = pz[i];
+      out[o + 3] = size[i] * (r > 0.75 ? Math.max(0.01, 1 - (r - 0.75) * 4) : 1);   // encolhe no fim da vida
+      out[o + 4] = look[k]; out[o + 5] = look[k + 1]; out[o + 6] = look[k + 2]; out[o + 7] = look[k + 3];
+      out[o + 8] = look[k + 4]; out[o + 9] = look[k + 5]; out[o + 10] = look[k + 6]; out[o + 11] = look[k + 7];
+      n++;
     }
-    this.instancedMesh.count = idx;
-    this.instancedMesh.instanceMatrix.needsUpdate = true;
-    if (this.instancedMesh.instanceColor) this.instancedMesh.instanceColor.needsUpdate = true;
+    this.count = n;
+    this.geometry.instanceCount = n;
+    this.mesh.visible = n > 0;
+    if (n > 0) {
+      this.buffer.clearUpdateRanges?.();
+      this.buffer.addUpdateRange?.(0, n * STRIDE);
+      this.buffer.needsUpdate = true;
+    }
   }
 
   dispose() {
-    this.scene.remove(this.instancedMesh);
+    this.scene.remove(this.mesh);
     this.geometry.dispose();
     this.material.dispose();
   }
