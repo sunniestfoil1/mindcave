@@ -190,6 +190,7 @@ export class MobEntity {
     const targetAmp = Math.min(1.0, horizSpd / (this.type.speed || 0.23));
     this._limbSwingAmount = (this._limbSwingAmount || 0) + (targetAmp - (this._limbSwingAmount || 0)) * 0.35;
 
+    if (this.type.fireImmune) this.fireTicks = 0;   // porco-zumbi, blaze...: não pegam fogo
     // Queimando
     if (this.fireTicks > 0) {
       this.fireTicks--;

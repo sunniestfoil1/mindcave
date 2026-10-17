@@ -130,14 +130,15 @@ const ItemSlot = React.memo(function ItemSlot({ item, onClick, onRightClick, onS
       const top = b.variants ? tileForFace(b, 'top', meta) : (typeof f === 'string' ? f : (f?.top || f?.all || f?.side || b.name));
       const side = b.variants ? tileForFace(b, 'side', meta) : (typeof f === 'string' ? f : (f?.side || f?.front || f?.all || top));
       const tint = b.tint === 'grass' || b.tint === 'foliage' ? b.tint : null;
-      if (b.model === 'slab' || b.model === 'stairs' || b.model === 'fence' || b.model === 'gate' || b.model === 'chest') {
+      if (b.model === 'slab' || b.model === 'stairs' || b.model === 'fence' || b.model === 'gate' || b.model === 'chest' || b.model === 'multi') {
         const t = tile(top, null), sd = tile(side, null);
         if (t && sd) {
-          const key = `${b.model}|${top}|${side}`;
+          const key = `${b.model}|${top}|${side}|${b.id}|${meta}`;
           if (!blockCanvasCache.has(key)) {
             const c = document.createElement('canvas');
             c.width = 32; c.height = 32;
-            drawIsoBoxes(c.getContext('2d'), { slab: ICON_SLAB, stairs: ICON_STAIRS, fence: ICON_FENCE, gate: ICON_GATE, chest: ICON_CHEST }[b.model], t, sd, null, b.model === 'chest' ? tile('chest_front', null) : null);
+            const boxes = b.model === 'multi' ? b.multi(meta, null, 0, 0, 0, 'render').map((x) => x.slice(0, 6)) : { slab: ICON_SLAB, stairs: ICON_STAIRS, fence: ICON_FENCE, gate: ICON_GATE, chest: ICON_CHEST }[b.model];
+            drawIsoBoxes(c.getContext('2d'), boxes, t, sd, null, b.model === 'chest' ? tile(b.chestTiles ? b.chestTiles[2] : 'chest_front', null) : null);
             blockCanvasCache.set(key, canvasToOptimizedDataUrl(c));
           }
           setImgUrl(blockCanvasCache.get(key));
@@ -173,6 +174,11 @@ const ItemSlot = React.memo(function ItemSlot({ item, onClick, onRightClick, onS
     const it = ITEMS[item.id];
     if (!it) { setImgUrl(null); return; }
 
+    if (it.name === 'skull') {   // cabeça: cubo isométrico com o rosto do tipo (montado do arquivo da criatura no atlas)
+      const t = ['skeleton', 'wither', 'zombie', 'steve', 'creeper'][item.meta || 0] || 'skeleton';
+      const top = tile(`skull_${t}_top`, null), face = tile(`skull_${t}_front`, null);
+      if (top && face) { setImgUrl(get3DBlockDataUrl(top, face, `skull|${t}`)); return; }
+    }
     const itemKey = it.name === 'dye' ? `dye:${(item.meta || 0) & 15}` : it.name;
     if (itemUrlCache.has(itemKey)) {
       setImgUrl(itemUrlCache.get(itemKey));

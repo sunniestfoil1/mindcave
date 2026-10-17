@@ -2,7 +2,7 @@
 // Dureza e ferramenta vêm do catálogo real (blockCatalog.js, gerado dos dados do 1.8.9); aqui ficam o visual (ladrilhos e modelo) e o comportamento.
 // Modelos novos: 'multi' (várias caixas: parede, vidraça, bigorna, caldeirão...), 'rail' (trilho no chão) e os de parede (alavanca, botão).
 import { CATALOG } from './blockCatalog';
-import { DYES } from './tilesMore';
+import { DYES, SKULL_TYPES } from './tilesMore';
 
 const DF = [[-1, 0], [0, -1], [1, 0], [0, 1]];   // direções 0 oeste, 1 norte, 2 leste, 3 sul (a mesma ordem de DOOR_FACES)
 
@@ -14,7 +14,16 @@ export function onWall(i, t, a0, a1, y0, y1) {
 }
 // meta de tocha/alavanca/botão: 0 no chão, 1 parede em -X, 2 parede em +X, 3 parede em -Z, 4 parede em +Z, 5 teto (alavanca/botão) — como no 1.8.9
 export const WALL_META_DIR = [-1, 0, 2, 1, 3];   // meta → índice em DF da parede onde está preso
+export const SKULL_BLOCKS = [144, 198, 199, 200, 201];   // item 397: meta = tipo
 export const DIR_WALL_META = [1, 3, 2, 4];       // índice em DF → meta
+// Vaso de flor (1.8.9): a meta diz o que está plantado. tile = desenho da planta; item = o que volta quando se tira ou quebra o vaso
+export const POT_CONTENTS = [null,
+  { tile: 'flower_rose', item: { id: 38, meta: 0 } }, { tile: 'flower_dandelion', item: { id: 37, meta: 0 } },
+  { tile: 'sapling_oak', item: { id: 6, meta: 0 } }, { tile: 'sapling_spruce', item: { id: 6, meta: 1 } }, { tile: 'sapling_birch', item: { id: 6, meta: 2 } }, { tile: 'sapling_jungle', item: { id: 6, meta: 3 } },
+  { tile: 'mushroom_red', item: { id: 40, meta: 0 } }, { tile: 'mushroom_brown', item: { id: 39, meta: 0 } }, { tile: 'cactus_side', item: { id: 81, meta: 0 }, box: true },
+  { tile: 'dead_bush', item: { id: 32, meta: 0 } }, { tile: 'fern', item: { id: 31, meta: 2 } }, { tile: 'sapling_acacia', item: { id: 6, meta: 4 } }, { tile: 'sapling_roofed_oak', item: { id: 6, meta: 5 } }];
+// item na mão → meta do vaso
+export function potMetaFor(id, meta) { return POT_CONTENTS.findIndex((c, i) => c && c.item.id === id && c.item.meta === (id === 6 || id === 31 ? meta : 0) && i > 0); }
 
 export function registerMoreBlocks({ BLOCKS, B, shaped }) {
   const cat = (id) => CATALOG[id] || {};
@@ -33,6 +42,7 @@ export function registerMoreBlocks({ BLOCKS, B, shaped }) {
 
   // ===== correções e variações dos blocos que já existiam =====
   const patch = (id, props) => { if (BLOCKS[id]) Object.assign(BLOCKS[id], props); };
+  patch(26, { hiddenInCreative: true });   // a cama sai pelo item (355); o bloco sozinho é só metade dela
   patch(1, { variantMask: 7, variants: variantsOf(['stone', 'stone_granite', 'stone_granite_smooth', 'stone_diorite', 'stone_diorite_smooth', 'stone_andesite', 'stone_andesite_smooth']), variantNames: ['Pedra', 'Granito', 'Granito Polido', 'Diorito', 'Diorito Polido', 'Andesito', 'Andesito Polido'] });
   patch(3, { variantMask: 3, dropMeta: true, variants: [all('dirt'), all('coarse_dirt'), { top: 'dirt_podzol_top', bottom: 'dirt', side: 'dirt_podzol_side' }], variantNames: ['Terra', 'Terra Grossa', 'Podzol'] });
   patch(12, { variantMask: 1, dropMeta: true, variants: [all('sand'), all('red_sand')], variantNames: ['Areia', 'Areia Vermelha'] });
@@ -103,10 +113,20 @@ export function registerMoreBlocks({ BLOCKS, B, shaped }) {
     if (m & 4) b.push([0.25, 0.8125, 0.25, 0.75, 1, 0.75, 'endframe_eye']);
     return b;
   }, { faces: { top: 'endframe_top', bottom: 'end_stone', side: 'endframe_side' }, hardness: -1, drop: null, lightEmission: 1, render: 'opaque' });
-  multi(122, 'dragon_egg', 'Ovo do Dragão', () => [[0.0625, 0, 0.0625, 0.9375, 1, 0.9375]], { faces: all('dragon_egg'), lightEmission: 1, render: 'opaque' });
+  // ovo do dragão: oito camadas empilhadas (as do modelo do pacote); cada camada mostra a janela da textura que cobre as suas coordenadas
+  const EGG = [[6, 15, 10, 16], [5, 14, 11, 15], [5, 13, 11, 14], [3, 11, 13, 13], [2, 8, 14, 11], [1, 3, 15, 8], [2, 1, 14, 3], [3, 0, 13, 1]];   // x0, y0, x1, y1 (z igual a x)
+  multi(122, 'dragon_egg', 'Ovo do Dragão', () => EGG.map(([a, y0, b, y1]) => [a / 16, y0 / 16, a / 16, b / 16, y1 / 16, b / 16, 'dragon_egg', (16 - y1 - y0) / 16]).reverse(), { faces: all('dragon_egg'), lightEmission: 1, render: 'opaque' });
   multi(116, 'enchanting_table', 'Mesa de Encantamento', () => [[0, 0, 0, 1, 0.75, 1]], { faces: { top: 'enchanting_table_top', bottom: 'enchanting_table_bottom', side: 'enchanting_table_side' }, render: 'opaque' });
-  multi(140, 'flower_pot', 'Vaso de Flor', () => [[0.3125, 0, 0.3125, 0.6875, 0.375, 0.6875]], { faces: all('flower_pot'), drop: 390 });
-  multi(144, 'skull', 'Cabeça de Esqueleto', () => [[0.25, 0, 0.25, 0.75, 0.5, 0.75]], { faces: { top: 'skull_top', bottom: 'skull_top', side: 'skull_side' }, drop: 397 });
+  // vaso de flor: fundo, quatro paredes de 1/16 e a terra por dentro (antes era uma caixa só: por dentro dava para ver através)
+  multi(140, 'flower_pot', 'Vaso de Flor', () => [
+    [0.3125, 0, 0.3125, 0.6875, 0.0625, 0.6875, 'flower_pot'],
+    [0.3125, 0, 0.3125, 0.6875, 0.375, 0.375, 'flower_pot'], [0.3125, 0, 0.625, 0.6875, 0.375, 0.6875, 'flower_pot'],
+    [0.3125, 0, 0.375, 0.375, 0.375, 0.625, 'flower_pot'], [0.625, 0, 0.375, 0.6875, 0.375, 0.625, 'flower_pot'],
+    [0.375, 0.0625, 0.375, 0.625, 0.25, 0.625, 'dirt'],
+  ], { faces: all('flower_pot'), drop: 390, potPlants: POT_CONTENTS, hiddenInCreative: true });
+  // cabeças (no 1.8.9 o tipo mora na entidade do bloco; aqui cada tipo é um bloco, e a meta guarda para onde o rosto olha)
+  const SKULL_NAMES = ['Cabeça de Esqueleto', 'Cabeça de Esqueleto Wither', 'Cabeça de Zumbi', 'Cabeça de Steve', 'Cabeça de Creeper'];
+  [144, 198, 199, 200, 201].forEach((id, t) => def(id, 'skull_' + SKULL_TYPES[t], SKULL_NAMES[t], { model: 'skull', skullType: SKULL_TYPES[t], solid: true, opaque: false, lightOpacity: 0, render: 'opaque', hardness: 1, drop: 397, faces: { all: `skull_${SKULL_TYPES[t]}_front` }, hiddenInCreative: true, soundCategory: 'stone' }, shaped));
   multi(92, 'cake', 'Bolo', (m) => [[0.0625 + (m & 7) * 0.125, 0, 0.0625, 0.9375, 0.5, 0.9375]], { faces: { top: 'cake_top', bottom: 'cake_bottom', side: 'cake_side' }, drop: null, hiddenInCreative: true, render: 'opaque' });
   multi(127, 'cocoa', 'Cacau', (m) => { const s = (m >> 2) & 3; const w = 0.1875 + s * 0.0625; return [[0.5 - w, 0.25 - s * 0.03, 0.5 - w, 0.5 + w, 0.75, 0.5 + w]]; },
     { faces: all('cocoa_stage_2'), variantMask: 0, drop: 351, hiddenInCreative: true });

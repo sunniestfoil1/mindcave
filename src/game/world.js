@@ -182,14 +182,18 @@ export class ClientWorld {
     c.lightData[idx] = (maxSky << 4) | maxBlk;
   }
 
-  beginBatch() {
+  // defer: no fim do lote NÃO reconstrói nada na hora; as seções já estão na fila dos workers (água correndo, queda de areia: ninguém
+  // percebe 1–2 quadros de atraso, e reconstruir na hora custava 8–60 ms por seção no quadro do tick)
+  beginBatch(defer = false) {
     this._batchDepth = (this._batchDepth || 0) + 1;
+    if (defer) this._deferMesh = true;
   }
 
   endBatch() {
     if (this._batchDepth > 0) this._batchDepth--;
     if (this._batchDepth === 0) {
-      this.flushImmediateRebuilds();
+      if (this._deferMesh) { this._deferMesh = false; if (this._immediateDirtySecs) this._immediateDirtySecs.clear(); }
+      else this.flushImmediateRebuilds();
     }
   }
 
@@ -199,13 +203,13 @@ export class ClientWorld {
     this._immediateDirtySecs.set(`${c.k}:${sy}`, { c, sy });
   }
 
-  // Se foram poucas seções (jogador minerando ou explosão contida), reconstrói na hora (0ms).
-  // Se foi uma explosão em massa (> 12 seções simultâneas), delega aos Web Workers em paralelo sem congelar o frame!
+  // Se foram poucas seções (jogador minerando ou explosão contida: até 4), reconstrói na hora (0ms).
+  // Se foi uma explosão em massa (> 4 seções simultâneas), delega aos Web Workers em paralelo sem congelar o frame!
   flushImmediateRebuilds() {
     if (!this._immediateDirtySecs || this._immediateDirtySecs.size === 0) return;
     const count = this._immediateDirtySecs.size;
 
-    if (count <= 12 && this.scene) {
+    if (count <= 4 && this.scene) {
       const touchedChunks = new Set();
       for (const { c, sy } of this._immediateDirtySecs.values()) {
         if (this.chunks.get(c.k) !== c) continue;

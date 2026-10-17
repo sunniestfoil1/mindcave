@@ -402,17 +402,18 @@ function tickEnvDamage(p, world, ctx, eyeId, feetId) {
   } else p.fireTimer = 0;
 
   // Cacto
-  const cx = Math.floor(pos.x), cy = Math.floor(pos.y), cz = Math.floor(pos.z);
+  // 1.8.9 (Entity.doBlockCollisions): toda célula que a caixa do jogador (0,6 × 1,8, encolhida 0,001) toca e que tenha cacto fere; o cacto
+  // empurra o jogador a parar 1/16 dentro da célula, então encostar nele já conta. Dano 1 no primeiro contato e de novo a cada 10 ticks
+  // (a invulnerabilidade pós-dano de meio segundo).
+  const EPS = 0.001, HW = 0.3, HH = p.sneaking ? 1.65 : 1.8;
   let touchingCactus = false;
-  for (const [dx, dy, dz] of [[0,0,0],[1,0,0],[-1,0,0],[0,0,1],[0,0,-1],[0,1,0]]) {
-    if (stateId(world.getBlock(cx+dx, cy+dy, cz+dz)) === 81) { touchingCactus = true; break; }
-  }
+  for (let x = Math.floor(pos.x - HW + EPS); x <= Math.floor(pos.x + HW - EPS) && !touchingCactus; x++)
+    for (let z = Math.floor(pos.z - HW + EPS); z <= Math.floor(pos.z + HW - EPS) && !touchingCactus; z++)
+      for (let y = Math.floor(pos.y + EPS); y <= Math.floor(pos.y + HH - EPS); y++)
+        if (stateId(world.getBlock(x, y, z)) === 81) { touchingCactus = true; break; }
   if (touchingCactus) {
+    if (p.cactusTimer % 10 === 0) applyDamage(p, Dmg.CACTUS, 'cactus');
     p.cactusTimer++;
-    if (p.cactusTimer >= 10) {
-      p.cactusTimer = 0;
-      applyDamage(p, Dmg.CACTUS, 'cactus');
-    }
   } else p.cactusTimer = 0;
 
   // Raio (se atingido — gerenciado pelo weather)

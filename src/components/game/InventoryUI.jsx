@@ -91,7 +91,7 @@ export default function InventoryUI({ inv, onUpdate, onClose, hud, onCraft }) {
       {({ S, slot, tex }) => (
         <>
           <Sprite url={tex} u={0} v={0} w={176} h={166} S={S} />
-          <PlayerPreview S={S} />
+          <PlayerPreview S={S} armor={inv.armor} />
           <McText text={t('container.crafting')} x={86} y={16} S={S} />
           {inv.armor.map((item, i) => slot('a' + i, 8, 8 + i * 18, item, { ref: armor[i] }))}
           {inv.crafting.map((item, i) => slot('c' + i, 88 + (i % 2) * 18, 26 + Math.floor(i / 2) * 18, item, { ref: grid[i] }))}

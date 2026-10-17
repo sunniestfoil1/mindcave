@@ -47,6 +47,7 @@ const _matMap = new Map();
 
 const MOB_PACK_PATHS = {
   zombie: 'textures/entity/zombie/zombie.png',
+  zombie_pigman: 'textures/entity/zombie_pigman.png',
   skeleton: 'textures/entity/skeleton/skeleton.png',
   creeper: 'textures/entity/creeper/creeper.png',
   spider: 'textures/entity/spider/spider.png',
@@ -436,6 +437,7 @@ function buildSlimeModel() {
 // === FACTORY PRINCIPAL ===
 const BUILDERS = {
   zombie: () => buildBipedModel('zombie', { isZombie: true }),
+  zombie_pigman: () => buildBipedModel('zombie_pigman', { isZombie: true }),
   skeleton: () => buildBipedModel('skeleton', { isSkeleton: true }),
   creeper: buildCreeperModel,
   spider: buildSpiderModel,

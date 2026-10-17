@@ -47,6 +47,7 @@ const plan = await page.evaluate(async () => {
   window.__eng = engine; window.__ps = pState; window.__cw = cw; window.__pack = packState;
   // lista: um item por (bloco, meta); portas e cama entram pelo item
   const list = [];
+  const FLOOR_FOR = { 6: 2, 31: 2, 37: 2, 38: 2, 175: 2, 32: 12, 59: 60, 141: 60, 142: 60, 104: 60, 105: 60, 81: 12, 83: 2, 111: 9 };   // id → bloco do chão
   const metasOf = (b) => {
     if (b.model === 'slab') return [0, 1, 2, 3, 4, 5, 6, 7].slice(0, b.variants?.length || 1);
     if (b.variants) return Array.from({ length: Math.min(b.variants.length, 16) }, (_, i) => i).filter((m) => m <= (b.variantMask ?? 7));
@@ -61,7 +62,7 @@ const plan = await page.evaluate(async () => {
     if (id === 26) { list.push({ id, item: 355, name: b.name, meta: 0, kind: 'cama' }); continue; }
     if (id === 68 || id === 131 || id === 65 || id === 106) { list.push({ id, item: id === 68 ? 323 : id, name: b.name, meta: 0, kind: b.model, wall: true }); continue; }
     if (id === 115) { list.push({ id, item: id, name: b.name, meta: 0, kind: b.model, floor: 88 }); continue; }
-    for (const meta of metasOf(b)) list.push({ id, item: id, name: b.name, meta, kind: b.model || 'cube', floor: id === 175 ? 2 : undefined });   // planta alta só em grama
+    for (const meta of metasOf(b)) list.push({ id, item: id, name: b.name, meta, kind: b.model || 'cube', floor: FLOOR_FOR[id] });   // plantas só nascem na terra delas (o jogador pisa no que o jogo exige)
     // preso na parede: o jogador mira a lateral de um bloco (tocha, alavanca e botão também têm esse jeito de colocar)
     if ([50, 75, 76, 69, 77, 143].includes(id)) list.push({ id, item: id, name: b.name + ' (parede)', meta: 0, kind: b.model, wall: true });
   }
@@ -92,6 +93,7 @@ const placed = await page.evaluate(async (list, COLS, GAP_X, GAP_Z, X0, Z0, G) =
     ps.pos = { x: cx + 0.5, y: G + 4, z: cz + 0.5 }; ps.vel = { x: 0, y: 0, z: 0 };
     ps.yaw = 0; ps.pitch = Math.PI / 2 - 0.0005;
     if (it.floor) cw.setBlock(cx, G, cz, window.__pack(it.floor, 0));
+    if (it.id === 83) { cw.setBlock(cx + 1, G, cz, window.__pack(9, 0)); }   // cana: água ao lado do chão
     if (it.wall) { cw.setBlock(cx, G + 1, cz - 1, window.__pack(1, 0)); ps.pos = { x: cx + 0.5, y: G + 0.1, z: cz + 2.5 }; ps.yaw = Math.PI; ps.pitch = 0; }
     ps.hotbar[0] = { id: it.item, count: 64, meta: it.meta };
     ps.selectedSlot = 0;
@@ -160,7 +162,7 @@ const broken = await page.evaluate(async (list, COLS, GAP_X, GAP_Z, X0, Z0, G) =
     let threw = null;
     try { eng.breakBlock(); } catch (e) { threw = String(e && e.message || e).slice(0, 120); }
     const after = cw.getBlock(cx, G + 1, cz);
-    const drops = eng.itemEntities.items.slice(n0).map((e) => ({ id: e.item?.id, meta: e.item?.meta || 0 }));
+    const drops = eng.itemEntities.items.slice(n0).map((e) => ({ id: e.id, meta: e.meta || 0 }));   // a entidade guarda id/count/meta direto
     const upperGone = it.id !== 175 || cw.getBlock(cx, G + 2, cz) === 0;
     out.push({ i, before, after, gone: after === 0 && upperGone, drops, dropOk: drops.every((d) => !!(ITEMS[d.id] || BLOCKS[d.id])), threw });
   }

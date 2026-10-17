@@ -241,7 +241,7 @@ export class MobManager {
 
   // Chunks carregados perto do jogador que ainda não receberam a população inicial de animais (feito uma vez por chunk, salvo no mundo)
   _populateNear(player, ctx) {
-    if (!player) return;
+    if (!player || ctx.dimension === 'nether') return;   // animais de fazenda não nascem no Nether
     this._popTick = (this._popTick || 0) + 1;
     if (this._popTick % 20 !== 0) return;
     if (!this.populated) this.populated = new Set();

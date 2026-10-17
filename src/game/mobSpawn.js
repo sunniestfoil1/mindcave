@@ -1,5 +1,5 @@
 // Spawn natural de mobs 1.8.9 — PRD 08 RF-010..014
-import { MOB_TYPES, MOB_CATEGORIES, SPAWN_WEIGHTS, SPAWN_LIMITS, getMobType } from './mobRegistry';
+import { MOB_TYPES, MOB_CATEGORIES, SPAWN_WEIGHTS, NETHER_SPAWN_WEIGHTS, SPAWN_LIMITS, getMobType } from './mobRegistry';
 import { MobEntity } from './mobEntity';
 import { isSolid, isWater, isLava } from './blocks';
 import { stateId } from './chunk';
@@ -34,6 +34,9 @@ export class MobSpawnSystem {
 
     const counts = this.countByCategory(mobs);
 
+    // Nether: outro conjunto de criaturas, sem passivos nem ambiente do mundo normal
+    if (ctx.dimension === 'nether') { this.tickNether(world, player, mobs, counts); return; }
+
     // Hostis: todo tick (RF-010)
     if (counts.hostile < SPAWN_LIMITS.hostile) {
       this.trySpawn(world, player, mobs, 'hostile', ctx);
@@ -49,6 +52,30 @@ export class MobSpawnSystem {
     // Ambiente: todo tick
     if (counts.ambient < SPAWN_LIMITS.ambient && Math.random() < 0.1) {
       this.trySpawn(world, player, mobs, 'ambient', ctx);
+    }
+  }
+
+  // Nether: a cada tick uma chance de achar um chão de pedra livre (2 de ar em cima, sem lava) a 24+ blocos e soltar um grupo de porcos-zumbis
+  tickNether(world, player, mobs, counts) {
+    if (counts.neutral >= 20 || Math.random() > 0.02) return;
+    const pcx = chunkCoord(Math.floor(player.pos.x)), pcz = chunkCoord(Math.floor(player.pos.z));
+    const rd = Math.max(2, (world._lastLoadingRadius || 3) - 1);
+    const cx = pcx + Math.floor((Math.random() * 2 - 1) * rd), cz = pcz + Math.floor((Math.random() * 2 - 1) * rd);
+    if (!world.chunks.has(world.key(cx, cz))) return;
+    const ax = cx * CHUNK_SIZE + Math.floor(Math.random() * CHUNK_SIZE), az = cz * CHUNK_SIZE + Math.floor(Math.random() * CHUNK_SIZE);
+    let y0 = -1;
+    for (let y = 32 + Math.floor(Math.random() * 80); y >= 5; y--) {
+      if (isSolid(stateId(world.getBlock(ax, y, az))) && stateId(world.getBlock(ax, y + 1, az)) === 0 && stateId(world.getBlock(ax, y + 2, az)) === 0) { y0 = y + 1; break; }
+    }
+    if (y0 < 0 || Math.hypot(ax - player.pos.x, az - player.pos.z) < 24 || Math.abs(y0 - player.pos.y) > 48) return;
+    const ground = stateId(world.getBlock(ax, y0 - 1, az));
+    if (isLava(ground) || isWater(ground)) return;
+    let x = ax, z = az;
+    for (let n = 0; n < 4; n++) {
+      x += Math.floor(Math.random() * 5) - 2; z += Math.floor(Math.random() * 5) - 2;
+      if (!world.hasChunkAt(x, z)) continue;
+      if (!isSolid(stateId(world.getBlock(x, y0 - 1, z))) || stateId(world.getBlock(x, y0, z)) !== 0 || stateId(world.getBlock(x, y0 + 1, z)) !== 0) continue;
+      mobs.push(new MobEntity('zombie_pigman', { x: x + 0.5, y: y0, z: z + 0.5 }));
     }
   }
 

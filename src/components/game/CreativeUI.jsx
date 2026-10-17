@@ -5,6 +5,8 @@ import { BLOCKS } from "@/game/blocks";
 import { FOODS } from "@/game/survival";
 import { leftClick, rightClick, addItem } from "@/game/inventory";
 import { playClickSound } from "@/game/sounds";
+import { dropCursorOutside, shiftMove, arrRef } from "@/game/slotOps";
+import { playArmorEquipSound } from "@/game/sounds";
 import ItemTooltip from "./ItemTooltip";
 import PlayerPreview, { PREVIEW_CREATIVE } from "./PlayerPreview";
 import { Sprite, McText, usePackTexture, useGuiScaleValue } from "./GuiSprite";
@@ -128,6 +130,7 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [hoveredItem, setHoveredItem] = useState(null);
   const hoveredTargetRef = useRef(null);
+  const dropFlag = useRef(false);   // o clique que jogou o item não fecha a janela
   const [dragging, setDragging] = useState(false);
   const rootRef = useRef(null);
 
@@ -245,6 +248,10 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
       const key = `i_${numId}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      if (Array.isArray(it.variantNames)) {   // itens com variações (cabeças): um por variação
+        it.variantNames.forEach((vn, meta) => list.push({ id: numId, meta, name: vn, nameEn: it.name, isBlock: false, categories: getItemCategories(numId, false, it), maxStack: it.maxStack || 64, item: it }));
+        continue;
+      }
       list.push({
         id: numId,
         name: it.namePt || it.name,
@@ -283,14 +290,33 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
     else if (e.deltaY < 0) setScroll((s) => Math.max(0, s - 1));
   };
 
-  const pickItem = (itemData, isShift, isRight = false) => {
+  const pickItem = (itemData, isShift, _isRight = false) => {
     const max = itemData.maxStack || 64;
-    if (isShift) {
-      addItem(inv, { id: itemData.id, count: max, meta: itemData.meta || 0 });
+    const meta = itemData.meta || 0;
+    // Celular não tem Shift: lá o toque já pega a pilha cheia. No PC: clique = 1 item no cursor (clicar de novo soma),
+    // Shift + clique = pilha cheia direto no inventário (64, 16 ou 8 conforme o item).
+    const touch = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if (isShift || touch) {
+      addItem(inv, { id: itemData.id, count: max, meta });
       refresh();
       return;
     }
-    inv.cursor = { id: itemData.id, count: isRight ? 1 : max, meta: itemData.meta || 0 };
+    const c = inv.cursor;
+    if (c && c.id === itemData.id && (c.meta || 0) === meta) inv.cursor = { ...c, count: Math.min(max, (c.count || 1) + 1) };
+    else inv.cursor = { id: itemData.id, count: 1, meta };
+    refresh();
+  };
+
+  // Shift + clique no inventário de sobrevivência: hotbar ↔ inventário; peça de armadura vai para o slot dela; tirar do slot de armadura guarda a peça
+  const shiftSlot = (arr, i, group) => {
+    if (!inv) return;
+    const hot = inv.hotbar.map((_, k) => arrRef(inv.hotbar, k, { group: 'hotbar' }));
+    const mainR = inv.main.map((_, k) => arrRef(inv.main, k, { group: 'main' }));
+    const armorR = inv.armor.map((_, k) => arrRef(inv.armor, k, { group: 'armor', armorSlot: k }));
+    const before = inv.armor.map((a) => (a ? a.id : 0)).join(',');
+    shiftMove(inv, arrRef(arr, i, { group, armorSlot: group === 'armor' ? i : undefined }), group === 'hotbar' ? mainR : group === 'main' ? hot : [...hot, ...mainR], (s) => armorR[s]);
+    const now = inv.armor.map((a) => (a ? a.id : 0)).join(',');
+    if (now !== before) inv.armor.forEach((a, k) => { if (a && String(a.id) !== before.split(',')[k]) { const m = ITEMS[a.id]?.armor?.material; if (m) playArmorEquipSound(m); } });
     refresh();
   };
 
@@ -299,8 +325,10 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
     const setSlot = (val) => {
       arr[index] = val;
     };
+    const beforeId = arr === inv.armor && arr[index] ? arr[index].id : 0;
     if (isLeft) leftClick(inv, getSlot, setSlot);
     else rightClick(inv, getSlot, setSlot);
+    if (arr === inv.armor && arr[index] && arr[index].id !== beforeId) { const m = ITEMS[arr[index].id]?.armor?.material; if (m) playArmorEquipSound(m); }
     refresh();
   };
 
@@ -412,8 +440,13 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
       style={{ background: 'rgba(0,0,0,0.65)', imageRendering: 'pixelated', userSelect: 'none' }}
       draggable={false}
       onDragStart={(e) => e.preventDefault()}
+      onMouseDown={(e) => {
+        dropFlag.current = false;
+        if (e.target === e.currentTarget && inv?.cursor && (e.button === 0 || e.button === 2) && dropCursorOutside(inv, e.button)) { dropFlag.current = true; refresh(); }
+      }}
+      onContextMenu={(e) => e.preventDefault()}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && !dropFlag.current && !inv?.cursor) onClose();
       }}
       onWheel={handleWheel}
     >
@@ -454,17 +487,18 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
               }}
             />
           ) : null}
-          <McText text={tab === 'search' ? 'Buscar Itens' : currentTabName} x={8} y={6} S={S} />
+          <McText text={tab === 'search' ? 'Buscar Itens' : tab === 'survival' ? '' : currentTabName} x={8} y={6} S={S} />
 
           {tab === 'survival' ? (
             <>
-              <PlayerPreview S={S} preset={PREVIEW_CREATIVE} />
+              <PlayerPreview S={S} preset={PREVIEW_CREATIVE} armor={inv?.armor} />
               {(Array.isArray(inv?.armor) ? inv.armor : new Array(4).fill(null)).map((item, i) =>
                 slot('a' + i, 9 + Math.floor(i / 2) * 54, 6 + (i % 2) * 27, item, {
                   ghost: ARMOR_GHOST[i],
                   hoverTarget: { kind: 'slot', arr: inv?.armor, index: i },
                   onClick: () => inv?.armor && slotAction(inv.armor, i, true),
                   onRightClick: () => inv?.armor && slotAction(inv.armor, i, false),
+                  onShiftClick: () => inv?.armor && shiftSlot(inv.armor, i, 'armor'),
                 })
               )}
               {(Array.isArray(inv?.main) ? inv.main : new Array(27).fill(null)).map((item, i) =>
@@ -472,6 +506,7 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
                   hoverTarget: { kind: 'slot', arr: inv?.main, index: i },
                   onClick: () => inv?.main && slotAction(inv.main, i, true),
                   onRightClick: () => inv?.main && slotAction(inv.main, i, false),
+                  onShiftClick: () => inv?.main && shiftSlot(inv.main, i, 'main'),
                 })
               )}
               <div
@@ -504,7 +539,7 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
               hoverTarget: { kind: 'slot', arr: inv?.hotbar, index: i },
               onClick: () => inv?.hotbar && slotAction(inv.hotbar, i, true),
               onRightClick: () => inv?.hotbar && slotAction(inv.hotbar, i, false),
-              onShiftClick: () => inv?.hotbar && slotAction(inv.hotbar, i, true),
+              onShiftClick: () => inv?.hotbar && (tab === 'survival' ? shiftSlot(inv.hotbar, i, 'hotbar') : slotAction(inv.hotbar, i, true)),
             })
           )}
 

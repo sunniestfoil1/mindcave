@@ -44,10 +44,11 @@ const ITEM_AS_BLOCK_TILE = {
 const DYE_FILES = ['black', 'red', 'green', 'brown', 'blue', 'purple', 'cyan', 'silver', 'gray', 'pink', 'lime', 'yellow', 'light_blue', 'magenta', 'orange', 'white'];
 export function itemIconFile(name, meta = 0) {
   if (name === 'dye') return 'dye_powder_' + DYE_FILES[(meta || 0) & 15];
+  if (name === 'bow') return ['bow_standby', 'bow_pulling_0', 'bow_pulling_1', 'bow_pulling_2'][(meta || 0) & 3];   // a meta do arco só vale para o desenho na mão
   return ITEM_FILE[name] || name;
 }
 // Chave de cache do ícone: só o corante muda de ícone por meta
-export const iconKey = (id, meta = 0) => (id === 351 ? `351:${(meta || 0) & 15}` : id);
+export const iconKey = (id, meta = 0) => (id === 351 ? `351:${(meta || 0) & 15}` : id === 261 ? `261:${(meta || 0) & 3}` : id);
 export function itemBlockTile(name) { return ITEM_AS_BLOCK_TILE[name] || null; }
 
 // Cor da tinta de bioma aplicada nos ícones (planície): grama e folhagem

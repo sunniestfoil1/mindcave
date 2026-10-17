@@ -50,6 +50,7 @@ const result = await page.evaluate(async () => {
     for (let x = -2; x <= 18; x++) for (let z = -2; z <= 18; z++) { for (let y = B0 + 1; y <= B0 + 6; y++) cw.setBlock(x, y, z, 0); cw.setBlock(x, B0, z, packState(1, 0)); }
     pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 }; pState.vel = { x: 0, y: 0, z: 0 };
     const tickN = (n) => { for (let i = 0; i < n; i++) engine.tick(); };
+    const settleDim = async () => { for (let i = 0; i < 400 && engine._switching; i++) await new Promise((r) => setTimeout(r, 50)); };   // a travessia do portal é por etapas, com tela de carregamento
     tickN(3);
 
     // ---- 1) tecla A com o F3 ligado ----
@@ -369,7 +370,7 @@ const result = await page.evaluate(async () => {
     const lit = engine.useHeldItem(pState.hotbar[0]);
     ok(stateId(cw.getBlock(FX + 1, B0 + 2, FZ)) === 90 && stateId(cw.getBlock(FX + 2, B0 + 4, FZ)) === 90, `pederneira na obsidiana acende o portal 2×3 (retorno ${lit})`);
     pState.pos = { x: FX + 1.5, y: B0 + 2, z: FZ + 0.5 }; pState.gameMode = 'creative'; pState.vel = { x: 0, y: 0, z: 0 };
-    tickN(5);
+    tickN(5); await settleDim();
     ok(engine.dimension === 'nether', `entrar no portal leva ao Nether (dimensão: ${engine.dimension})`);
     const nw = engine.world;
     ok(nw !== cw && nw.generatorOpts.generatorId === 'nether', 'o mundo ativo passa a ser o do Nether');
@@ -386,7 +387,7 @@ const result = await page.evaluate(async () => {
     // volta: entra no portal de chegada
     let pp = null; for (let x = -6; x <= 6 && !pp; x++) for (let z = -6; z <= 6 && !pp; z++) for (let y = 1; y < 127; y++) if (stateId(nw.getBlock(Math.floor(ppos.x) + x, y, Math.floor(ppos.z) + z)) === 90) { pp = { x: Math.floor(ppos.x) + x, y, z: Math.floor(ppos.z) + z }; break; }
     ok(!!pp, 'o portal de chegada existe no Nether');
-    if (pp) { pState.pos = { x: pp.x + 0.5, y: pp.y, z: pp.z + 0.5 }; tickN(5); }
+    if (pp) { pState.pos = { x: pp.x + 0.5, y: pp.y, z: pp.z + 0.5 }; tickN(5); await settleDim(); }
     ok(engine.dimension === 'overworld' && engine.world === cw, 'voltar pelo portal retorna ao mundo normal');
     ok(engine.sky.dome ? engine.sky.dome.visible === true : true, 'céu volta no mundo normal');
     // quebrar obsidiana apaga o portal

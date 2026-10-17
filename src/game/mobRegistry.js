@@ -204,6 +204,20 @@ export const MOB_TYPES = {
     ],
     spawnRules: { category: 'hostile', light: 7, minDistance: 24, weight: 10 },
   }),
+  // Nether: o porco-zumbi é neutro (só ataca quem o ferir) e nasce em qualquer lugar do Nether, de dia ou de noite
+  zombie_pigman: M('zombie_pigman', 'Porco-zumbi', {
+    category: 'neutral', width: 0.6, height: 1.95, eyeHeight: 1.74,
+    maxHealth: 20, armor: 2, speed: 0.23, followRange: 35,
+    attackDamage: 5, isUndead: true, fireImmune: true, xp: 5,
+    drops: [{ id: 367, min: 0, max: 1 }, { id: 371, min: 0, max: 1 }, { id: 266, min: 0, max: 1, rare: true }],
+    goals: [
+      { type: 'swim', priority: 0 },
+      { type: 'melee_attack', priority: 3 },
+      { type: 'wander', priority: 5 },
+      { type: 'look_at_player', priority: 6 },
+    ],
+    spawnRules: { category: 'neutral', nether: true },
+  }),
   slime: M('slime', 'Slime', {
     category: 'hostile', width: 0.51, height: 0.51, eyeHeight: 0.4,
     maxHealth: 16, armor: 0, speed: 0.25, followRange: 16,
@@ -392,6 +406,8 @@ export function getMobType(id) { return MOB_TYPES[id] || null; }
 // Pesos de spawn por bioma (referência 1.8 RF-013)
 // Zumbis tecnológicos são variantes — não aparecem nos pesos normais;
 // são convertidos a partir de zumbis no mobSpawn.js quando techZombies=true
+// Quem nasce em cada mundo: no Nether só criaturas do Nether (as do mundo normal não aparecem lá)
+export const NETHER_SPAWN_WEIGHTS = { hostile: {}, neutral: { zombie_pigman: 100 } };
 export const SPAWN_WEIGHTS = {
   hostile: { spider: 100, zombie: 100, skeleton: 100, creeper: 100, slime: 100, enderman: 10, witch: 5 },
   passive: { pig: 1, cow: 1, sheep: 1, chicken: 1 },

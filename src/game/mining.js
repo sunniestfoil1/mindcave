@@ -5,6 +5,7 @@ import { getAmplifier, Effect } from './effects';
 import { stateId } from './chunk';
 import { packState } from './chunk';
 import { CATALOG } from './blockCatalog';
+import { POT_CONTENTS } from './blocksMore';
 
 // Tabela de colheita: blockId → { tool: 'pickaxe'|'axe'|'shovel'|'sword'|'shears'|null, level: 0-3 }
 export const HARVEST = {
@@ -145,6 +146,8 @@ export const DROP_TABLE = {
     if (t === 2 || t === 3) return tool && tool.id === 359 ? [{ id: 31, count: 2, meta: t === 2 ? 1 : 2 }] : (Math.random() < 0.125 ? [{ id: 295, count: 1 }] : []);
     return [{ id: 175, count: 1, meta: t }];
   },
+  140: (tool, meta) => { const c = POT_CONTENTS[meta & 15]; return c ? [{ id: 390, count: 1 }, { id: c.item.id, count: 1, meta: c.item.meta }] : [{ id: 390, count: 1 }]; },   // o vaso solta o que tinha plantado
+  144: () => [{ id: 397, count: 1, meta: 0 }], 198: () => [{ id: 397, count: 1, meta: 1 }], 199: () => [{ id: 397, count: 1, meta: 2 }], 200: () => [{ id: 397, count: 1, meta: 3 }], 201: () => [{ id: 397, count: 1, meta: 4 }],
   127: (tool, meta) => [{ id: 351, count: ((meta >> 2) & 3) >= 2 ? 3 : 1, meta: 3 }],               // cacau → sementes de cacau
   92: () => [],                        // bolo → nada
   97: () => [],                        // bloco infestado → nada (o peixe-de-prata não existe aqui)

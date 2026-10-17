@@ -593,3 +593,4 @@ export function playXpOrbSound(pos) {
   const pitch = 0.5 + Math.random() * 0.5;
   return playEvent('entity.experience_orb.pickup', { pos, pitch, volume: 0.7 });
 }
+

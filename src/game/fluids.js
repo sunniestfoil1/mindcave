@@ -156,12 +156,29 @@ export function tickFluids(world, tickCount, playerPos) {
   }
 
   // Orçamento por tick: o que sobrar fica ativo e é reprocessado no próximo ciclo desse chunk
+  // Os mais perto do jogador primeiro: com o orçamento de 6 ms, a água que ele acabou de pôr não pode esperar atrás de dezenas de células
+  // de oceano e rio que estão em chunks mais distantes (era por isso que a água colocada ficava parada)
+  if (playerPos && updates.length > 1) {
+    const px = playerPos.x, py = playerPos.y, pz = playerPos.z;
+    for (const u of updates) u.d = (u.x - px) * (u.x - px) + (u.y - py) * (u.y - py) + (u.z - pz) * (u.z - pz);
+    updates.sort((a, b) => a.d - b.d);
+  }
+  // Em lote: cada setBlock fora dele reconstrói a seção de malha na hora (8–60 ms cada); com a água correndo para dentro de uma cratera de TNT
+  // eram centenas por segundo. No lote a malha é refeita uma vez só no fim do tick.
   const t0 = performance.now();
-  for (const u of updates) {
-    processFluidBlock(world, u.x, u.y, u.z, u.state, simTick);
-    if (performance.now() - t0 > PROCESS_BUDGET_MS) break;
+  if (updates.length && world.beginBatch) world.beginBatch(true);
+  try {
+    for (const u of updates) {
+      processFluidBlock(world, u.x, u.y, u.z, u.state, simTick);
+      if (performance.now() - t0 > PROCESS_BUDGET_MS) break;
+    }
+  } finally {
+    if (updates.length && world.endBatch) world.endBatch();
   }
 }
+
+// Água e lava nunca geram chunk novo ao correr: na borda do mundo carregado elas simplesmente param (gerar um chunk pelo setBlock custa centenas de ms)
+const loadedAt = (world, x, z) => world.chunks.has(chunkKey(chunkCoord(x), chunkCoord(z)));
 
 function processFluidBlock(world, x, y, z, state, tickCount) {
   const type = fluidType(state);
@@ -201,6 +218,7 @@ function processFluidBlock(world, x, y, z, state, tickCount) {
 
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = x + dx, nz = z + dz;
+        if (!loadedAt(world, nx, nz)) continue;
         const ns = world.getBlock(nx, y, nz);
         const nid = stateId(ns);
         if (canFlowInto(nid)) {

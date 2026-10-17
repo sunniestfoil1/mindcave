@@ -6,7 +6,7 @@ const names = [];
 for (const w of ['spruce', 'birch', 'jungle', 'acacia', 'dark_oak']) names.push(`door_${w}_lower`, `door_${w}_upper`);
 for (const c of DYES) names.push('wool_colored_' + c, 'glass_' + c, 'glass_pane_top_' + c, 'hardened_clay_stained_' + c);
 names.push(
-  'glass_pane_top', 'hardened_clay', 'ice_packed', 'grass_side_snowed',
+  'glass_pane_top', 'hardened_clay', 'tnt_bottom', 'ice_packed', 'grass_side_snowed',
   'stone_granite', 'stone_diorite', 'stone_andesite', 'stone_granite_smooth', 'stone_diorite_smooth', 'stone_andesite_smooth',
   'coarse_dirt', 'dirt_podzol_top', 'dirt_podzol_side', 'red_sand', 'sponge_wet',
   'sapling_oak', 'sapling_spruce', 'sapling_birch', 'sapling_jungle', 'sapling_acacia', 'sapling_roofed_oak',
@@ -29,6 +29,9 @@ names.push(
   'rail_normal', 'rail_normal_turned', 'rail_golden', 'rail_golden_powered', 'rail_detector', 'rail_detector_powered', 'rail_activator', 'rail_activator_powered',
   'daylight_detector_inverted_top', 'lever', 'redstone_torch_on', 'redstone_torch_off',
   // compostos do arquivo da entidade em textures.js (composeChest): baús do Ender e armadilhado, cabeça
-  'ender_chest_top', 'ender_chest_side', 'ender_chest_front', 'trapped_chest_top', 'trapped_chest_side', 'trapped_chest_front', 'skull_front', 'skull_top', 'skull_side',
+  'ender_chest_top', 'ender_chest_side', 'ender_chest_front', 'trapped_chest_top', 'trapped_chest_side', 'trapped_chest_front',
 );
+// cabeças: o rosto de cada criatura (montado do arquivo da entidade em textures.js)
+export const SKULL_TYPES = ['skeleton', 'wither', 'zombie', 'steve', 'creeper'];
+for (const t of SKULL_TYPES) for (const f of ['front', 'right', 'left', 'back', 'top']) names.push(`skull_${t}_${f}`);
 export const MORE_TILES = Object.fromEntries([...new Set(names)].map((n) => [n, n]));

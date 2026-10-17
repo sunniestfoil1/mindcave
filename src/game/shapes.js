@@ -20,7 +20,7 @@ const opposite = (d) => dirIndex(-DIRS[d][0], -DIRS[d][1]);
 export function isSlabBlock(block) { return !!block && block.model === 'slab'; }
 export function isStairsBlock(block) { return !!block && block.model === 'stairs'; }
 export const BED_HEIGHT = 0.5625; // 9/16
-const SHAPED_MODELS = new Set(['slab', 'stairs', 'bed', 'door', 'fence', 'gate', 'chest', 'ladder', 'trapdoor', 'multi']);
+const SHAPED_MODELS = new Set(['slab', 'stairs', 'bed', 'door', 'fence', 'gate', 'chest', 'ladder', 'trapdoor', 'multi', 'skull']);
 export const RAIL_IDS = new Set([27, 28, 66, 157]);
 export function hasShape(block) { return !!block && SHAPED_MODELS.has(block.model); }
 
@@ -249,6 +249,7 @@ export function blockBoxes(state, getState, x, y, z, kind = 'select') {
   if (b.model === 'fence') return fenceBoxes(getState ? fenceConnections(stateIdOf(state), getState, x, y, z) : [false, false, false, false], kind);
   if (b.model === 'gate') return gateBoxes(stateMetaOf(state), kind);
   if (b.model === 'chest') return [CHEST_BOX];
+  if (b.model === 'skull') return [[0.25, 0, 0.25, 0.75, 0.5, 0.75]];
   if (b.model === 'ladder') return [ladderBox(stateMetaOf(state))];
   if (b.model === 'trapdoor') return [trapdoorBox(stateMetaOf(state))];
   if (b.model === 'multi') return b.multi(stateMetaOf(state), getState, x, y, z, kind);
@@ -282,10 +283,40 @@ export function rayBox(ox, oy, oz, dx, dy, dz, box, maxT) {
 const WALL_BOUND = new Set([50, 75, 76, 69, 77, 143, 68, 131]);
 export const isWallBound = (id) => WALL_BOUND.has(id);
 const solidCube = (b) => !!b && b.solid && b.opaque && (b.model || 'cube') === 'cube';
+// Onde cada planta pode ficar (BlockBush.canPlaceBlockOn e as classes de cada uma no 1.8.9): só em terra que sustenta planta
+const GROWS_ON_SOIL = (b) => b === 2 || b === 3 || b === 60;                     // grama, terra, terra arada
+const isFullCube = (b) => { const d = BLOCKS[b]; return !!d && d.solid && d.opaque && (d.model || 'cube') === 'cube'; };
+const waterAt = (getState, x, y, z) => { const i = stateIdOf(getState(x, y, z)); return i === 8 || i === 9; };
+export const PLANT_RULES = {
+  6: (g, x, y, z) => GROWS_ON_SOIL(stateIdOf(g(x, y - 1, z))),
+  31: (g, x, y, z) => GROWS_ON_SOIL(stateIdOf(g(x, y - 1, z))),
+  37: (g, x, y, z) => GROWS_ON_SOIL(stateIdOf(g(x, y - 1, z))),
+  38: (g, x, y, z) => GROWS_ON_SOIL(stateIdOf(g(x, y - 1, z))),
+  32: (g, x, y, z) => [12, 172, 159, 3, 2].includes(stateIdOf(g(x, y - 1, z))),   // arbusto morto: areia, argila endurecida ou terra
+  39: (g, x, y, z) => isFullCube(stateIdOf(g(x, y - 1, z))) || stateIdOf(g(x, y - 1, z)) === 110,
+  40: (g, x, y, z) => isFullCube(stateIdOf(g(x, y - 1, z))) || stateIdOf(g(x, y - 1, z)) === 110,
+  59: (g, x, y, z) => stateIdOf(g(x, y - 1, z)) === 60, 141: (g, x, y, z) => stateIdOf(g(x, y - 1, z)) === 60, 142: (g, x, y, z) => stateIdOf(g(x, y - 1, z)) === 60,
+  104: (g, x, y, z) => stateIdOf(g(x, y - 1, z)) === 60, 105: (g, x, y, z) => stateIdOf(g(x, y - 1, z)) === 60,
+  115: (g, x, y, z) => stateIdOf(g(x, y - 1, z)) === 88,                           // verruga do Nether: areia das almas
+  83: (g, x, y, z) => {                                                            // cana: sobre outra cana, ou grama/terra/areia ao lado de água
+    const b = stateIdOf(g(x, y - 1, z));
+    if (b === 83) return true;
+    return [2, 3, 12].includes(b) && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => waterAt(g, x + dx, y - 1, z + dz));
+  },
+  81: (g, x, y, z) => {                                                            // cacto: areia ou outro cacto, e nada sólido nos quatro lados
+    const b = stateIdOf(g(x, y - 1, z));
+    if (b !== 12 && b !== 81) return false;
+    return [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dz]) => { const i = stateIdOf(g(x + dx, y, z + dz)); return i === 0 || !(BLOCKS[i] && BLOCKS[i].solid); });
+  },
+  111: (g, x, y, z) => waterAt(g, x, y - 1, z) && stateIdOf(g(x, y, z)) === 0,     // vitória-régia: em cima da água
+};
+export function plantCanStay(id, g, x, y, z) { const r = PLANT_RULES[id]; return !r || r(g, x, y, z); }
+
 export function placeSpecial(placing, slotMeta, hit, yaw, getState) {
   if (!placing) return null;
   const id = placing.id;
   const px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
+  if (PLANT_RULES[id] && id !== 111 && !PLANT_RULES[id](getState, px, py, pz)) return { invalid: true };
   const lookIdx = [3, 0, 1, 2][Math.floor(yaw * 2 / Math.PI + 0.5) & 3]; // direção do olhar, na ordem de DOOR_FACES
   const clicked = BLOCKS[stateIdOf(getState(hit.x, hit.y, hit.z))];
   if (WALL_BOUND.has(id)) {
@@ -333,7 +364,7 @@ export function placeSpecial(placing, slotMeta, hit, yaw, getState) {
   return null;
 }
 // blocos que quebram sem chão sólido embaixo
-const FLOOR_BOUND = new Set([63, 66, 27, 28, 157, 70, 72, 147, 148, 171, 55, 92, 140, 93, 94, 149, 150, 151, 178, 132, 144]);
+const FLOOR_BOUND = new Set([63, 66, 27, 28, 157, 70, 72, 147, 148, 171, 55, 92, 140, 93, 94, 149, 150, 151, 178, 132, 144, 198, 199, 200, 201]);
 export const needsFloor = (id) => FLOOR_BOUND.has(id);
 export const FLOOR_BOUND_IDS = FLOOR_BOUND;
 
@@ -349,13 +380,13 @@ export function computePlacement(placing, slotMeta, hit, yaw, getState) {
   }
   const special = placeSpecial(placing, slotMeta, hit, yaw, getState);
   if (special) return special;
-  if (!placing || !['slab', 'stairs', 'gate', 'chest', 'ladder', 'trapdoor'].includes(placing.model)) return null;
+  if (!placing || !['slab', 'stairs', 'gate', 'chest', 'ladder', 'trapdoor', 'skull'].includes(placing.model)) return null;
   const px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
   const fracY = hit.hy !== undefined ? hit.hy - hit.y : 0.5;
   const upper = hit.ny === -1 || (hit.ny === 0 && fracY > 0.5);
   const lookIdx = [3, 0, 1, 2][Math.floor(yaw * 2 / Math.PI + 0.5) & 3]; // direção do olhar na ordem de DOOR_FACES
   const normalIdx = hit.ny === 0 ? DOOR_FACES.findIndex(d => d[0] === hit.nx && d[1] === hit.nz) : -1;
-  if (placing.model === 'chest') return { x: px, y: py, z: pz, id: placing.id, meta: (lookIdx + 2) & 3 }; // a frente olha para o jogador
+  if (placing.model === 'chest' || placing.model === 'skull') return { x: px, y: py, z: pz, id: placing.id, meta: (lookIdx + 2) & 3 }; // a frente olha para o jogador
   if (placing.model === 'ladder') {
     // só em parede lateral e de bloco cheio opaco; a escada olha para fora da parede
     const wall = getState(hit.x, hit.y, hit.z);

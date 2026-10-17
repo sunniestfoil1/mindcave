@@ -162,6 +162,7 @@ export default function Game() {
     setShowOptions(false);
     if (engineRef.current) {
       engineRef.current.paused = false;
+      engineRef.current._wantLock = true;   // o Esc não vale como gesto para travar o mouse: o primeiro clique/tecla recaptura
       engineRef.current.emitHud();
     }
     safePointerLock(canvasRef.current);
@@ -496,6 +497,7 @@ export default function Game() {
 
   const handleResume = () => {
     if (engineRef.current?.touch) { engineRef.current.touchResume(); return; }
+    if (engineRef.current) { engineRef.current.resumeNow(); return; }
     safePointerLock(canvasRef.current);
   };
 
@@ -505,6 +507,7 @@ export default function Game() {
     <div className="fixed inset-0 bg-black">
       <canvas ref={canvasRef} className="w-full h-full block" />
       {loading && <LoadingScreen percent={loadingProgress.percent} status={loadingProgress.status} />}
+      {!loading && hud?.dimLoading && <LoadingScreen title="Carregando terreno" percent={hud.dimLoading.percent} status={hud.dimLoading.status} />}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-900 text-white p-6 text-center">
           <div>

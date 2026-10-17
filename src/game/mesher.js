@@ -309,6 +309,29 @@ function emitChest(t, tiles, block, meta, wx, wy, wz, l, getBlockAbs, box) {
   }
 }
 
+// Cabeça: caixa 8×8×8 (metade de altura de bloco) com o rosto na frente (meta & 3, como o baú) e as outras faces do crânio
+function emitSkull(t, tiles, block, meta, wx, wy, wz, l) {
+  const i = meta & 3, front = DOOR_FACES[i], right = DOOR_FACES[(i + 1) & 3], back = DOOR_FACES[(i + 2) & 3];
+  const tn = (f) => tiles[`skull_${block.skullType}_${f}`] || tiles.error;
+  const box = [0.25, 0, 0.25, 0.75, 0.5, 0.75];
+  for (let fi = 0; fi < 6; fi++) {
+    const f = FACES[fi], d = f.dir;
+    const tile = d[1] === 1 ? tn('top') : d[1] === -1 ? tn('top') : (d[0] === front[0] && d[2] === front[1]) ? tn('front') : (d[0] === right[0] && d[2] === right[1]) ? tn('right') : (d[0] === back[0] && d[2] === back[1]) ? tn('back') : tn('left');
+    const base = t.pos.length / 3;
+    for (let k = 0; k < 4; k++) {
+      const c = f.c[k];
+      const px = c[0] ? box[3] : box[0], py = c[1] ? box[4] : box[1], pz = c[2] ? box[5] : box[2];
+      const U = (v) => (v - 0.25) * 2;   // 0.25..0.75 → 0..1
+      let u, v;
+      if (d[1] !== 0) { u = U(px); v = U(pz); }
+      else if (d[2] === -1) { u = U(px); v = py * 2; } else if (d[2] === 1) { u = 1 - U(px); v = py * 2; }
+      else if (d[0] === -1) { u = 1 - U(pz); v = py * 2; } else { u = U(pz); v = py * 2; }
+      pushVert(t, wx + px, wy + py, wz + pz, u, v, tile, 1, 1, 1, l.block / 15, l.sky / 15, f.sh);
+    }
+    t.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+}
+
 function emitBed(t, tiles, wx, wy, wz, meta, l, getBlockAbs) {
   const head = (meta & 8) !== 0;
   const dir = BED_DIRS[meta & 3];
@@ -472,15 +495,22 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
           const tile = tiles[key] || tiles.error;
           for (const box of boxes) emitBox(target, tile, tile, tile, null, wx, wy, wz, box, l, getBlockAbs);
         } else if (model === 'portal') {
+          // plano fino no meio do bloco (a malha do vidro fino), de dois lados; a textura animada do pacote enche o plano todo
           const l = getLightAbs(wx, wy, wz);
           const tile = tiles.portal || tiles.error;
-          emitBox(wa, tile, tile, tile, null, wx, wy, wz, getModelBox(block, meta), l, getBlockAbs);
+          const alongZ = (meta & 3) === 2;
+          const quad = alongZ ? [[0.5, 0, 0], [0.5, 1, 0], [0.5, 1, 1], [0.5, 0, 1]] : [[0, 0, 0.5], [0, 1, 0.5], [1, 1, 0.5], [1, 0, 0.5]];
+          const base = wa.pos.length / 3;
+          for (let i = 0; i < 4; i++) pushVert(wa, wx + quad[i][0], wy + quad[i][1], wz + quad[i][2], UV_CORNER[i][0], UV_CORNER[i][1], tile, 1, 1, 1, l.block / 15, l.sky / 15, 1.0);
+          wa.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
         } else if (model === 'ladder' || model === 'trapdoor') {
           const l = getLightAbs(wx, wy, wz);
           const tile = tiles[tileForFace(block, 'side', meta)] || tiles.error;
           for (const box of blockBoxes(s, getBlockAbs, wx, wy, wz, 'render')) emitBox(target, tile, tile, tile, null, wx, wy, wz, box, l, getBlockAbs);
         } else if (model === 'chest') {
           emitChest(target, tiles, block, meta, wx, wy, wz, getLightAbs(wx, wy, wz), getBlockAbs, blockBoxes(s, getBlockAbs, wx, wy, wz, 'render')[0]);
+        } else if (model === 'skull') {
+          emitSkull(target, tiles, block, meta, wx, wy, wz, neighborMaxLight(getLightAbs, wx, wy, wz));
         } else if (model === 'bed') {
           emitBed(target, tiles, wx, wy, wz, meta, getLightAbs(wx, wy, wz), getBlockAbs);
         } else if (model === 'slab' || model === 'stairs') {
@@ -505,8 +535,19 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
           const dSide = tiles[tileForFace(block, 'side', meta)] || tiles.error;
           for (const box of blockBoxes(s, getBlockAbs, wx, wy, wz, 'render')) {
             const bt = boxTiles(tiles, block, meta, box);
-            if (bt) emitBox(target, bt[0], bt[1], bt[2], tint, wx, wy, wz, box, l, getBlockAbs);
-            else emitBox(target, dTop, dBottom, dSide, tint, wx, wy, wz, box, l, getBlockAbs);
+            if (bt) emitBox(target, bt[0], bt[1], bt[2], tint, wx, wy, wz, box, l, getBlockAbs, null, null, box[7]);
+            else emitBox(target, dTop, dBottom, dSide, tint, wx, wy, wz, box, l, getBlockAbs, null, null, box[7]);
+          }
+          const pot = block.potPlants && block.potPlants[meta];
+          if (pot) {   // o que está plantado no vaso: cacto como caixinha, o resto como cruz menor
+            const pt = tiles[pot.tile] || tiles.error;
+            if (pot.box) emitBox(target, pt, pt, pt, null, wx, wy, wz, [0.375, 0.25, 0.375, 0.625, 0.6875, 0.625], l, getBlockAbs);
+            else for (const plane of CROSS_PLANES) {
+              const base = target.pos.length / 3;
+              for (let i = 0; i < 4; i++) { const c = plane[i]; pushVert(target, wx + 0.5 + (c[0] - 0.5) * 0.75, wy + 0.1875 + c[1] * 0.75, wz + 0.5 + (c[2] - 0.5) * 0.75, UV_CORNER[i][0], UV_CORNER[i][1], pt, 1, 1, 1, l.block / 15, l.sky / 15, 1.0); }
+              target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+              target.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+            }
           }
         } else if (model === 'rail') {
           const l = getLightAbs(wx, wy, wz);

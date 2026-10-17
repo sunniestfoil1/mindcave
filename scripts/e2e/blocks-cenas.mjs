@@ -245,6 +245,20 @@ const act = (fn) => page.evaluate((fn) => { const e = window.__eng; e._cachedRay
   ok(chat.some((t) => /mesa|Mesa|Encantamento/.test(t) && /tela/.test(t)), `mesa de encantamento avisa que a tela não existe: ${JSON.stringify(chat)}`);
 }
 
+// ===== Cena 5b: a alavanca liga a redstone de verdade (fio e lâmpada) =====
+{
+  await page.evaluate((G) => { const cw = window.__cw, P = window.__pack; for (let x = 46; x <= 56; x++) for (let z = 18; z <= 22; z++) { for (let y = G + 1; y <= G + 4; y++) cw.setBlock(x, y, z, 0); cw.setBlock(x, G, z, P(1, 0)); } }, G);
+  await build([[49, 1, 20, 69, 0], [50, 1, 20, 55, 0], [51, 1, 20, 55, 0], [52, 1, 20, 55, 0], [53, 1, 20, 123, 0]]);
+  const rs = () => page.evaluate(() => { for (let i = 0; i < 40; i++) window.__eng.redstone.tick(); });
+  await rs();
+  ok(((await get(53, G + 1, 20)) >> 4) === 123, 'lâmpada de redstone apagada com a alavanca desligada');
+  await aim(49.5, G + 3.2, 22.0, 49.5, G + 1.15, 20.5);
+  await act('interactBlock'); await rs();
+  ok(((await get(49, G + 1, 20)) & 8) === 8 && ((await get(53, G + 1, 20)) >> 4) === 124, 'ligar a alavanca acende a lâmpada pelo fio');
+  await act('interactBlock'); await rs();
+  ok(((await get(49, G + 1, 20)) & 8) === 0 && ((await get(53, G + 1, 20)) >> 4) === 123, 'desligar a alavanca apaga a lâmpada');
+}
+
 // ===== Cena 6: suporte — quebrar o que segura derruba o que estava preso =====
 {
   await build([[2, 1, 0, 1, 0], [2, 2, 0, 50, 5], [4, 1, 0, 1, 0], [4, 1, 1, 69, 3 | 8], [6, 1, 0, 1, 0], [6, 2, 0, 66, 0], [8, 1, 0, 1, 0], [8, 2, 0, 63, 0], [10, 1, 0, 1, 0], [10, 2, 0, 131, 3]]);

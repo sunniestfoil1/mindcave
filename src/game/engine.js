@@ -6,6 +6,8 @@ import { packState, stateId, stateMeta, chunkCoord } from './chunk';
 import { getBlock, BLOCKS, isWater, isLava, isFluid, isReplaceable, isSolid, BLOCK_NAMES, getSelectionBox } from './blocks';
 import { blockBoxes, rayBox, hasShape, isSlabBlock, isStairsBlock, computePlacement, bedPartner, BED_DIRS, DOOR_FACES, isDoorBlock } from './shapes';
 
+import { POT_CONTENTS, potMetaFor, SKULL_BLOCKS } from './blocksMore';
+
 // Itens que viram bloco ao colocar (o id do item é diferente do id do bloco)
 const ITEM_TO_BLOCK = { 323: 63, 380: 118, 379: 117, 390: 140, 356: 93, 404: 149, 372: 115, 338: 83, 354: 92, 397: 144 };
 // Itens de porta → bloco da porta (madeiras de 1.8: carvalho 324/64, ferro 330/71, pinheiro 427/193 … carvalho escuro 431/197)
@@ -23,7 +25,7 @@ import { tickFire, igniteEntity } from './fire';
 import { processCommand } from './commands';
 import { getMiningTime, getDrops, damageTool, isToolBroken, getToolDamage, ORE_XP } from './mining';
 import { addItem, createInventory, serializeInventory, deserializeInventory, stack } from './inventory';
-import { getArmorPoints, getItem } from './items';
+import { getArmorPoints, getItem, ITEMS } from './items';
 import { ProjectileManager } from './projectiles';
 import { createAnimationState, tickAnimation, startSwing, applyThirdPersonPose } from './animation';
 import { buildHandRig, poseHand } from './firstPersonHand';
@@ -44,6 +46,7 @@ import { explode, getExplosionDamage, canPlayExplosionSound } from './explosions
 import { tickAgriculture, applyBonemeal, trampleFarmland, harvestCrop } from './agriculture';
 import { createStats, serializeStats, deserializeStats, addStat, addStatByType } from './stats';
 import { createAchievementState, serializeAchievements, deserializeAchievements, tryUnlock, checkStatAchievements } from './achievements';
+import { TntRenderer } from './tntRender';
 import { loadRealTextures, reloadRealTextures, isRealTexturesLoaded, tickTextureAnimations } from './textures';
 import { lookDirFromAngles } from './viewMath';
 import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel, setModelHeldItem, setModelCape, setModelArmor, armorCodeFromSlots } from './playerModel';
@@ -58,7 +61,7 @@ import { createCrosshair } from './crosshair';
 import { createMotionBlur } from './motionBlur';
 import { clientStore } from './client/clientStore';
 import { initBiomeTint } from './biomeTint';
-import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener, playPopSound } from './sounds';
+import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener, playPopSound, playArmorEquipSound } from './sounds';
 import { createNametag } from './nametag';
 import { ParticleManager } from './particles';
 import { ItemEntityManager, createItemMesh, isItemSpriteReady } from './itemEntity';
@@ -233,6 +236,7 @@ export class GameEngine {
 
     // Inventário (PRD 06) — sempre criado, mesmo sem dados salvos
     this.inventory = { main: new Array(27).fill(null), hotbar: this.player.hotbar, armor: new Array(4).fill(null), crafting: new Array(4).fill(null), craftResult: null, cursor: null };
+    Object.defineProperty(this.inventory, 'dropOut', { value: (st) => this._throwItem(st), enumerable: false, configurable: true, writable: true });   // telas de inventário soltam o cursor por aqui
     // Título de tela (/title) — 60 ticks ≈ 3 s, como o stay padrão do vanilla
     this.titleText = null;
     this.subtitleText = null;
@@ -243,6 +247,17 @@ export class GameEngine {
 
     // Projéteis e combate (PRD 07)
     this.projectiles = new ProjectileManager(this.scene, this.world);
+    // Recolher flecha cravada (1.8.9): disparada em sobrevivência (modo 1) o sobrevivente recolhe 1 flecha; disparada no criativo (modo 2) só
+    // o criativo recolhe, sem ganhar item. probe = só pergunta se pode (a flecha ainda voa até o jogador antes de ser recolhida).
+    this.projectiles.onPickup = (proj, probe = false) => {
+      const creative = this.player.gameMode === 'creative';
+      if (proj.pickupMode === 2) { if (!creative) return false; if (!probe) playPopSound(proj.pos); return true; }
+      if (probe) return true;
+      const left = addItem(this.inventory, { id: 262, count: 1, meta: 0 });
+      if (left) return false;
+      playPopSound(proj.pos);
+      return true;
+    };
     this._buildFirstPersonHand();
 
     // Mobs (PRD 08)
@@ -430,6 +445,21 @@ export class GameEngine {
     } catch (e) { /* pointer lock not available (iframe) */ }
   }
 
+  // O Chrome recusa travar o mouse de novo nos ~1,3 s depois de um Esc. "Voltar ao jogo" não espera isso: o jogo segue na hora e a captura é
+  // tentada de 100 em 100 ms até pegar (o clique do botão vale como gesto por alguns segundos)
+  resumeNow() {
+    this.paused = false; this.mouseBtn = {}; this.keys = {}; this._wantLock = true;
+    this.emitHud();
+    if (this.touch || document.pointerLockElement === this.canvas) return;
+    this._requestPointerLock();
+    clearInterval(this._lockRetry);
+    const t0 = performance.now();
+    this._lockRetry = setInterval(() => {
+      if (document.pointerLockElement === this.canvas || this.paused || this.disposed || performance.now() - t0 > 4000) { clearInterval(this._lockRetry); return; }
+      this._requestPointerLock();
+    }, 100);
+  }
+
   // Retomou com Esc sem o mouse travado: o primeiro clique/tecla (gesto válido) recaptura
   _grabIfWanted() {
     if (this._wantLock && !this.paused && !this.chatOpen && document.pointerLockElement !== this.canvas) this._requestPointerLock();
@@ -469,6 +499,9 @@ export class GameEngine {
     this._onPLChange = () => {
       if (this.chatOpen || this.netManager) {
         this.paused = false;
+      } else if (this.guiOpenFn?.() && document.pointerLockElement !== this.canvas) {
+        // inventário, bancada, fornalha, baú... soltam o mouse de propósito: isso não é pausa. O Esc fecha a tela e só o Esc seguinte pausa.
+        this.paused = false; this._wantLock = true;
       } else if (document.pointerLockElement === this.canvas) {
         this.paused = false; this._wantLock = false;
       } else {
@@ -531,6 +564,8 @@ export class GameEngine {
       if (!down) return;
     }
 
+    // Alt+letra é atalho do navegador (Alt+D foca a barra de endereço, Alt+F abre o menu...): dentro do jogo ele é só "olhar em volta" + andar
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.code !== 'F4' && !this.paused) e.preventDefault();
     // Soltar uma tecla é sempre registrado, em qualquer tela: senão ela "gruda" (ou falha) depois de chat/inventário/F3
     if (!down) this.keys[e.code] = false;
     // Perspective: segurar ALT olha em volta sem virar o corpo; soltar volta (soltar vale em qualquer tela)
@@ -640,7 +675,7 @@ export class GameEngine {
       // Esc, Esc, Esc rápido como no jogo original: o navegador devolve o mouse ao primeiro Esc, mas NÃO aceita Esc como gesto para travar
       // de novo — então pausar/retomar é feito aqui, em software, na hora. O mouse é recapturado no primeiro clique/tecla (ver _grabIfWanted).
       if (e.repeat || this.netManager || this.chatOpen || this.guiOpenFn?.()) return;
-      if (this.paused) { this.paused = false; this.mouseBtn = {}; this.keys = {}; this._wantLock = true; this._requestPointerLock(); this.emitHud(); }
+      if (this.paused) { this.resumeNow(); }
       else if (document.pointerLockElement !== this.canvas) { this.paused = true; this._wantLock = false; this.emitHud(); }
       return;
     }
@@ -967,6 +1002,23 @@ export class GameEngine {
       return true;
     }
     const at = { pos: { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 } };
+    if (blockId === 140) { // vaso de flor: planta o que está na mão (muda, flor, cogumelo, cacto, arbusto morto, samambaia) ou devolve o que tinha
+      const held = this.getHeldItem();
+      if (meta === 0) {
+        const pm = held && held.id ? potMetaFor(held.id, held.meta || 0) : -1;
+        if (pm <= 0) return false;
+        this._setBlockSync(hit.x, hit.y, hit.z, packState(140, pm));
+        playBlockPlaceSound(2, at.pos);
+        this._consumeHeld(held);
+        return true;
+      }
+      const c = POT_CONTENTS[meta];
+      if (!c) return false;
+      this._setBlockSync(hit.x, hit.y, hit.z, packState(140, 0));
+      const left = this.player.gameMode === 'creative' ? null : addItem(this.inventory, { id: c.item.id, count: 1, meta: c.item.meta });
+      if (left) this.itemEntities?.spawnItem(left, { x: hit.x + 0.5, y: hit.y + 1, z: hit.z + 0.5 }, { x: 0, y: 1.5, z: 0 }, 10);
+      return true;
+    }
     if (blockId === 69) { // Alavanca: liga/desliga
       this._setBlockSync(hit.x, hit.y, hit.z, packState(69, meta ^ 8));
       playEvent('block.lever.click', { ...at, pitch: (meta & 8) ? 0.5 : 0.6 });
@@ -1040,18 +1092,32 @@ export class GameEngine {
   }
 
   placeBlock() {
+    const slot = this.player.hotbar[this.player.selectedSlot];
+    if (slot && slot.id === 111) {   // vitória-régia: o raio de blocos atravessa a água, então ela tem a própria mira (na superfície da água)
+      const src = this.raycastFluidSource();
+      if (!src || src.id !== 9 || stateId(this.world.getBlock(src.x, src.y + 1, src.z)) !== 0) return;
+      this._setBlockSync(src.x, src.y + 1, src.z, packState(111, 0));
+      playBlockPlaceSound(111, { x: src.x, y: src.y + 1, z: src.z });
+      this._consumeHeld(slot);
+      this.placeCd = 4;
+      return;
+    }
     const hit = this.raycast();
     if (!hit) return;
-    const slot = this.player.hotbar[this.player.selectedSlot];
     if (!slot || !slot.id) return;
     // getBlock() devolve PEDRA para id desconhecido: item que não é bloco (graveto, balde, comida) nunca pode ser colocado
     if (slot.id !== 355 && !DOOR_ITEMS[slot.id] && !ITEM_TO_BLOCK[slot.id] && !BLOCKS[slot.id]) return;
+    if (this.dimension === 'nether' && (slot.id === 8 || slot.id === 9)) {   // no Nether a água evapora ao ser colocada (só o caldeirão guarda água)
+      playEvent('block.fire.extinguish', { pos: { x: hit.x + hit.nx + 0.5, y: hit.y + hit.ny + 0.5, z: hit.z + hit.nz + 0.5 }, volume: 0.5 });
+      this.placeCd = 4;
+      return;
+    }
     let px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
     if (DOOR_ITEMS[slot.id]) { this.placeDoor(hit, slot, px, py, pz); return; }
     // o item da placa vira placa na parede quando se clica na lateral de um bloco, e em pé quando se clica em cima
-    const blockId = slot.id === 323 && hit.ny === 0 ? 68 : (ITEM_TO_BLOCK[slot.id] ?? slot.id);
+    const blockId = slot.id === 323 && hit.ny === 0 ? 68 : slot.id === 397 ? (SKULL_BLOCKS[slot.meta || 0] ?? 144) : (ITEM_TO_BLOCK[slot.id] ?? slot.id);
     const placing = getBlock(blockId);
-    let meta = slot.meta || 0;
+    let meta = slot.id === 397 ? 0 : (slot.meta || 0);
     let placeId = blockId;
     if (slot.id === 355) { this.placeBed(hit, slot, px, py, pz); return; }
     const getS = (a, b, c) => this.world.getBlock(a, b, c);
@@ -1159,6 +1225,16 @@ export class GameEngine {
   useHeldItem(slot) {
     if (!slot || !slot.id) return false;
     const id = slot.id;
+    // Armadura na mão: botão direito veste; se o slot já tem peça, troca (a peça antiga vai para o lugar da nova na hotbar)
+    const armorDef = ITEMS[id] && ITEMS[id].armor;
+    if (armorDef && this.inventory?.armor) {
+      const old = this.inventory.armor[armorDef.slot];
+      this.inventory.armor[armorDef.slot] = { ...slot, count: 1 };
+      this.player.hotbar[this.player.selectedSlot] = old && old.id ? old : null;
+      playArmorEquipSound(armorDef.material);
+      this.emitHud();
+      return true;
+    }
     const isBucket = id === 325 || id === 326 || id === 327;
     // Balde vazio: recolhe água/lava parada (mira atravessa o fluido)
     if (id === 325) {
@@ -1175,9 +1251,32 @@ export class GameEngine {
       return true;
     }
     const hit = this.raycast();
+    // Caldeirão: balde de água enche (3 níveis); balde vazio esvazia um caldeirão cheio (também vale no Nether)
+    if (hit && hit.id === 118 && (id === 326 || id === 325)) {
+      const lvl = (hit.meta || 0) & 3;
+      const at = { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 };
+      if (id === 326 && lvl < 3) {
+        this._setBlockSync(hit.x, hit.y, hit.z, packState(118, 3));
+        playEvent('item.bucket.empty', { pos: at });
+        if (this.player.gameMode !== 'creative') this.player.hotbar[this.player.selectedSlot] = { id: 325, count: 1, meta: 0 };
+        return true;
+      }
+      if (id === 325 && lvl === 3) {
+        this._setBlockSync(hit.x, hit.y, hit.z, packState(118, 0));
+        playEvent('item.bucket.fill', { pos: at });
+        if (this.player.gameMode !== 'creative') this.player.hotbar[this.player.selectedSlot] = { id: 326, count: 1, meta: 0 };
+        return true;
+      }
+      return true;
+    }
     if (isBucket) {
       // Balde cheio: derrama uma fonte no espaço à frente do bloco mirado
       if (!hit) return false;
+      if (id === 326 && this.dimension === 'nether') {   // água no Nether evapora na hora (o balde fica vazio)
+        playEvent('block.fire.extinguish', { pos: { x: hit.x + hit.nx + 0.5, y: hit.y + hit.ny + 0.5, z: hit.z + hit.nz + 0.5 }, volume: 0.5 });
+        if (this.player.gameMode !== 'creative') this.player.hotbar[this.player.selectedSlot] = { id: 325, count: 1, meta: 0 };
+        return true;
+      }
       let tx = hit.x + hit.nx, ty = hit.y + hit.ny, tz = hit.z + hit.nz;
       const cur = stateId(this.world.getBlock(tx, ty, tz));
       if (cur !== 0 && !isReplaceable(cur) && !(isFluid(cur))) return false;
@@ -1372,15 +1471,38 @@ export class GameEngine {
     for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) w.ensureChunk(cx + dx, cz + dz);
   }
 
-  // Atravessa o portal: escala 1:8, procura (ou constrói) o portal no outro mundo e põe o jogador nele
+  // Atravessa o portal: escala 1:8, procura (ou constrói) o portal no outro mundo e põe o jogador nele. Tudo por etapas, com a tela
+  // "Carregando terreno" (GuiDownloadTerrain): o mundo de destino é gerado um chunk por vez, entre quadros, e a tela só some quando as
+  // malhas ao redor do jogador estão prontas — antes o salto gerava 25 chunks de uma vez e travava o jogo.
   switchDimension(target) {
-    if (target === this.dimension) return false;
+    if (target === this.dimension || this._switching) return false;
+    this._switching = true;
+    this._portalTicks = 0;
+    this.dimLoading = { percent: 0, status: target === 'nether' ? 'Entrando no Nether' : 'Saindo do Nether' };
+    playEvent('block.portal.travel', { volume: 0.5 });
+    this.emitHud();
+    this._doSwitch(target).catch((e) => console.warn('[portal]', e)).finally(() => { this._switching = false; this.dimLoading = null; this.emitHud(); });
+    return true;
+  }
+
+  async _doSwitch(target) {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const setProg = (percent, status) => { this.dimLoading = { percent, status: status || this.dimLoading?.status }; this.emitHud(); };
+    await wait(50);
     const p = this.player.pos;
     const toNether = target === 'nether';
     const dest = this._worldFor(target);
     const tx = Math.floor(toNether ? p.x / 8 : p.x * 8), tz = Math.floor(toNether ? p.z / 8 : p.z * 8);
-    this._ensureArea(dest, tx, tz, 2);
-    let portal = findNearbyPortal(dest, tx, toNether ? 64 : 64, tz, toNether ? 16 : 32);
+    // 1) gera a área de chegada, um chunk por vez
+    const cx0 = Math.floor(tx / 16), cz0 = Math.floor(tz / 16), R = 2;
+    const total = (2 * R + 1) ** 2; let n = 0;
+    for (let dx = -R; dx <= R; dx++) for (let dz = -R; dz <= R; dz++) {
+      dest.ensureChunk(cx0 + dx, cz0 + dz);
+      setProg(Math.round((++n / total) * 55));
+      await wait(0);
+    }
+    // 2) acha o portal de lá ou constrói um
+    let portal = findNearbyPortal(dest, tx, 64, tz, toNether ? 16 : 32);
     if (!portal) {
       let by = toNether ? 70 : -1;
       if (toNether) {
@@ -1393,34 +1515,81 @@ export class GameEngine {
       buildPortal(dest, tx, by, tz, () => {});
       portal = { x: tx, y: by, z: tz, meta: 1 };
     }
+    setProg(60, 'Construindo terreno');
+    await wait(0);
+    // 3) troca de mundo e coloca o jogador; o motor segura o jogador parado até o chão dele estar carregado (_awaitChunk)
     this._attachWorld(dest);
     this.dimension = target;
     p.x = portal.x + 0.5; p.y = portal.y; p.z = portal.z + 0.5 + (portal.meta === 1 ? 1.2 : 0);
     if (this.player.vel) { this.player.vel.x = this.player.vel.y = this.player.vel.z = 0; }
     unstickPlayer(this.world, p);
     this.sky?.setVisible(target !== 'nether');
-    this._portalTicks = 0;
     this._portalCooldown = 60;
     this.weather?.setEnabled?.(target !== 'nether');
+    this._awaitChunk = true;
+    // 4) espera as malhas do entorno (até 6 s); a barra sobe com o que falta
+    const t0 = performance.now(); let q0 = 0;
+    while (performance.now() - t0 < 6000) {
+      const pend = this.world.pendingMeshCount ? this.world.pendingMeshCount() : 0;
+      q0 = Math.max(q0, pend);
+      setProg(60 + Math.round((q0 ? 1 - pend / q0 : 1) * 40), 'Construindo terreno');
+      if (pend === 0 && (!this.world.isIdle || this.world.isIdle()) && performance.now() - t0 > 400) break;
+      await wait(60);
+    }
+    // o bloco de ar sob o jogador precisa estar pronto: sem isso ele cairia no vazio ao reabrir
     this.emitHud();
-    return true;
+  }
+
+  // Ambiente do portal: o zumbido de quem está perto de um portal (som posicional, de tempos em tempos)
+  _tickPortalAmbient() {
+    if (this.worldTime % 20 !== 0 || Math.random() > 0.3) return;
+    const p = this.player.pos, bx = Math.floor(p.x), by = Math.floor(p.y), bz = Math.floor(p.z);
+    for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) for (let dy = -3; dy <= 3; dy++) {
+      if (stateId(this.world.getBlock(bx + dx, by + dy, bz + dz)) === 90) {
+        playEvent('block.portal.ambient', { pos: { x: bx + dx + 0.5, y: by + dy + 0.5, z: bz + dz + 0.5 }, volume: 0.5, pitch: Math.random() * 0.4 + 0.8 });
+        return;
+      }
+    }
   }
 
   tickPortal() {
+    if (this._switching) return;
     if (this._portalCooldown > 0) this._portalCooldown--;
+    this._tickPortalAmbient();
     const p = this.player.pos;
     const inPortal = stateId(this.world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) === 90
       || stateId(this.world.getBlock(Math.floor(p.x), Math.floor(p.y + 1), Math.floor(p.z))) === 90;
     if (!inPortal) { this._portalTicks = 0; return; }
     if (this._portalCooldown > 0) { this._portalCooldown = 60; return; }  // só reativa depois de sair do portal
+    // 1.8.9 (Entity.portalCounter): 80 ticks (4 s) em cima do portal no sobrevivência; no criativo atravessa na hora
+    if (this._portalTicks === 0) playEvent('block.portal.trigger', { volume: 0.25 });
     this._portalTicks++;
     const need = this.player.gameMode === 'creative' || this.player.creative ? 1 : 80;
     if (this._portalTicks >= need) this.switchDimension(this.dimension === 'nether' ? 'overworld' : 'nether');
   }
 
+  // Quebrou obsidiana ou um bloco do portal: o portal inteiro some na hora (sem som extra: só o do bloco quebrado) e a conexão com o portal
+  // do outro mundo também quebra (esta regra é do Mind Cave: no 1.8.9 o portal do outro lado continuava lá)
+  _portalIntegrity(x, y, z) {
+    const removed = checkPortalIntegrity(this.world, x, y, z, (a, b, c, st) => this._setBlockSync(a, b, c, st));
+    if (removed > 0) this._breakLinkedPortal(x, y, z);
+    return removed;
+  }
+
+  _breakLinkedPortal(x, y, z) {
+    const toNether = this.dimension === 'overworld';
+    const other = this.worlds[toNether ? 'nether' : 'overworld'];
+    if (!other || other === this.world) return;
+    const tx = Math.floor(toNether ? x / 8 : x * 8), tz = Math.floor(toNether ? z / 8 : z * 8);
+    const found = findNearbyPortal(other, tx, Math.floor(y), tz, toNether ? 16 : 32);
+    if (!found) return;
+    other.setBlock(found.x, found.y, found.z, 0);
+    checkPortalIntegrity(other, found.x, found.y, found.z, () => {});
+  }
+
   breakBedPartner(x, y, z, state) {
     this.spillContainer(x, y, z, state);
-    if (stateId(state) === 49) checkPortalIntegrity(this.world, x, y, z, (a, b, c, st) => this._setBlockSync(a, b, c, st));
+    if (stateId(state) === 49 || stateId(state) === 90) this._portalIntegrity(x, y, z);
     const id = stateId(state);
     if (id === 26) {
       const pt = bedPartner(x, z, stateMeta(state));
@@ -1438,11 +1607,32 @@ export class GameEngine {
     if (!hit) return;
     const b = getBlock(hit.id);
     // laje dupla vira a laje simples do mesmo tipo; escadas e lajes voltam à meta base (a orientação vem da colocação)
-    const id = b.singleId || hit.id;
+    let id = b.singleId || hit.id;
     let meta = hit.meta;
     if (b.singleId || isSlabBlock(b)) meta = hit.meta & 7;
     else if (isStairsBlock(b)) meta = 0;
-    this.player.hotbar[this.player.selectedSlot] = { id, meta };
+    else if (b.variants && b.variantMask !== undefined) meta = hit.meta & b.variantMask;   // o item leva a variante, sem eixo/estado
+    else if (b.model === 'door') { const lower = this.world.getBlock(hit.x, hit.y - ((hit.meta & 8) ? 1 : 0), hit.z); id = (b.drop && ITEMS[b.drop]) ? b.drop : id; meta = 0; void lower; }
+    else if (hit.id === 175) meta = (hit.meta & 8) ? stateMeta(this.world.getBlock(hit.x, hit.y - 1, hit.z)) & 7 : hit.meta & 7;
+    else if (hit.id === 26) { id = 355; meta = 0; }
+    else if (hit.id === 63 || hit.id === 68) { id = 323; meta = 0; }
+    else if ([144, 198, 199, 200, 201].includes(hit.id)) { id = 397; meta = [144, 198, 199, 200, 201].indexOf(hit.id); }
+    else if (b.drop && b.drop !== hit.id && ITEMS[b.drop] && !BLOCKS[b.drop]) { id = b.drop; meta = 0; }
+    else meta = (b.variants || b.dropMeta) ? meta & (b.variantMask ?? 15) : 0;
+    const p = this.player;
+    // 1) o item já está na hotbar: só seleciona o slot
+    for (let i = 0; i < 9; i++) { const s = p.hotbar[i]; if (s && s.id === id && (s.meta || 0) === meta) { p.selectedSlot = i; this.emitHud(); return; } }
+    // 2) está no inventário de cima: troca com o slot selecionado
+    for (let i = 0; i < this.inventory.main.length; i++) {
+      const s = this.inventory.main[i];
+      if (s && s.id === id && (s.meta || 0) === meta) { this.inventory.main[i] = p.hotbar[p.selectedSlot] && p.hotbar[p.selectedSlot].id ? p.hotbar[p.selectedSlot] : null; p.hotbar[p.selectedSlot] = s; this.emitHud(); return; }
+    }
+    // 3) só o criativo cria o item: pilha cheia no slot selecionado (o slot é substituído por um objeto novo para a hotbar redesenhar na hora)
+    if (p.gameMode === 'creative') {
+      const max = (ITEMS[id] && ITEMS[id].maxStack) || 64;
+      p.hotbar[p.selectedSlot] = { id, count: max, meta };
+      this.emitHud();
+    }
   }
 
   // Uma laje/escada recém-colocada não pode prender o jogador dentro dela
@@ -1626,21 +1816,20 @@ export class GameEngine {
     if (this.jumpTicks > 0) this.jumpTicks--;
 
     if (p.flying) {
-      const speed = (p.sprinting ? PLAYER.creativeSprint : PLAYER.creativeSpeed) / TPS;
-      const wl = Math.hypot(strafe, forward);
-      let fx = 0, fz = 0;
-      if (wl > 1e-4) {
-        const sin = Math.sin(yaw), cos = Math.cos(yaw);
-        fx = (strafe * cos - forward * sin) / wl * speed;
-        fz = (forward * cos + strafe * sin) / wl * speed;
-      }
-      p.vel.x = fx; p.vel.z = fz;
-      let vy = 0;
-      if (this.isAction('jump')) vy += 1;
-      if (this.isAction('sneak')) vy -= 1;
-      p.vel.y = vy * PLAYER.creativeSpeed / TPS;
+      // Voo do criativo (EntityPlayer.moveEntityWithHeading, 1.8.9): o jogador ACELERA (0,05 por tick; 0,1 correndo) e escorrega com o atrito 0,91 do ar
+      // em vez de ter velocidade fixa — cruza a ~10,1 blocos/s (20,2 correndo). Subir/descer soma ±0,15 por tick e a velocidade vertical perde 40% a cada
+      // tick: estabiliza em 7,5 blocos/s e para quase na hora ao soltar a tecla.
+      const flySpeed = 0.05 * (p.sprinting ? 2 : 1);
+      if (this.isAction('jump')) p.vel.y += 0.15;
+      if (this.isAction('sneak')) p.vel.y -= 0.15;
+      this.moveFlying(strafe, forward, flySpeed, yaw);
+      const vy = p.vel.y;
       const res = moveEntity(p.pos, p.vel, this.world, 1, { sneaking: p.sneaking, onGround: p.onGround, flying: p.flying });
       p.onGround = res.onGround;
+      p.vel.x *= 0.91; p.vel.z *= 0.91;
+      p.vel.y = vy * 0.6;
+      // pousar no chão encerra o voo no criativo (EntityPlayerSP.onLivingUpdate); no meio do salto duplo ainda está no ar
+      if (p.onGround && p.gameMode === 'creative' && vy <= 0) p.flying = false;
     } else if (this.inFluid === 'water') {
       this.moveFlying(strafe, forward, 0.02, yaw);
       const res = moveEntity(p.pos, p.vel, this.world, 1, { width: PLAYER.width, height: PLAYER.height });
@@ -1768,6 +1957,9 @@ export class GameEngine {
       } else if (isBow(heldItem) && (p.gameMode === 'creative' || this._findArrow())) {
         p.bowDrawing = true; p.usingItem = true;
         this.bowChargeTicks++;
+        // ranger da corda: começa baixo e se repete enquanto o arco enche (o 1.8.9 não tem som de puxar; usa o ranger da besta do pacote)
+        if (this.bowChargeTicks === 1) playEvent('item.crossbow.loading_start', { volume: 0.6 });
+        else if (this.bowChargeTicks < 20 && this.bowChargeTicks % 7 === 0) playEvent('item.crossbow.loading_middle', { volume: 0.35 });
         p.bowCharge = computeBowCharge(this.bowChargeTicks);
       } else if (this.tryStartEating(p)) {
         this.tickEating(p);
@@ -1867,7 +2059,7 @@ export class GameEngine {
     // Mobs (PRD 08)
     if (this.mobs) {
       this.mobs.tick(p, {
-        world: this.world, difficulty: this.difficulty, worldTime: this.worldTime,
+        world: this.world, difficulty: this.difficulty, worldTime: this.worldTime, dimension: this.dimension,
         weather: this.weather, gameRules: this.gameRules, projectiles: this.projectiles,
         inventory: this.inventory, getHeldItem: () => this.getHeldItem(),
         itemEntities: this.itemEntities, particles: this.particles,
@@ -2581,6 +2773,13 @@ export class GameEngine {
           if (entry.anim && !rp.sleeping && !rp.isDead) {
             entry.anim.speed = spd;
             if (spd > 0.05) entry.anim.walkPhase += spd * dt * 2.5;
+            // mesma conta dos passos do 1.8.9, em tempo real: distância por tick = velocidade / 20; o fator por quadro equivale aos ticks que passaram
+            const ticks = dt * 20, a = entry.anim;
+            const f = Math.min(1, (spd / 20) * 4);
+            a.prevLimbSwingAmount = a.limbSwingAmount;
+            a.limbSwingAmount += (f - a.limbSwingAmount) * (1 - Math.pow(0.6, ticks));
+            a.limbSwing += a.limbSwingAmount * ticks;
+            a.hasLimb = true; a.age += ticks;
             applyThirdPersonPose(entry.group, entry.anim, rp, this.worldTime, 0);
           }
         }
@@ -2832,6 +3031,8 @@ export class GameEngine {
       showChunkBorders: this.showChunkBorders,
       realTextures: isRealTexturesLoaded(),
       // aviso no HUD só quando há algo carregando de verdade: download das texturas ou os chunks restantes até a distância de renderização
+      dimLoading: this.dimLoading || null,
+      portalProgress: this._portalTicks > 0 && !this._switching ? Math.min(1, this._portalTicks / 80) : 0,
       loadingNote: isPackDownloading() ? 'Carregando texturas...' : (this.loadingRadius < this.targetRadius ? 'Carregando chunks...' : null),
       build: 'PRD-21',
       title: this.titleTicks > 0 ? this.titleText : null,
@@ -2999,7 +3200,12 @@ export class GameEngine {
     if (slot.count <= 0) {
       p.hotbar[p.selectedSlot] = { id: 0, meta: 0 };
     }
+    this._throwItem(itemToDrop);
+  }
 
+  // Joga uma pilha para a frente do jogador (Q solta 1; clicar fora do inventário com a pilha no cursor solta tudo, como no 1.8.9)
+  _throwItem(itemToDrop) {
+    const p = this.player;
     const eye = this.eyePos();
     const dir = this.lookDir();
     const spawnPos = {
@@ -3062,6 +3268,14 @@ export class GameEngine {
   trySleep(bx, by, bz) {
     const p = this.player;
     if (p.isDead) return;
+    if (this.dimension === 'nether') {   // 1.8.9 (BlockBed): no Nether a cama explode, com fogo, e some inteira
+      const st = this.world.getBlock(bx, by, bz);
+      const pt = bedPartner(bx, bz, stateMeta(st));
+      this._setBlockSync(bx, by, bz, 0);
+      if (stateId(this.world.getBlock(pt.x, by, pt.z)) === 26) this._setBlockSync(pt.x, by, pt.z, 0);
+      this.detonate({ x: bx + 0.5, y: by + 0.5, z: bz + 0.5 }, 5);
+      return;
+    }
     const can = canSleep(p, this.worldTime, this.weather?.isThundering?.(), this.mobs?.mobs);
     if (!can.ok) {
       if (this.onChatMessage) {
@@ -3283,11 +3497,12 @@ export class GameEngine {
       if (a.arr[a.i].count <= 0) a.arr[a.i] = null;
     }
     playBowSound(p.pos);
-    this.projectiles.spawnArrow(p, charge, {
-      onHitEntity: (proj, entity) => {
+    const proj = this.projectiles.spawnArrow(p, charge, {
+      onHitEntity: (pr, entity) => {
         if (entity) entity._lastAttacker = p.nomeJogador || p.name;
       },
     });
+    if (proj) proj.pickupMode = p.gameMode === 'creative' ? 2 : 1;
     this._wearHeld(p.hotbar[p.selectedSlot]); // desgaste do arco (antes lia um campo que não existe e nunca gastava)
   }
 
@@ -3389,14 +3604,17 @@ export class GameEngine {
       const blk = heldItem.id < 256 ? BLOCKS[heldItem.id] : null;
       const cutout = blk && (blk.model === 'cross' || blk.model === 'torch' || blk.model === 'crop' || !blk.solid);
       handStyle = blk && !cutout ? 'block' : 'sprite';
-      const spriteNow = isItemSpriteReady(heldItem);
-      if (!this.fpsItem || this.fpsItem._itemId !== heldItem.id || this.fpsItem._meta !== (heldItem.meta || 0) || this.fpsItem._glint !== glintOn || this.fpsItem._spriteReady !== spriteNow) {
+      // arco: o desenho muda com a carga (bow_standby → bow_pulling_0/1/2 aos 0 / 0,65 / 0,9 de carga), já com a flecha encaixada
+      const pull = this.bowChargeTicks / 20;
+      const viewMeta = isBow(heldItem) && p.bowDrawing ? (pull >= 0.9 ? 3 : pull >= 0.65 ? 2 : 1) : (heldItem.meta || 0);
+      const spriteNow = isItemSpriteReady({ id: heldItem.id, meta: viewMeta });
+      if (!this.fpsItem || this.fpsItem._itemId !== heldItem.id || this.fpsItem._meta !== viewMeta || this.fpsItem._glint !== glintOn || this.fpsItem._spriteReady !== spriteNow) {
         // Materiais são cacheados/partilhados — só remove do grupo, sem dispose
         if (this.fpsItem) this.fpsItemGroup.remove(this.fpsItem);
         if (this.fpsGlint) { this.fpsItemGroup.remove(this.fpsGlint.group); this.fpsGlint = null; }
-        this.fpsItem = createItemMesh({ id: heldItem.id, meta: heldItem.meta || 0 }, 1, this.world?.atlas);
+        this.fpsItem = createItemMesh({ id: heldItem.id, meta: viewMeta }, 1, this.world?.atlas);
         this.fpsItem._itemId = heldItem.id;
-        this.fpsItem._meta = heldItem.meta || 0;
+        this.fpsItem._meta = viewMeta;
         this.fpsItem._glint = glintOn;
         this.fpsItem._spriteReady = spriteNow;
         this.fpsItem.scale.setScalar(handStyle === 'block' ? 4 : 1 / (blk ? 0.32 : 0.3));
@@ -3469,16 +3687,13 @@ export class GameEngine {
 
   // === PRD 11: TNT e Explosões ===
   spawnTNT(x, y, z) {
-    const geo = new THREE.BoxGeometry(0.98, 0.98, 0.98);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(x, y, z);
-    this.scene.add(mesh);
+    if (!this._tntRender) this._tntRender = new TntRenderer(this.scene);
     playFuseSound({ x, y, z });
-    this.tntEntities.push({ pos: { x, y, z }, vel: { x: (Math.random()-0.5)*0.1, y: 0.2, z: (Math.random()-0.5)*0.1 }, fuse: 80, mesh });
+    this.tntEntities.push({ pos: { x, y, z }, vel: { x: (Math.random()-0.5)*0.1, y: 0.2, z: (Math.random()-0.5)*0.1 }, fuse: 80 });
   }
 
   tickTntEntities() {
+    let detonated = 0;   // no máximo 6 explosões por tick: numa cadeia de centenas o resto espera 1 tick (ninguém vê), em vez de um quadro de 100 ms
     for (let i = this.tntEntities.length - 1; i >= 0; i--) {
       const tnt = this.tntEntities[i];
       tnt.fuse--;
@@ -3496,19 +3711,15 @@ export class GameEngine {
       } else {
         tnt.pos.x = nx; tnt.pos.y = ny; tnt.pos.z = nz;
       }
-      // Atualizar mesh
-      if (tnt.mesh) {
-        tnt.mesh.position.set(tnt.pos.x, tnt.pos.y, tnt.pos.z);
-        const flash = Math.floor(tnt.fuse / 5) % 2 === 0;
-        tnt.mesh.material.color.setHex(flash ? 0xffffff : 0xff0000);
-      }
       // Explodir
       if (tnt.fuse <= 0) {
-        if (tnt.mesh) { this.scene.remove(tnt.mesh); tnt.mesh.geometry.dispose(); tnt.mesh.material.dispose(); }
+        if (detonated >= 6) { tnt.fuse = 0; continue; }
+        detonated++;
         this.detonate(tnt.pos, 4);
         this.tntEntities.splice(i, 1);
       }
     }
+    this._tntRender?.update(this.tntEntities);
     // TNT pendente (cadeia)
     for (let i = this.pendingTnt.length - 1; i >= 0; i--) {
       this.pendingTnt[i].ticksLeft--;
@@ -3528,6 +3739,9 @@ export class GameEngine {
       breakBlocks: this.gameRules.explosionsBreakBlocks !== false,
       dropItems: this.gameRules.doTileDrops !== false,
     });
+
+    // Explosão levou pedaço da moldura ou do portal: o portal restante desfaz inteiro
+    if (result.destroyed && result.destroyed.length) { for (const d of result.destroyed) this._portalIntegrity(d.x, d.y, d.z); }
 
     // Partículas de explosão controladas (estilo 1.8.9)
     if (this.particles) {
@@ -3635,9 +3849,7 @@ export class GameEngine {
     if (this.mobs) this.mobs.dispose();
     if (this.gunController) this.gunController = null;
     if (this._bulletDecals) this._bulletDecals = [];
-    for (const tnt of this.tntEntities) {
-      if (tnt.mesh) { this.scene.remove(tnt.mesh); tnt.mesh.geometry.dispose(); tnt.mesh.material.dispose(); }
-    }
+    this._tntRender?.dispose(); this._tntRender = null;
     this.tntEntities = [];
     this.pendingTnt = [];
     this.crosshair?.dispose();

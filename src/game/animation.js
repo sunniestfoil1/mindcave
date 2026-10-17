@@ -11,6 +11,8 @@ export function createAnimationState() {
     walkPhase: 0,
     prevWalkPhase: 0,
     speed: 0,
+    // Andar do 1.8.9 (EntityLivingBase.limbSwing): anda com a DISTÂNCIA percorrida, não com o relógio
+    limbSwing: 0, limbSwingAmount: 0, prevLimbSwingAmount: 0, hasLimb: false, age: 0, _px: undefined, _pz: undefined,
     // Ação
     swingProgress: 0,       // 0..1, dura 6 ticks
     prevSwingProgress: 0,
@@ -41,6 +43,18 @@ export function tickAnimation(anim, player, time) {
   anim.prevSwingProgress = anim.swingProgress;
   anim.prevEquipProgress = anim.equipProgress;
 
+  // Passos do 1.8.9: f = distância andada no tick × 4 (no máximo 1); a amplitude anda 40% do caminho até f e a fase soma a amplitude
+  anim.age++;
+  if (player.pos) {
+    if (anim._px !== undefined) {
+      const f = Math.min(1, Math.hypot(player.pos.x - anim._px, player.pos.z - anim._pz) * 4);
+      anim.prevLimbSwingAmount = anim.limbSwingAmount;
+      anim.limbSwingAmount += (f - anim.limbSwingAmount) * 0.4;
+      anim.limbSwing += anim.limbSwingAmount;
+      anim.hasLimb = true;
+    }
+    anim._px = player.pos.x; anim._pz = player.pos.z;
+  }
   // Locomoção
   const spd = Math.hypot(player.vel.x, player.vel.z);
   anim.speed = spd;
@@ -136,15 +150,28 @@ export function applyThirdPersonPose(model, anim, player, time, partialTick = 0)
   }
   model.rotation.z = 0;
 
-  const walking = spd > 0.05;
+  const limb = !!anim.hasLimb;
+  const lsa = limb ? anim.prevLimbSwingAmount + (anim.limbSwingAmount - anim.prevLimbSwingAmount) * pt : 0;
+  const ls = limb ? anim.limbSwing - anim.limbSwingAmount * (1 - pt) : 0;
+  const walking = limb ? lsa > 0.02 : spd > 0.05;
   const sprinting = player.sprinting && walking;
   const sneaking = player.sneaking;
 
-  // === Locomoção (skinview3d) ===
+  // === Locomoção ===
   const basicArmRotationZ = Math.PI * 0.02;
-
-  if (sprinting) {
-    // Correr — cos com amplitude maior (skinview3d RunningAnimation)
+  if (limb) {
+    // ModelBiped.setRotationAngles (1.8.9): pernas ±1,4 × amplitude e braços ±1,0 × amplitude, em oposição; parado, os braços balançam de leve
+    const c = fastCos(ls * 0.6662), c2 = fastCos(ls * 0.6662 + Math.PI);
+    u.legR.rotation.x = c * 1.4 * lsa;
+    u.legL.rotation.x = c2 * 1.4 * lsa;
+    u.armR.rotation.x = c2 * lsa + fastSin(anim.age * 0.067) * 0.05;
+    u.armL.rotation.x = c * lsa - fastSin(anim.age * 0.067) * 0.05;
+    const sway = fastCos(anim.age * 0.09) * 0.05 + 0.05;
+    u.armL.rotation.z = sway;
+    u.armR.rotation.z = -sway;
+    model.rotation.z = 0;
+  } else if (sprinting) {
+    // (sem posição: prévia do inventário e jogadores sem histórico) corrida do skinview3d
     const rt = t * 1.5 + Math.PI * 0.5;
     u.legL.rotation.x = fastCos(rt + Math.PI) * 1.3;
     u.legR.rotation.x = fastCos(rt) * 1.3;
@@ -153,10 +180,8 @@ export function applyThirdPersonPose(model, anim, player, time, partialTick = 0)
     const runArmZ = Math.PI * 0.1;
     u.armL.rotation.z = fastCos(rt) * 0.1 + runArmZ;
     u.armR.rotation.z = fastCos(rt + Math.PI) * 0.1 - runArmZ;
-    // Inclinação leve ao correr
     model.rotation.z = fastCos(rt + Math.PI) * 0.01;
   } else if (walking) {
-    // Andar — sin com amplitude 0.5 (skinview3d WalkingAnimation)
     const amp = Math.min(1, spd / 5);
     u.legL.rotation.x = fastSin(t) * 0.5 * amp;
     u.legR.rotation.x = fastSin(t + Math.PI) * 0.5 * amp;
@@ -166,7 +191,6 @@ export function applyThirdPersonPose(model, anim, player, time, partialTick = 0)
     u.armR.rotation.z = fastCos(t + Math.PI) * 0.03 - basicArmRotationZ;
     model.rotation.z = 0;
   } else {
-    // Parado — respiração (skinview3d IdleAnimation)
     u.legL.rotation.x = 0;
     u.legR.rotation.x = 0;
     u.armL.rotation.x = 0;
@@ -213,8 +237,8 @@ export function applyThirdPersonPose(model, anim, player, time, partialTick = 0)
 
   // === Cabeça: segue pitch + head bobbing ao andar (skinview3d) ===
   if (u.head) {
-    u.head.rotation.y = walking ? fastSin(t / 4) * 0.2 : 0;
-    u.head.rotation.x = player.pitch + (walking ? fastSin(t / 5) * 0.1 : 0);
+    u.head.rotation.y = limb ? 0 : (walking ? fastSin(t / 4) * 0.2 : 0);   // o 1.8.9 não balança a cabeça ao andar
+    u.head.rotation.x = player.pitch + (limb ? 0 : (walking ? fastSin(t / 5) * 0.1 : 0));
   }
 }
 
@@ -284,10 +308,6 @@ export function getFirstPersonTransform(anim, player, itemDef, time, partialTick
     x = 0.35; y = -0.4; z = -0.7;
     rotX = -0.1;
     rotY = 0.2;
-    if (anim.bowCharge > 0.9) {
-      const shake = (Math.random() - 0.5) * 0.02;
-      x += shake; y += shake;
-    }
   }
 
   // Comer / Beber

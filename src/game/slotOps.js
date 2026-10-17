@@ -148,3 +148,14 @@ export function applyDrag(inv, refs, button) {
   if (c.count <= 0) inv.cursor = null;
   return true;
 }
+
+// Clique fora da janela com algo no cursor (1.8.9): o botão esquerdo joga a pilha inteira, o direito joga 1. Devolve true se jogou algo.
+export function dropCursorOutside(inv, button) {
+  const c = inv.cursor;
+  if (!c || !c.id) return false;
+  const n = button === 2 ? 1 : (c.count || 1);
+  inv.dropOut?.({ id: c.id, count: n, meta: c.meta || 0 });
+  const left = (c.count || 1) - n;
+  inv.cursor = left > 0 ? { ...c, count: left } : null;
+  return true;
+}

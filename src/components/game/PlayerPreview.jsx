@@ -2,7 +2,7 @@
 // de frente, o corpo gira um pouco e a cabeça segue o mouse.
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { buildPlayerModel, applyPackSkin, applyCapeToModel } from '@/game/playerModel';
+import { buildPlayerModel, applyPackSkin, applyCapeToModel, setModelArmor, armorCodeFromSlots } from '@/game/playerModel';
 import { createAnimationState, applyThirdPersonPose } from '@/game/animation';
 
 const DEG = Math.PI / 180;
@@ -12,7 +12,7 @@ const DEG = Math.PI / 180;
 export const PREVIEW_SURVIVAL = { box: { x: 26, y: 8, w: 52, h: 70 }, feet: { x: 51, y: 75 }, unit: 30, refUp: 50 };
 export const PREVIEW_CREATIVE = { box: { x: 28, y: 6, w: 32, h: 43 }, feet: { x: 43, y: 45 }, unit: 20, refUp: 30 };
 
-export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisible = true }) {
+export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisible = true, armor = null }) {
   const { box, feet, unit, refUp } = preset;
   const FEET_Y = feet.y - box.y;       // pés, a partir do topo da caixa
   const CENTER_X = feet.x - box.x;     // centro do corpo, a partir da esquerda da caixa
@@ -21,6 +21,8 @@ export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisibl
   const modelRef = useRef(null);
   const capeRef = useRef(capeVisible);
   capeRef.current = capeVisible;
+  const armorRef = useRef(armor);
+  armorRef.current = armor;   // a prévia veste o que está nos 4 slots de armadura (como o 1.8.9)
 
   useEffect(() => {
     const onMove = (e) => { mouse.current = { x: e.clientX, y: e.clientY }; };
@@ -74,6 +76,7 @@ export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisibl
       body.pitch = pitch;
       model.position.set(0, 0, 0);
       model.rotation.set(0, bodyYaw, 0);
+      if (armorRef.current) setModelArmor(model, armorCodeFromSlots(armorRef.current));
       applyThirdPersonPose(model, anim, body, 0);
       model.userData.head.rotation.y = headYaw;
       renderer.render(scene, camera);

@@ -169,7 +169,7 @@ export const ITEMS = {
   321: I(321, 'painting', 'Pintura', { maxStack:16, color:0xc0a040, category:'decor' }),
   323: I(323, 'sign', 'Placa', { maxStack:16, color:0x8b5a2b, category:'decor' }),
   354: I(354, 'cake', 'Bolo', { maxStack:1, color:0xf0e0d0, category:'decor' }),
-  397: I(397, 'skull', 'Cabeça de Esqueleto', { color:0xd0d0d0, category:'decor' }),
+  397: I(397, 'skull', 'Cabeça de Esqueleto', { color:0xd0d0d0, category:'decor', variantNames: ['Cabeça de Esqueleto', 'Cabeça de Esqueleto Wither', 'Cabeça de Zumbi', 'Cabeça de Steve', 'Cabeça de Creeper'] }),
   338: I(338, 'reeds', 'Cana-de-açúcar', { color:0x80c050, category:'materials' }),
   324: I(324, 'wooden_door', 'Porta de Carvalho', { color:0x8b5a2b, category:'decor' }),
   427: I(427, 'spruce_door', 'Porta de Pinheiro', { color:0x6b4a2b, category:'decor' }),

@@ -258,6 +258,9 @@ export default function GameHud({ hud, onPause }) {
         </div>
       )}
 
+      {hud.portalProgress > 0 && (   // dentro do portal: o roxo vai tomando a tela até a travessia (o enjoo do Nether)
+        <div data-portal-overlay style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: `radial-gradient(ellipse at center, rgba(150,70,220,${0.25 * hud.portalProgress}) 0%, rgba(90,30,170,${0.85 * hud.portalProgress}) 100%)`, mixBlendMode: 'screen' }} />
+      )}
       {hud.loadingNote && (
         <div style={{ position: 'absolute', top: 4 * S, left: '50%', transform: 'translateX(-50%)' }}>
           <McText text={hud.loadingNote} x={0} y={0} S={S} color="#FFFF55" shadow align="center" />

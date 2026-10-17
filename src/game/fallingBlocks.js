@@ -11,7 +11,7 @@ export const FALLING_BLOCK_IDS = new Set([12, 13, 145]);
 
 // Blocos que requerem suporte no chão (bloco abaixo deve ser sólido)
 export const GROUND_SUPPORTED_BLOCKS = new Set([
-  6, 31, 37, 38, 39, 40, 55, 59, 70, 72, 78, 83, 104, 105, 115, 141, 142, 32,   // mudas, plantas, fio de redstone, placas, neve, cana, colheitas
+  6, 31, 37, 38, 39, 40, 55, 59, 70, 72, 78, 81, 83, 104, 105, 115, 141, 142, 32, 111,   // mudas, plantas, fio de redstone, placas, neve, cana, colheitas
   175,                                                                            // planta alta (a de cima depende da de baixo)
   64, 71, 193, 194, 195, 196, 197,                                                // portas (a metade de cima sai junto, ver abaixo)
   ...FLOOR_BOUND_IDS,                                                             // trilhos, placa em pé, bolo, vaso, tapete, repetidor... (shapes.js)
@@ -58,6 +58,12 @@ export function handleBlockBreakPhysics(world, x, y, z, dropCallback = null) {
     const dropItem = blockDef?.drop && !upperHalf ? { id: blockDef.drop, count: 1, meta: nid === 175 ? ns & 7 : 0 } : null;
     world.setBlock(nx, ny, nz, 0);
     if (nid === 175 && !upperHalf) world.setBlock(nx, ny + 1, nz, 0);
+    if (nid === 81 || nid === 83) {   // cacto e cana empilhados: o que estava em cima cai junto, um item por peça
+      for (let yy = ny + 1; stateId(world.getBlock(nx, yy, nz)) === nid; yy++) {
+        world.setBlock(nx, yy, nz, 0);
+        if (dropCallback && blockDef.drop) dropCallback({ id: blockDef.drop, count: 1, meta: 0 }, { x: nx + 0.5, y: yy + 0.2, z: nz + 0.5 });
+      }
+    }
     if (blockDef.model === 'door') world.setBlock(nx, ny + ((ns & 8) ? -1 : 1), nz, 0); // porta sem chão: cai inteira, dropando 1 item
     if (dropItem && dropCallback) dropCallback(dropItem, { x: nx + 0.5, y: ny + 0.2, z: nz + 0.5 });
   }

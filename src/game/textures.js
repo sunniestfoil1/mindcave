@@ -445,11 +445,15 @@ async function composeChest(ctx) {
     drawTile(ctx, prefix + '_side', (c) => { c.drawImage(src, 0, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 0, 33, 14, 10, 0, lidH, TILE, bodyH); });
     drawTile(ctx, prefix + '_front', (c) => { c.drawImage(src, 14, 14, 14, 5, 0, 0, TILE, lidH); c.drawImage(src, 14, 33, 14, 10, 0, lidH, TILE, bodyH); c.drawImage(src, 1, 1, 2, 4, 7, lidH - 1, 2, 4); });
   }
-  const skull = await getPackCanvas(MC + 'textures/entity/skeleton/skeleton.png');
-  if (skull) {
-    drawTile(ctx, 'skull_front', (c) => c.drawImage(skull, 8, 8, 8, 8, 0, 0, TILE, TILE));
-    drawTile(ctx, 'skull_top', (c) => c.drawImage(skull, 8, 0, 8, 8, 0, 0, TILE, TILE));
-    drawTile(ctx, 'skull_side', (c) => c.drawImage(skull, 0, 8, 8, 8, 0, 0, TILE, TILE));
+  // cabeças: o crânio 8×8×8 do arquivo da criatura (64×32): direita (0,8), frente (8,8), esquerda (16,8), trás (24,8), topo (8,0)
+  const FILES = { skeleton: 'skeleton/skeleton', wither: 'skeleton/wither_skeleton', zombie: 'zombie/zombie', steve: 'steve', creeper: 'creeper/creeper' };
+  for (const [t, f] of Object.entries(FILES)) {
+    const src = await getPackCanvas(MC + `textures/entity/${f}.png`);
+    if (!src) continue;
+    const k = src.width / 64;   // texturas em HD têm o mesmo desenho em escala maior
+    for (const [face, sx, sy] of [['right', 0, 8], ['front', 8, 8], ['left', 16, 8], ['back', 24, 8], ['top', 8, 0]]) {
+      drawTile(ctx, `skull_${t}_${face}`, (c) => c.drawImage(src, sx * k, sy * k, 8 * k, 8 * k, 0, 0, TILE, TILE));
+    }
   }
 }
 

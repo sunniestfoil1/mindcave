@@ -3,58 +3,9 @@ import { isSolid, isWater } from './blocks';
 import { stateId } from './chunk';
 import { PROJECTILE_TYPES, calculateArrowDamage, applyKnockback, getArrowVelocity } from './combat';
 import { applyDamage } from './survival';
-import { getPackCanvas, MC } from './pack';
+import { buildArrowMesh } from './arrowModel';
 
 let _id = 0;
-
-let _arrowMaterial = null;
-function getArrowMaterial() {
-  if (_arrowMaterial) return _arrowMaterial;
-  const cv = document.createElement('canvas');
-  cv.width = 32; cv.height = 32;
-  const ctx = cv.getContext('2d');
-  // Textura base fiel 1.8.9 (haste marrom, ponta cinza sílex, penas brancas)
-  ctx.fillStyle = '#8B5A2B';
-  ctx.fillRect(0, 0, 16, 5);
-  ctx.fillStyle = '#6E6E6E';
-  ctx.fillRect(16, 0, 8, 5);
-  ctx.fillStyle = '#EAEAEA';
-  ctx.fillRect(24, 0, 8, 5);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
-  _arrowMaterial = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide });
-
-  getPackCanvas(MC + 'textures/entity/arrow.png').then((src) => {
-    if (!src) return;
-    cv.width = src.width;
-    cv.height = src.height;
-    ctx.drawImage(src, 0, 0);
-    tex.needsUpdate = true;
-  }).catch(() => {});
-
-  return _arrowMaterial;
-}
-
-function buildArrowGroup() {
-  const group = new THREE.Group();
-  const mat = getArrowMaterial();
-  
-  // Planos cruzados característicos do Minecraft
-  const plane1 = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.2), mat);
-  plane1.rotation.y = Math.PI / 2;
-  
-  const plane2 = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.2), mat);
-  plane2.rotation.y = Math.PI / 2;
-  plane2.rotation.x = Math.PI / 2;
-
-  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.65), new THREE.MeshBasicMaterial({ color: 0x8b5a2b }));
-
-  group.add(shaft);
-  group.add(plane1);
-  group.add(plane2);
-  return group;
-}
 
 export class Projectile {
   constructor(type, opts) {
@@ -156,7 +107,7 @@ export class ProjectileManager {
       const geo = new THREE.BoxGeometry(0.12, 0.16, 0.12);
       p.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x4a5a3a }));
     } else if (p.type === 'arrow') {
-      p.mesh = buildArrowGroup();
+      p.mesh = buildArrowMesh();
     } else {
       p.mesh = new THREE.Mesh(this._ballGeo, new THREE.MeshBasicMaterial({ color: p.def.color }));
     }
@@ -238,6 +189,21 @@ export class ProjectileManager {
       // === Projéteis padrão (flecha, bola de neve, etc.) ===
       if (p.inGround) {
         p.ticksAlive++;
+        // Flecha cravada de jogador: ao chegar perto (≈1 bloco) ela voa até o jogador em 4 ticks, como item sendo sugado, e vira 1 flecha no inventário
+        if (p.type === 'arrow' && !p.shooterIsMob && this.onPickup && playerTarget && !playerTarget.isDead && playerTarget.pos) {
+          const pl = playerTarget.pos;
+          if (p.pickup) {
+            p.pickup.t++;
+            const k = Math.min(1, p.pickup.t / 4);
+            p.pos = { x: p.pickup.from.x + (pl.x - p.pickup.from.x) * k, y: p.pickup.from.y + (pl.y + 0.9 - p.pickup.from.y) * k, z: p.pickup.from.z + (pl.z - p.pickup.from.z) * k };
+            if (p.mesh) p.mesh.position.set(p.pos.x, p.pos.y, p.pos.z);
+            if (p.pickup.t >= 4) { if (this.onPickup(p)) { toRemove.push(p); continue; } p.pickup = null; }
+            continue;
+          }
+          if (p.ticksAlive > 7 && Math.hypot(pl.x - p.pos.x, pl.z - p.pos.z) < 1.1 && p.pos.y > pl.y - 0.6 && p.pos.y < pl.y + 1.9 && this.onPickup(p, true)) p.pickup = { t: 0, from: { ...p.pos } };
+          if (p.ticksAlive > p.def.lifetime) toRemove.push(p);
+          continue;
+        }
         if (p.ticksAlive > p.def.lifetime) toRemove.push(p);
         continue;
       }
@@ -245,15 +211,7 @@ export class ProjectileManager {
       p._prevPos = { ...p.pos };
       p.ticksAlive++;
 
-      const block = this.world.getBlock(Math.floor(p.pos.x), Math.floor(p.pos.y), Math.floor(p.pos.z));
-      const inWater = isWater(stateId(block));
-      const drag = inWater ? p.def.dragWater : p.def.drag;
-
-      p.vel.x *= drag;
-      p.vel.y *= drag;
-      p.vel.z *= drag;
-      p.vel.y -= p.def.gravity;
-
+      // Ordem do EntityArrow/EntityThrowable do 1.8.9: primeiro anda com a velocidade atual; depois aplica o arrasto e por último a gravidade
       const next = { x: p.pos.x + p.vel.x, y: p.pos.y + p.vel.y, z: p.pos.z + p.vel.z };
 
       const blockHit = this.raycastBlocks(p.pos, next);
@@ -281,6 +239,10 @@ export class ProjectileManager {
       }
 
       p.pos = next;
+      const blk = this.world.getBlock(Math.floor(p.pos.x), Math.floor(p.pos.y), Math.floor(p.pos.z));
+      const drag = isWater(stateId(blk)) ? p.def.dragWater : p.def.drag;
+      p.vel.x *= drag; p.vel.y *= drag; p.vel.z *= drag;
+      p.vel.y -= p.def.gravity;
       this.updateMeshOrientation(p);
 
       if (p.ticksAlive > p.def.lifetime) toRemove.push(p);

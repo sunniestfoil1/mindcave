@@ -5,6 +5,8 @@ import ItemSlot from './ItemSlot';
 import ItemTooltip from './ItemTooltip';
 import { Sprite, usePackTexture, useGuiScaleValue } from './GuiSprite';
 import { settingsStore } from '@/game/settingsStore';
+import { ITEMS } from '@/game/items';
+import { playArmorEquipSound } from '@/game/sounds';
 import * as ops from '@/game/slotOps';
 import { canStack } from '@/game/inventory';
 
@@ -33,9 +35,21 @@ export default function ContainerFrame({ texture, w, h, inv, onClose, onUpdate, 
   const hoveredRef = useRef(null);
   const st = useRef({ drag: null, last: { ref: null, t: 0, btn: -1 }, shiftDrag: false });
   const live = useRef({});
+  const dropFlag = useRef(false);   // o clique que acabou de jogar o item não pode fechar a janela
   live.current = { inv, getAllRefs, onShift, onChange, onUpdate };
 
-  const changed = () => { live.current.onChange?.(); live.current.onUpdate?.(); };
+  const armorIds = useRef('');
+  const changed = () => {
+    // vestiu uma peça (slot de armadura que passou a ter item ou a ter outro): toca o som do material
+    const now = (live.current.inv.armor || []).map((a) => (a ? a.id : 0)).join(',');
+    if (armorIds.current && now !== armorIds.current) {
+      const was = armorIds.current.split(',');
+      (live.current.inv.armor || []).forEach((a, i) => { if (a && String(a.id) !== was[i]) { const m = ITEMS[a.id]?.armor?.material; if (m) playArmorEquipSound(m); } });
+    }
+    armorIds.current = now;
+    live.current.onChange?.(); live.current.onUpdate?.();
+  };
+  if (!armorIds.current) armorIds.current = (inv.armor || []).map((a) => (a ? a.id : 0)).join(',');
 
   useEffect(() => {
     let raf = 0, lx = 0, ly = 0;
@@ -137,7 +151,9 @@ export default function ContainerFrame({ texture, w, h, inv, onClose, onUpdate, 
       style={{ background: 'rgba(0,0,0,0.6)', imageRendering: 'pixelated', userSelect: 'none' }}
       draggable={false}
       onDragStart={(e) => e.preventDefault()}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => { dropFlag.current = false; if (e.target === e.currentTarget && inv.cursor && (e.button === 0 || e.button === 2) && ops.dropCursorOutside(inv, e.button)) { dropFlag.current = true; changed(); } }}
+      onContextMenu={(e) => e.preventDefault()}
+      onClick={(e) => { if (e.target === e.currentTarget && !dropFlag.current && !inv.cursor) onClose(); }}
     >
       <div
         draggable={false}

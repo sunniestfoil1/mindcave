@@ -76,7 +76,7 @@ export const BLOCKS = {
   // Fabricados
   20: B(20, 'glass', 'Vidro', { hardness: 0.3, faces: { all: 'glass' }, drop: null, render: 'cutout', opaque: false, cullSame: true, lightOpacity: 0 }),
   45: B(45, 'bricks', 'Tijolos', { hardness: 2.0, faces: { all: 'bricks' }, drop: 45 }),
-  46: B(46, 'tnt', 'TNT', { hardness: 0, faces: { all: 'tnt' }, drop: 46 }),
+  46: B(46, 'tnt', 'TNT', { hardness: 0, faces: { top: 'tnt_top', bottom: 'tnt_bottom', side: 'tnt' }, drop: 46, soundCategory: 'grass' }),
   89: B(89, 'glowstone', 'Glowstone', { hardness: 0.3, faces: { all: 'glowstone' }, drop: 89, lightEmission: 15 }),
   58: B(58, 'crafting_table', 'Bancada', { hardness: 2.5, faces: { top: 'crafting_top', bottom: 'planks', side: 'crafting_side' }, drop: 58, soundCategory: 'wood' }),
   26: B(26, 'bed', 'Cama', { hardness: 0.2, faces: { top: 'bed_head_top', side: 'bed_head_side', bottom: 'planks' }, drop: 355, model: 'bed', solid: true, opaque: false, lightOpacity: 0, render: 'opaque', soundCategory: 'wood' }),
