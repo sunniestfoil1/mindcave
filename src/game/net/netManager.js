@@ -49,7 +49,7 @@ export class NetHost {
       if (event.type === 'delete') return;
       const s = event.data;
       if (!s || s.roomId !== this.room.id || s.toUserId !== this.user.id) return;
-      if (s.type === 'offer' && !this.peers.has(s.fromUserId)) {
+      if (s.type === 'offer' && !s.consumed && (!this.peers.has(s.fromUserId) || this.peers.get(s.fromUserId).conn.state !== 'connected')) {
         this._handleNewPeer(s);
       }
     });
@@ -70,12 +70,18 @@ export class NetHost {
       }, { limit: 10 });
       const items = res.items || res || [];
       for (const s of items) {
-        if (!this.peers.has(s.fromUserId)) this._handleNewPeer(s);
+        if (!this.peers.has(s.fromUserId) || this.peers.get(s.fromUserId).conn.state !== 'connected') this._handleNewPeer(s);
       }
     } catch {}
   }
 
   async _handleNewPeer(signal) {
+    // A mesma oferta chega duas vezes (inserção e atualização do sinal): sem esta trava abriam duas conexões e saíam duas respostas
+    if (!this._opening) this._opening = new Set();
+    if (this._opening.has(signal.id)) return;
+    this._opening.add(signal.id);
+    const old = this.peers.get(signal.fromUserId);
+    if (old && old.conn && old.conn.state !== 'connected') { this.peers.delete(signal.fromUserId); try { old.conn.close(); } catch { /* já fechada */ } }   // tentativa anterior que nunca conectou: a nova substitui
     if (this.playerNames.length >= this.room.maxPlayers) {
       // Sala cheia
       await mindcaveApi.entities.Signal.create({

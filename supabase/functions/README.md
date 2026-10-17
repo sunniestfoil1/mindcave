@@ -49,14 +49,43 @@ npx supabase functions deploy player-death-logger --no-verify-jwt
 
 ---
 
-## ⚙️ Variáveis e Secrets Opcionais (Configuráveis no Supabase)
+## 🌐 Relay (TURN): sem ele, muita gente não consegue entrar numa partida online
 
-No menu **Settings > Edge Functions > Secrets**:
+O jogo online conecta jogador e host direto (WebRTC). Quem está atrás de **NAT simétrico (CGNAT de operadora ou provedor)** só conecta por um servidor de relay (TURN);
+só com STUN o handshake termina e a conexão nunca abre (o convidado vê "Falha ao conectar"). A função `webrtc-turn` devolve `turn: null` enquanto nenhum
+relay estiver configurado.
 
-* `TURN_URL`: URL do seu servidor TURN (ex: `turn:meu-servidor-coturn.com:3478`).
-* `TURN_USERNAME`: Usuário do seu servidor TURN.
-* `TURN_CREDENTIAL`: Senha do seu servidor TURN.
-* `TURN_SECRET`: Segredo compartilhado HMAC para TURN efêmero (padrão RFC / Coturn).
-* `TURN_HOST`: Host base do Coturn.
+**Passo a passo (uma vez, leva uns 5 minutos):**
 
-Se nenhuma dessas variáveis for configurada, a função `webrtc-turn` utilizará automaticamente o pool global redundante de servidores STUN do Google, Twilio e Mozilla, garantindo que o jogo nunca fique sem resposta.
+1. Crie a credencial de relay em um destes (os dois têm plano grátis):
+   * **Cloudflare Realtime TURN** (1 TB/mês grátis): painel da Cloudflare → *Realtime* → *TURN Server* → *Create* → anote o **Key ID** e o **API Token**.
+   * **Metered** (50 GB/mês grátis): crie o app em metered.ca → anote o **domínio do app** (a parte antes de `.metered.live`) e a **API Key**.
+2. Grave nos Secrets da Supabase (rode no seu terminal; **não cole a chave em conversa**):
+
+```bash
+npx supabase login
+npx supabase secrets set CF_TURN_KEY_ID=... CF_TURN_API_TOKEN=... --project-ref ddwdgwaliywymcatdekg
+# ou, se usou a Metered:
+npx supabase secrets set METERED_DOMAIN=... METERED_API_KEY=... --project-ref ddwdgwaliywymcatdekg
+npx supabase functions deploy webrtc-turn --no-verify-jwt --project-ref ddwdgwaliywymcatdekg
+```
+
+3. Confira: a resposta da função passa a trazer `"turn": "cloudflare"` (ou `"metered"`) e servidores `turn:`/`turns:` na frente da lista. Se vier `turn: null` ou algo em
+   `erros`, a chave está errada.
+
+```bash
+curl -s -X POST "https://ddwdgwaliywymcatdekg.supabase.co/functions/v1/webrtc-turn" -H "apikey: <chave anon do .env.local>" -H "Content-Type: application/json" -d "{}"
+```
+
+A lógica fica em `_shared/ice.js` e é testada por `scripts/e2e/ice.mjs`.
+
+## ⚙️ Variáveis e Secrets (Configuráveis no Supabase)
+
+No menu **Settings > Edge Functions > Secrets** (ordem em que entram na lista; a primeira configurada fica na frente):
+
+* `CF_TURN_KEY_ID` + `CF_TURN_API_TOKEN`: Cloudflare Realtime TURN (credencial gerada na hora, validade de 24 h).
+* `METERED_DOMAIN` + `METERED_API_KEY`: Metered (credencial buscada na hora).
+* `TURN_URL` (+ `TURN_USERNAME`, `TURN_CREDENTIAL`): servidor TURN próprio fixo; URLs separadas por vírgula.
+* `TURN_HOST` + `TURN_SECRET`: Coturn com credencial efêmera (HMAC-SHA1).
+
+Sem nenhuma delas a função devolve só o pool de STUN (Google, Twilio, Mozilla): funciona para a maioria das redes domésticas, **não** para CGNAT.

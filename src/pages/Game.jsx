@@ -307,7 +307,7 @@ export default function Game() {
               return;
             }
             if (showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current) return;
-            if (engineRef.current?.paused && !engineRef.current?.netManager) return; // menu de pausa (singleplayer)
+            if (engineRef.current?.paused) return; // menu de pausa aberto (a tecla E não abre inventário por baixo)
             if (p?.gameMode === 'creative') setShowCreative(true);
             else setShowInventory(true);
             document.exitPointerLock?.();
@@ -319,7 +319,7 @@ export default function Game() {
             if (showClientMenuRef.current) { closeAllGuisRef.current(); return; }
             if (showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current ||
               showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current) return;
-            if (eng.paused && !eng.netManager) return; // menu de pausa (singleplayer)
+            if (eng.paused) return; // menu de pausa aberto
             setShowClientMenu(true);
             document.exitPointerLock?.();
           },

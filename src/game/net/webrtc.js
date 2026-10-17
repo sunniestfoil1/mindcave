@@ -13,6 +13,7 @@ const DEFAULT_ICE_SERVERS = [
 
 let _cachedIceServers = null;
 let _iceFetchPromise = null;
+let _hasRelay = false;   // a lista de servidores tem TURN? sem isso, quem está atrás de NAT simétrico (CGNAT) nunca conecta
 
 async function getOptimalIceServers() {
   if (_cachedIceServers) return _cachedIceServers;
@@ -25,6 +26,7 @@ async function getOptimalIceServers() {
       });
       if (!error && data && Array.isArray(data.iceServers) && data.iceServers.length > 0) {
         _cachedIceServers = data.iceServers;
+        _hasRelay = data.iceServers.some((s) => [].concat(s.urls || []).some((u) => /^turns?:/i.test(u)));
         return _cachedIceServers;
       }
     } catch {
@@ -48,6 +50,16 @@ async function cleanupSignals(roomId) {
       }
     }
   } catch {}
+}
+
+// Por que a conexão não abriu, em português (a tela de conexão mostra isto): sem TURN e com dois endereços públicos diferentes no mesmo teste
+// (assinatura de NAT simétrico) o jogo avisa a causa de verdade em vez de só "tempo esgotado"
+export function explainFailure(info) {
+  if (!info) return 'Tempo limite esgotado.';
+  if (!info.hasRelay) {
+    return 'A rede de um dos dois jogadores (provavelmente CGNAT de operadora ou provedor) bloqueia a conexão direta, e este jogo ainda não tem servidor de relay (TURN) configurado. Peça ao dono do jogo para ativar o relay (ver supabase/functions/README.md).';
+  }
+  return 'Não foi possível abrir a conexão (tempo esgotado), mesmo com relay. Confira a internet dos dois e tente de novo.';
 }
 
 export class WebRTCConnection {
@@ -77,7 +89,13 @@ export class WebRTCConnection {
     this._consumedSignals = new Set();
     this._pendingCandidates = [];
     this._closed = false;
+    this._answered = false;          // host: a oferta deste convidado já foi respondida (evita responder duas vezes)
+    this.candidateTypes = new Set(); // tipos de candidata local (host, srflx, relay)
+    this.srflxAddrs = new Set();
   }
+
+  // O que explica a falha: tem relay na lista? quais candidatas locais saíram?
+  failureInfo() { return { hasRelay: _hasRelay, types: [...this.candidateTypes], srflx: this.srflxAddrs.size }; }
 
   async connect(iceServers) {
     const servers = iceServers?.length ? iceServers : await getOptimalIceServers();
@@ -166,16 +184,20 @@ export class WebRTCConnection {
     let pollCount = 0;
     this._pollTimer = setInterval(async () => {
       if (this._closed || this.state !== 'connecting' || pollCount >= 8) {
-        this._stopSignalListeners();
-        if (this.state === 'connecting') {
-          console.warn('[WebRTC] Timeout de conexão atingido');
-          this.setState('failed');
-        }
+        if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }   // só o polling para; a inscrição em tempo real segue
         return;
       }
       pollCount++;
       await this._checkPendingSignals();
     }, 1500);
+    // limite total da negociação: 30 s (ICE com relay leva alguns segundos a mais que o handshake)
+    this._connectTimeout = setTimeout(() => {
+      if (!this._closed && this.state === 'connecting') {
+        console.warn('[WebRTC] Timeout de conexão atingido', this.failureInfo());
+        this._stopSignalListeners();
+        this.setState('failed');
+      }
+    }, 30000);
   }
 
   async _checkPendingSignals() {
@@ -194,6 +216,7 @@ export class WebRTCConnection {
   }
 
   _stopSignalListeners() {
+    if (this._connectTimeout) { clearTimeout(this._connectTimeout); this._connectTimeout = null; }
     if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
     if (this._signalUnsub) { try { this._signalUnsub(); } catch {} this._signalUnsub = null; }
   }
@@ -222,6 +245,11 @@ export class WebRTCConnection {
     }
   }
 
+  _noteCandidate(c) {
+    if (c.type) this.candidateTypes.add(c.type);
+    if (c.type === 'srflx' && c.address && c.address.indexOf(':') < 0) this.srflxAddrs.add(c.address + ':' + c.port);
+  }
+
   async _processPendingCandidates() {
     if (!this.pc || !this.pc.remoteDescription) return;
     while (this._pendingCandidates.length > 0) {
@@ -237,6 +265,7 @@ export class WebRTCConnection {
     try { await mindcaveApi.entities.Signal.update(signal.id, { consumed: true }); } catch {}
 
     if (signal.type === 'offer' && this.isHost) {
+      if (this._answered) return;   // já respondida por handleOffer
       if (this.pc.signalingState !== 'stable') {
         console.warn(`[WebRTC] Offer recebido em estado não-estável '${this.pc.signalingState}'. Ignorando com segurança.`);
         return;
@@ -284,6 +313,7 @@ export class WebRTCConnection {
     if (!this.pc || this._closed) return;
     this.pc.onicecandidate = (e) => {
       if (e.candidate) {
+        this._noteCandidate(e.candidate);
         this._sendSignal(this.peerUserId, 'candidate', JSON.stringify(e.candidate.toJSON()));
       }
     };
@@ -299,13 +329,15 @@ export class WebRTCConnection {
 
   async handleOffer(fromUserId, offerSdp) {
     this.peerUserId = fromUserId;
-    if (!this.pc || this._closed) return;
+    if (!this.pc || this._closed || this._answered) return;
+    this._answered = true;
     if (this.pc.signalingState !== 'stable') {
       console.warn(`[WebRTC] handleOffer ignorado: estado atual é '${this.pc.signalingState}' (esperado: 'stable')`);
       return;
     }
     this.pc.onicecandidate = (e) => {
       if (e.candidate) {
+        this._noteCandidate(e.candidate);
         this._sendSignal(fromUserId, 'candidate', JSON.stringify(e.candidate.toJSON()));
       }
     };

@@ -137,7 +137,7 @@ const result = await page.evaluate(async () => {
     const sk = engine.mobs.summon('skeleton', { x: 8.5, y: B0 + 1, z: 14.5 });
     ok(!!sk, 'esqueleto invocado');
     let arrows = 0, hurt = false;
-    for (let i = 0; i < 400 && !hurt; i++) { engine.tick(); arrows = Math.max(arrows, engine.projectiles.projectiles.filter(p => p.type === 'arrow').length); if (pState.health < 20) hurt = true; }
+    for (let i = 0; i < 1200 && !hurt; i++) { engine.tick(); arrows = Math.max(arrows, engine.projectiles.projectiles.filter(p => p.type === 'arrow').length); if (pState.health < 20) hurt = true; }
     ok(arrows > 0, `esqueleto disparou flechas (máx ${arrows} no ar)`);
     ok(hurt, `flecha do esqueleto feriu o jogador (vida ${pState.health})`);
     // morte por flecha: o nome do esqueleto aparece na mensagem

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { roomManager } from '@/game/net/roomManager';
 import { NetClient } from '@/game/net/netManager';
+import { explainFailure } from '@/game/net/webrtc';
 import { GuiScreen, GuiButton, GuiText, useGui } from '@/components/java';
 
 const STEPS = [
@@ -41,6 +42,7 @@ function ConnectionContent({ room, user, world, engine, onSuccess, onCancel }) {
         throw new Error('Você não está na whitelist deste mundo.');
       }
       setStep(1);
+      let done = false;   // conectou (ou já falhou): o limite de tempo abaixo não pode mais mostrar erro
       const client = new NetClient({
         engine,
         world,
@@ -48,6 +50,7 @@ function ConnectionContent({ room, user, world, engine, onSuccess, onCancel }) {
         room: fresh,
         onStateChange: (s) => {
           if (s === 'connected') {
+            done = true;
             setStep(2);
             setTimeout(() => {
               setStep(3);
@@ -55,7 +58,7 @@ function ConnectionContent({ room, user, world, engine, onSuccess, onCancel }) {
             }, 500);
           }
           if (s === 'failed') {
-            setError('Falha ao conectar ao servidor: Tempo limite esgotado.');
+            setError('Falha ao conectar: ' + explainFailure(client.conn && client.conn.failureInfo && client.conn.failureInfo()));
           }
           if (s === 'closed' && step < 3) {
             setError('Conexão perdida durante a negociação.');
@@ -65,10 +68,9 @@ function ConnectionContent({ room, user, world, engine, onSuccess, onCancel }) {
         onChatMessage: () => {},
       });
       await client.connect(pwd);
-      const timeout = setTimeout(() => {
-        if (step < 2) setError('Falha ao conectar ao servidor: Tempo limite esgotado.');
-      }, 15000);
-      return () => clearTimeout(timeout);
+      setTimeout(() => {   // a conexão já tem limite de 30 s por dentro; este só cobre travar antes de a negociação começar
+        if (!done) setError('Falha ao conectar: ' + explainFailure(client.conn && client.conn.failureInfo && client.conn.failureInfo()));
+      }, 35000);
     } catch (e) {
       setError(e.message || 'Erro ao conectar.');
     }

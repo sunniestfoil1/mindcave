@@ -512,7 +512,7 @@ export class GameEngine {
     // Clique no jogo sempre tenta recapturar o mouse se ele não está travado (cobre o pedido de lock recusado pelo navegador)
     this._onClick = () => { if (!this.chatOpen && document.pointerLockElement !== this.canvas) this._requestPointerLock(); };
     this._onPLChange = () => {
-      if (this.chatOpen || this.netManager) {
+      if (this.chatOpen) {   // online também pausa (menu aberto, mundo e rede seguem rodando): antes o Esc online soltava o mouse sem abrir menu nenhum
         this.paused = false;
       } else if (this.guiOpenFn?.() && document.pointerLockElement !== this.canvas) {
         // inventário, bancada, fornalha, baú... soltam o mouse de propósito: isso não é pausa. O Esc fecha a tela e só o Esc seguinte pausa.
@@ -689,7 +689,7 @@ export class GameEngine {
     if (down && e.code === 'Escape') {
       // Esc, Esc, Esc rápido como no jogo original: o navegador devolve o mouse ao primeiro Esc, mas NÃO aceita Esc como gesto para travar
       // de novo — então pausar/retomar é feito aqui, em software, na hora. O mouse é recapturado no primeiro clique/tecla (ver _grabIfWanted).
-      if (e.repeat || this.netManager || this.chatOpen || this.guiOpenFn?.()) return;
+      if (e.repeat || this.chatOpen || this.guiOpenFn?.()) return;
       if (this.paused) { this.resumeNow(); }
       else if (document.pointerLockElement !== this.canvas) { this.paused = true; this._wantLock = false; this.emitHud(); }
       return;
