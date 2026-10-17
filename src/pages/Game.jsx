@@ -18,6 +18,7 @@ import InventoryUI from "@/components/game/InventoryUI";
 import CreativeUI from "@/components/game/CreativeUI";
 import MindClientMenu from "@/components/client/MindClientMenu";
 import ClientHud from "@/components/client/ClientHud";
+import TouchControls from "@/components/game/TouchControls";
 import CraftingTableUI from "@/components/game/CraftingTableUI";
 import FurnaceUI from "@/components/game/FurnaceUI";
 import ChestUI from "@/components/game/ChestUI";
@@ -373,6 +374,7 @@ export default function Game() {
         engine.containerOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showClientMenuRef.current;
         engine.guiOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showClientMenuRef.current || showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current;
         await engine.start();
+        if (engine.touch) engine.touchResume(); // celular não tem trava de ponteiro: o jogo começa rodando
         console.log('[Game] Spawn:', spawn, 'Player pos:', pState.pos, 'Flying:', pState.flying, 'GameMode:', pState.gameMode);
         console.log('[Game] Chunks loaded:', cw.chunks.size, 'Render distance:', engine.renderDistance);
         setLoading(false);
@@ -485,6 +487,7 @@ export default function Game() {
   };
 
   const handleResume = () => {
+    if (engineRef.current?.touch) { engineRef.current.touchResume(); return; }
     safePointerLock(canvasRef.current);
   };
 
@@ -536,6 +539,8 @@ export default function Game() {
       )}
       {/* Módulos de HUD do Mind Client (FPS, CPS, coordenadas, keystrokes, armadura...) */}
       {hud && !showOptions && !hud.isDead && <ClientHud hud={hud} engine={engineRef.current} />}
+      {/* Celular: joystick, pular, agachar, inventário, câmera por arrasto */}
+      {hud && engineRef.current?.touch && !showOptions && <TouchControls engine={engineRef.current} hud={{ ...hud, hasGuiOpen: isAnyGuiOpen }} />}
       {/* Só depois que hud existe: o engine já chamou musicManager.start() e o rádio toma a trilha. */}
       {hud && <RadioWidget visible={!!hud.paused && !isAnyGuiOpen && !hud.chatOpen && !hud.isDead} />}
       <PerformancePanel visible={!!hud?.f3} />

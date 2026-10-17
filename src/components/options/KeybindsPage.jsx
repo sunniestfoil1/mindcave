@@ -4,6 +4,7 @@ import { JavaButton, JavaSlider } from '@/components/java/GuiOptionControls';
 import { useSettings } from '@/game/settingsStore';
 import { KEY_ACTIONS, DEFAULT_USER } from '@/game/settingsDefaults';
 import KeybindRow from './KeybindRow';
+import { isTouchDevice } from '@/game/touch';
 
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -67,6 +68,10 @@ function KeybindsContent({ onBack }) {
   const mouseOpts = [
     { type: 'slider', key: 'user.mouseSensitivity', label: 'Sensibilidade', min: 0, max: 200, step: 5,
       format: v => v === 0 ? 'Sens.: Bocejo' : v >= 200 ? 'Sens.: HIPER!!!' : `Sens.: ${v}%` },
+    ...(isTouchDevice() ? [
+      { type: 'slider', key: 'user.touchLookSensitivity', label: 'Câmera (toque)', min: 10, max: 300, step: 5, format: v => `Câmera: ${v}%` },
+      { type: 'slider', key: 'user.touchMoveSensitivity', label: 'Joystick', min: 25, max: 200, step: 5, format: v => `Joystick: ${v}%` },
+    ] : []),
     { type: 'toggle', key: 'user.invertMouse', label: 'Inverter mouse' },
     { type: 'toggle', key: 'user.rawInput', label: 'Entrada bruta' },
     { type: 'slider', key: 'user.scrollSensitivity', label: 'Rolagem', min: 1, max: 100, step: 1,

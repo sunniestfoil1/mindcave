@@ -98,6 +98,8 @@ export const DEFAULT_USER = {
   lang: 'pt_BR',
   // Controles — mouse
   mouseSensitivity: 100,
+  touchLookSensitivity: 100,   // celular: câmera ao arrastar o dedo (10–300%)
+  touchMoveSensitivity: 100,   // celular: quanto o joystick precisa ser empurrado para andar (maior = anda com um toque leve)
   invertMouse: false,
   rawInput: true,
   scrollSensitivity: 10,

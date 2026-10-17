@@ -138,3 +138,14 @@
   from { background-position: 0 0, 100% 100%; }
   to { background-position: 100% 0, 0 100%; }
 }
+
+/* Celular: sem zoom por toque duplo, sem rolagem elástica, sem seleção/menu de pressionar e segurar; campos de texto continuam editáveis */
+html, body { touch-action: manipulation; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+html.mc-touch body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overflow: hidden; }
+html.mc-touch input, html.mc-touch textarea { -webkit-user-select: text; user-select: text; }
+
+/* Celular em pé: a página inteira gira 90° (tela sempre deitada, sem aviso). Ver src/game/touch.js */
+html.mc-rotate #root {
+  position: fixed; top: 0; left: 0; width: 100vh; width: 100dvh; height: 100vw; height: 100dvw;
+  transform-origin: 0 0; transform: translateX(100vw) rotate(90deg);
+}

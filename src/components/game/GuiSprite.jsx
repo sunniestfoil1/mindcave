@@ -4,6 +4,7 @@ import { getGuiScale } from '@/game/gui/scale';
 import { settingsStore } from '@/game/settingsStore';
 import { drawMcText, measureMcText } from '@/game/gui/font';
 
+import { viewSize } from '@/game/touch';
 const urlCache = new Map();
 const LOCAL_TEXTURES = {
   'textures/gui/widgets.png': '/assets/ui/widgets.png',
@@ -57,7 +58,7 @@ export function useGuiScaleValue() {
   const calc = () => {
     const setting = settingsStore.get('device.guiScale');
     const max = !setting || setting === 'auto' ? 0 : parseInt(setting, 10) || 0;
-    return getGuiScale(window.innerWidth, window.innerHeight, max);
+    return getGuiScale(viewSize().w, viewSize().h, max);
   };
   const [s, setS] = useState(calc);
   useEffect(() => {

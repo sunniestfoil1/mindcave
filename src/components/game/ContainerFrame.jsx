@@ -8,6 +8,7 @@ import { settingsStore } from '@/game/settingsStore';
 import * as ops from '@/game/slotOps';
 import { canStack } from '@/game/inventory';
 
+import { viewSize } from '@/game/touch';
 const DOUBLE_CLICK_MS = 300;
 // As refs são recriadas a cada render: a identidade do slot é grupo:índice
 const keyOf = (r) => (r ? `${r.group || 'x'}:${r.index}` : null);
@@ -127,8 +128,8 @@ export default function ContainerFrame({ texture, w, h, inv, onClose, onUpdate, 
     );
   };
 
-  const left = Math.max(0, Math.floor((window.innerWidth - w * S) / 2));
-  const top = Math.max(0, Math.floor((window.innerHeight - h * S) / 2));
+  const left = Math.max(0, Math.floor((viewSize().w - w * S) / 2));
+  const top = Math.max(0, Math.floor((viewSize().h - h * S) / 2));
 
   return (
     <div

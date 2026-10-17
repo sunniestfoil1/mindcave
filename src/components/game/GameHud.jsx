@@ -9,6 +9,7 @@ import { McText, useGuiScaleValue } from "./GuiSprite";
 import { perfMonitor } from "@/game/perfMonitor";
 import { useSettings } from "@/game/settingsStore";
 
+import { viewSize } from '@/game/touch';
 const SHADER_NAMES = ['Clássico', 'Shaders'];
 
 function MicImg({ muted, size, style }) {
@@ -152,8 +153,8 @@ export default function GameHud({ hud, onPause }) {
   if (!hud || hud.hideHud) return null;
   const hideInGameHud = hud.hasGuiOpen || hud.paused;
   const reducedDebug = !!(store.get('user.reducedDebugInfo') || hud.reducedDebugInfo);
-  const dispW = typeof window !== 'undefined' ? window.innerWidth : 1280;
-  const dispH = typeof window !== 'undefined' ? window.innerHeight : 720;
+  const dispW = typeof window !== 'undefined' ? viewSize().w : 1280;
+  const dispH = typeof window !== 'undefined' ? viewSize().h : 720;
 
   return (
     <div className="pointer-events-none fixed inset-0 select-none font-mono text-white" style={{ imageRendering: 'pixelated' }}>

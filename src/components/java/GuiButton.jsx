@@ -7,7 +7,7 @@ import { playClickSound } from '@/game/sounds';
 
 // Java 1.8.9 button — PRD 19 RF-004
 // x is relative to screen center; y is from top; all in GUI pixels
-export default function GuiButton({ x, y, width = 200, label, onClick, disabled, title, icon }) {
+export default function GuiButton({ x, y, width = 200, label, onClick, disabled, title, icon, onPointerDown, onPointerUp, onPointerCancel }) {
   const gui = useGui();
   const scale = gui?.scale || 1;
   const guiWidth = gui?.guiWidth || 0;
@@ -36,10 +36,15 @@ export default function GuiButton({ x, y, width = 200, label, onClick, disabled,
         position: 'absolute',
         left, top, width: w, height: h,
         cursor: disabled ? 'default' : 'pointer',
+        touchAction: 'none',
+        pointerEvents: 'auto',
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onClick={handleClick}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       title={title}
       role="button"
       aria-label={typeof label === 'string' ? label.replace(/§./g, '') : undefined}

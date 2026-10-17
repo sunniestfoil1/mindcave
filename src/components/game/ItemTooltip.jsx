@@ -4,6 +4,7 @@ import { BLOCKS, blockDisplayName } from "@/game/blocks";
 import { GUNS } from "@/game/guns/registry";
 import { useGuiScaleValue } from "./GuiSprite";
 
+import { viewSize } from '@/game/touch';
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const ENCH_NAMES = {
   sharpness: 'Afiação',
@@ -99,8 +100,8 @@ export default function ItemTooltip({ item, mousePos }) {
   let posX = mousePos.x + 12;
   let posY = mousePos.y - 12;
   if (typeof window !== 'undefined') {
-    if (posX + 240 > window.innerWidth) posX = mousePos.x - 248;
-    if (posY + 140 > window.innerHeight) posY = window.innerHeight - 148;
+    if (posX + 240 > viewSize().w) posX = mousePos.x - 248;
+    if (posY + 140 > viewSize().h) posY = viewSize().h - 148;
   }
 
   const fontPx = Math.max(12, 8 * Math.min(2, S));

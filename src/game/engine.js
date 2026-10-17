@@ -20,6 +20,7 @@ import { getArmorPoints, getItem } from './items';
 import { ProjectileManager } from './projectiles';
 import { createAnimationState, tickAnimation, startSwing, applyThirdPersonPose } from './animation';
 import { buildHandRig, poseHand } from './firstPersonHand';
+import { isTouchDevice } from './touch';
 import { attackEntity, isSword, isBow, isThrowable, computeBowCharge, createCpsTracker, recordClick, getCps, ATTACK_REACH } from './combat';
 import { MobManager } from './mobManager';
 import { hasGlint, buildGlintOverlay } from './glint';
@@ -110,6 +111,7 @@ export class GameEngine {
     this.renderDistance = opts.renderDistance || 6;
     this.keys = {};
     this.mouseBtn = {};
+    this.touch = isTouchDevice();   // celular: sem trava de ponteiro; entrada vem dos controles de toque (touch*)
     this.lastSpaceTap = 0; this.spaceTapCount = 0;
     this.lastWTap = 0; this.wTapCount = 0;
     this.breakCd = 0; this.placeCd = 0;
@@ -649,22 +651,75 @@ export class GameEngine {
     if (this.isZooming()) {
       radPerPx *= (settingsStore.get('user.zoomSensitivity') || 50) / 100;
     }
-    const invert = settingsStore.get('user.invertMouse') ? -1 : 1;
     // Limite máximo de deslocamento por evento para evitar giro brusco de 360° durante congelamentos/quedas de frame
     const maxDelta = 120;
     const dx = Math.max(-maxDelta, Math.min(maxDelta, e.movementX || 0));
     const dy = Math.max(-maxDelta, Math.min(maxDelta, e.movementY || 0));
+    this._lookBy(dx * radPerPx, dy * radPerPx);
+  }
+
+  // Gira a câmera (rad): usado pelo mouse e pelo toque. Em "olhar em volta" (ALT) só a câmera gira, não o corpo.
+  _lookBy(yaw, pitch) {
+    const invert = settingsStore.get('user.invertMouse') ? -1 : 1;
     if (this.freeLook.on) {
-      // olhar em volta: só a câmera gira em torno do jogador (o corpo e a mira ficam onde estavam)
-      this.freeLook.yaw += dx * radPerPx;
-      this.freeLook.pitch = Math.max(-1.45, Math.min(1.45, this.freeLook.pitch + dy * radPerPx * invert));
+      this.freeLook.yaw += yaw;
+      this.freeLook.pitch = Math.max(-1.45, Math.min(1.45, this.freeLook.pitch + pitch * invert));
       return;
     }
-    this.player.yaw += dx * radPerPx;
-    this.player.pitch += dy * radPerPx * invert;
+    this.player.yaw += yaw;
+    this.player.pitch += pitch * invert;
     const lim = Math.PI / 2 - 0.001;
     this.player.pitch = Math.max(-lim, Math.min(lim, this.player.pitch));
   }
+
+  // ===== Controles de toque (celular). Reaproveitam as mesmas rotas do teclado e do mouse, com as teclas que o jogador configurou =====
+  _touchBlocked() { return this.paused || this.chatOpen || !!this.player?.isDead || !!this.player?.sleeping; }
+
+  // Arrastar o dedo na tela: 0,25°/px a 100% (o 1.8.9 usa 0,15°/px com mouse; o dedo percorre menos tela). A sensibilidade é ajustável em Controles.
+  touchLook(dx, dy) {
+    if (this._touchBlocked()) return;
+    const sens = settingsStore.get('user.touchLookSensitivity') ?? 100;
+    const rad = (0.25 * Math.PI / 180) * (sens / 100);
+    const m = 40;   // um quadro congelado não vira uma volta inteira
+    this._lookBy(Math.max(-m, Math.min(m, dx)) * rad, Math.max(-m, Math.min(m, dy)) * rad);
+  }
+
+  // Aperta/solta a tecla de uma ação (inventory, chat, jump, drop, perspective...) pelo mesmo caminho do teclado
+  touchKey(action, down) {
+    const code = (settingsStore.get('user.keys') || {})[action];
+    if (!code || code.startsWith('Mouse')) return;
+    this.onKey({ code, key: '', repeat: false, preventDefault() {} }, !!down);
+  }
+
+  // Botão do mouse virtual (0 atacar/quebrar, 2 usar/colocar), pelo mesmo caminho do clique
+  touchButton(btn, down) {
+    if (down) this._onMouseDown({ button: btn }); else this._onMouseUp({ button: btn });
+  }
+
+  // Joystick: liga/desliga as teclas de andar configuradas; correr no fim do curso para a frente
+  touchMove(fw, bk, lf, rt, sprint) {
+    const k = settingsStore.get('user.keys') || {};
+    this.keys[k.forward] = !!fw; this.keys[k.back] = !!bk; this.keys[k.left] = !!lf; this.keys[k.right] = !!rt;
+    this.sprintToggled = !!(sprint && fw);
+  }
+
+  // Toque rápido: bate se há mob na mira, senão usa/coloca
+  touchTap() {
+    if (this._touchBlocked()) return;
+    const btn = this.raycastEntity() ? 0 : 2;
+    this.touchButton(btn, true);
+    this.touchButton(btn, false);
+  }
+
+  // Toque segurado: quebrar/bater; com comida ou arco na mão, segurar é usar (comer, puxar a corda)
+  touchHoldButton() {
+    const it = this.getHeldItem();
+    return it && (isBow(it) || isFood(it.id)) ? 2 : 0;
+  }
+
+  touchPause() { this.paused = true; this.touchReset(); this.emitHud(); }
+  touchResume() { this.paused = false; this.touchReset(); this.emitHud(); }
+  touchReset() { this.keys = {}; this.mouseBtn = {}; this.sprintToggled = false; }
 
   startFreeLook() {
     if (this.freeLook.on) return;

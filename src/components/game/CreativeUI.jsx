@@ -10,6 +10,7 @@ import PlayerPreview, { PREVIEW_CREATIVE } from "./PlayerPreview";
 import { Sprite, McText, usePackTexture, useGuiScaleValue } from "./GuiSprite";
 import { settingsStore } from "@/game/settingsStore";
 
+import { viewSize } from '@/game/touch';
 const ARMOR_GHOST = [
   'textures/items/empty_armor_slot_helmet.png',
   'textures/items/empty_armor_slot_chestplate.png',
@@ -326,8 +327,8 @@ export default function CreativeUI({ inv, onUpdate, onClose }) {
 
   const winTex = tab === 'search' ? texSearch : tab === 'survival' ? texInventory : texItems;
   const currentTabName = [...TOP_TABS, ...BOTTOM_TABS].find((t) => t.id === tab)?.name || 'Itens';
-  const left = Math.max(0, Math.floor((window.innerWidth - WIN.w * S) / 2));
-  const top = Math.max(0, Math.floor((window.innerHeight - WIN.h * S) / 2));
+  const left = Math.max(0, Math.floor((viewSize().w - WIN.w * S) / 2));
+  const top = Math.max(0, Math.floor((viewSize().h - WIN.h * S) / 2));
 
   const slot = (key, x, y, item, props = {}) => {
     const { ghost, hoverTarget, ...rest } = props;

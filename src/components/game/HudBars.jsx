@@ -4,12 +4,13 @@ import { Sprite, McText, usePackTexture, useGuiScaleValue } from './GuiSprite';
 import { ITEMS } from '@/game/items';
 import { BLOCKS, blockDisplayName } from '@/game/blocks';
 
+import { viewSize } from '@/game/touch';
 const BAR_H = 49;
 
 function useViewportWidth() {
-  const [w, setW] = useState(typeof window !== 'undefined' ? window.innerWidth : 1280);
+  const [w, setW] = useState(typeof window !== 'undefined' ? viewSize().w : 1280);
   useEffect(() => {
-    const on = () => setW(window.innerWidth);
+    const on = () => setW(viewSize().w);
     window.addEventListener('resize', on);
     return () => window.removeEventListener('resize', on);
   }, []);

@@ -4,6 +4,7 @@ import { useGuiScaleValue } from './GuiSprite';
 import { useSettings } from '@/game/settingsStore';
 import { clientStore } from '@/game/client/clientStore';
 
+import { viewSize } from '@/game/touch';
 function McSpan({ part, useColors, S }) {
   const color = useColors ? part.style.color : '#FFFFFF';
   const style = {
@@ -308,7 +309,7 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
     ? filteredMessages
     : filteredMessages.slice(-20).filter((m) => now - (m.timestamp || 0) < visibleMs + 1000);
 
-  const boxWidth = Math.min(window.innerWidth - 16, Math.round(chatWidthGui * S));
+  const boxWidth = Math.min(viewSize().w - 16, Math.round(chatWidthGui * S));
   const maxBoxHeight = Math.round((chatOpen ? heightFocusedGui : heightUnfocusedGui) * S);
 
   return (
