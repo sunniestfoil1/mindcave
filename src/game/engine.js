@@ -13,6 +13,7 @@ const ITEM_TO_BLOCK = { 323: 63, 380: 118, 379: 117, 390: 140, 356: 93, 404: 149
 // Itens de porta → bloco da porta (madeiras de 1.8: carvalho 324/64, ferro 330/71, pinheiro 427/193 … carvalho escuro 431/197)
 const DOOR_ITEMS = { 324: 64, 330: 71, 427: 193, 428: 194, 429: 195, 430: 196, 431: 197 };
 // Blocos que no 1.8.9 abrem uma tela e que ainda não têm tela aqui: o clique avisa em vez de colocar bloco
+const FENCE_IDS = new Set([85, 113, 188, 189, 190, 191, 192]);   // cercas: o mob do ovo nasce meio bloco acima do topo
 const SEM_TELA = new Set([116, 145, 117, 23, 158, 154, 138]);
 import { Sky } from './sky';
 import { skyBrightnessFactor, sunsetFactor, sunBrightness } from './lighting';
@@ -26,6 +27,8 @@ import { processCommand } from './commands';
 import { getMiningTime, getDrops, damageTool, isToolBroken, getToolDamage, ORE_XP } from './mining';
 import { addItem, createInventory, serializeInventory, deserializeInventory, stack } from './inventory';
 import { getArmorPoints, getItem, ITEMS } from './items';
+import { SPAWN_EGGS } from './spawnEggData';
+import { FireworkManager } from './fireworks';
 import { ProjectileManager } from './projectiles';
 import { createAnimationState, tickAnimation, startSwing, applyThirdPersonPose } from './animation';
 import { buildHandRig, poseHand } from './firstPersonHand';
@@ -34,7 +37,9 @@ import { attackEntity, isSword, isBow, isThrowable, computeBowCharge, createCpsT
 import { MobManager } from './mobManager';
 import { hasGlint, buildGlintOverlay } from './glint';
 import { ClientWorld } from './world';
-import { tryCreatePortal, checkPortalIntegrity, findNearbyPortal, buildPortal } from './portal';
+import { tryCreatePortal, checkPortalIntegrity, findNearbyPortal, buildPortal, KINDS, kindOfPortalBlock } from './portal';
+import { findAetherFloor } from './aetherGen';
+import { AETHER } from './blocksAether';
 import { findNetherFloor } from './netherGen';
 import { MobEntity } from './mobEntity';
 import { GunController } from './guns/shooting';
@@ -111,7 +116,7 @@ export class GameEngine {
     this.canvas = canvas;
     this.world = opts.world;
     this.dimension = 'overworld';
-    this.worlds = { overworld: this.world, nether: null };
+    this.worlds = { overworld: this.world, nether: null, aether: null };
     this._netherDeltas = opts.netherDeltas || new Map();
     this._portalTicks = 0;
     this._portalCooldown = 0;
@@ -287,6 +292,7 @@ export class GameEngine {
 
     // Partículas (blocos quebrados, respingos) — estilo 1.8.9
     this.particles = new ParticleManager(this.scene, this.world);
+    this.fireworks = new FireworkManager(this.scene, this.particles);
     this.itemEntities = new ItemEntityManager(this.scene, this.world);
     if (this._savedItemEntities) {
       this.itemEntities.deserialize(this._savedItemEntities);
@@ -1274,6 +1280,29 @@ export class GameEngine {
       this.emitHud();
       return true;
     }
+    // Ovo de spawn (1.8.9 ItemMonsterPlacer): cada clique solta um mob no bloco vizinho da face clicada, quantas vezes quiser; gasta um ovo no sobrevivência
+    if (id === 383) {
+      const egg = SPAWN_EGGS[slot.meta || 0];
+      const h = this.raycast();
+      if (!egg || !h) return false;
+      const m = this.mobs?.spawn(egg.mob, { x: h.x + h.nx + 0.5, y: h.y + h.ny + (h.ny === 1 && FENCE_IDS.has(h.id) ? 0.5 : 0), z: h.z + h.nz + 0.5 });
+      if (!m) return false;
+      m.persistent = true;                 // quem veio de ovo não some sozinho (o despawn natural só vale para os que nasceram do mundo)
+      m.yaw = Math.random() * Math.PI * 2;
+      MobEntity.onSound?.(m, 'ambient');
+      this._consumeHeld(slot);
+      return true;
+    }
+    // Fogos de artifício (1.8.9 ItemFirework.onItemUse): botão direito num bloco solta o foguete no ponto clicado; no ar não faz nada
+    if (id === 401) {
+      const h = this.raycast();
+      if (!h || h.hx === undefined) return false;
+      const pkt = { t: 'firework', x: h.hx + h.nx * 0.05, y: h.hy + h.ny * 0.05, z: h.hz + h.nz * 0.05, preset: slot.meta || 0 };
+      this.fireworks.launch(pkt.x, pkt.y, pkt.z, pkt.preset, this.player.pos);
+      if (this.netManager) { if (this.netManager.broadcast) this.netManager.broadcast(pkt); else this.netManager.conn?.send(pkt); }
+      this._consumeHeld(slot);
+      return true;
+    }
     const isBucket = id === 325 || id === 326 || id === 327;
     // Balde vazio: recolhe água/lava parada (mira atravessa o fluido)
     if (id === 325) {
@@ -1311,6 +1340,17 @@ export class GameEngine {
     if (isBucket) {
       // Balde cheio: derrama uma fonte no espaço à frente do bloco mirado
       if (!hit) return false;
+      // moldura de glowstone + balde de água dentro = portal do Aether (a água vira o portal). A célula pode ser a vizinha da face mirada
+      // ou a própria mirada, quando ela já tem fogo (pederneira usada antes) ou água
+      const aetherCells = [[hit.x + hit.nx, hit.y + hit.ny, hit.z + hit.nz]];
+      if ([51, 8, 9].includes(hit.id)) aetherCells.unshift([hit.x, hit.y, hit.z]);
+      const aetherCell = id === 326 && this.dimension !== 'nether' ? aetherCells.find(([cx, cy, cz]) => tryCreatePortal(this.world, cx, cy, cz, (a, b, c, st) => this._setBlockSync(a, b, c, st), KINDS.aether)) : null;
+      if (aetherCell) {
+        const at = { x: aetherCell[0] + 0.5, y: aetherCell[1] + 0.5, z: aetherCell[2] + 0.5 };
+        playEvent('item.bucket.empty', { pos: at }); playEvent('block.portal.trigger', { pos: at, volume: 0.4 });
+        if (this.player.gameMode !== 'creative') this.player.hotbar[this.player.selectedSlot] = { id: 325, count: 1, meta: 0 };
+        return true;
+      }
       if (id === 326 && this.dimension === 'nether') {   // água no Nether evapora na hora (o balde fica vazio)
         playEvent('block.fire.extinguish', { pos: { x: hit.x + hit.nx + 0.5, y: hit.y + hit.ny + 0.5, z: hit.z + hit.nz + 0.5 }, volume: 0.5 });
         if (this.player.gameMode !== 'creative') this.player.hotbar[this.player.selectedSlot] = { id: 325, count: 1, meta: 0 };
@@ -1488,7 +1528,7 @@ export class GameEngine {
   // ===== Dimensões (Nether) =====
   _worldFor(dim) {
     if (this.worlds[dim]) return this.worlds[dim];
-    const w = new ClientWorld(this.worlds.overworld.seed, this._netherDeltas, { generatorId: 'nether' });
+    const w = new ClientWorld(this.worlds.overworld.seed, dim === 'nether' ? this._netherDeltas : (this._aetherDeltas = this._aetherDeltas || new Map()), { generatorId: dim });
     w.name = this.worlds.overworld.name;
     this.worlds[dim] = w;
     return w;
@@ -1513,25 +1553,27 @@ export class GameEngine {
   // Atravessa o portal: escala 1:8, procura (ou constrói) o portal no outro mundo e põe o jogador nele. Tudo por etapas, com a tela
   // "Carregando terreno" (GuiDownloadTerrain): o mundo de destino é gerado um chunk por vez, entre quadros, e a tela só some quando as
   // malhas ao redor do jogador estão prontas — antes o salto gerava 25 chunks de uma vez e travava o jogo.
-  switchDimension(target) {
+  switchDimension(target, opts = {}) {
     if (target === this.dimension || this._switching) return false;
     this._switching = true;
     this._portalTicks = 0;
-    this.dimLoading = { percent: 0, status: target === 'nether' ? 'Entrando no Nether' : 'Saindo do Nether' };
+    this.dimLoading = { percent: 0, status: target === 'overworld' ? 'Saindo ' + (this.dimension === 'nether' ? 'do Nether' : 'do Aether') : (target === 'nether' ? 'Entrando no Nether' : 'Entrando no Aether') };
     playEvent('block.portal.travel', { volume: 0.5 });
     this.emitHud();
-    this._doSwitch(target).catch((e) => console.warn('[portal]', e)).finally(() => { this._switching = false; this.dimLoading = null; this.emitHud(); });
+    this._doSwitch(target, opts).catch((e) => console.warn('[portal]', e)).finally(() => { this._switching = false; this._dimFrozen = false; this.dimLoading = null; this.emitHud(); });
     return true;
   }
 
-  async _doSwitch(target) {
+  async _doSwitch(target, opts = {}) {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     const setProg = (percent, status) => { this.dimLoading = { percent, status: status || this.dimLoading?.status }; this.emitHud(); };
     await wait(50);
     const p = this.player.pos;
-    const toNether = target === 'nether';
+    const toOverworld = target === 'overworld';
+    const kind = KINDS[toOverworld ? this.dimension : target];     // o portal que liga os dois mundos (moldura de obsidiana ou de glowstone)
+    const scale = kind.name === 'nether' ? 8 : 1;                  // Nether anda 1:8, Aether 1:1
     const dest = this._worldFor(target);
-    const tx = Math.floor(toNether ? p.x / 8 : p.x * 8), tz = Math.floor(toNether ? p.z / 8 : p.z * 8);
+    const tx = Math.floor(toOverworld ? p.x * scale : p.x / scale), tz = Math.floor(toOverworld ? p.z * scale : p.z / scale);
     // 1) gera a área de chegada, um chunk por vez
     const cx0 = Math.floor(tx / 16), cz0 = Math.floor(tz / 16), R = 2;
     const total = (2 * R + 1) ** 2; let n = 0;
@@ -1540,31 +1582,51 @@ export class GameEngine {
       setProg(Math.round((++n / total) * 55));
       await wait(0);
     }
-    // 2) acha o portal de lá ou constrói um
-    let portal = findNearbyPortal(dest, tx, 64, tz, toNether ? 16 : 32);
+    // 2) acha o portal de lá ou constrói um (queda do Aether: sem portal, cai do céu no mesmo lugar do mundo normal)
+    let portal = null, bx = tx, bz = tz;
+    if (opts.fall) portal = { x: tx, y: 245, z: tz, meta: 0, fall: true };
+    else portal = findNearbyPortal(dest, tx, 64, tz, kind.name === 'nether' ? (toOverworld ? 32 : 16) : 16, kind);
     if (!portal) {
-      let by = toNether ? 70 : -1;
-      if (toNether) {
-        const f = findNetherFloor((a, b, c) => stateId(dest.getBlock(a, b, c)), tx, tz, 120);
+      let by = -1;
+      const idAt = (a, b, c) => stateId(dest.getBlock(a, b, c));
+      if (target === 'nether') {
+        const f = findNetherFloor(idAt, tx, tz, 120);
         by = f > 0 ? f : 70;
+      } else if (target === 'aether') {
+        // ilha mais próxima: anda em anéis até achar chão firme; sem nenhuma ilha por perto, faz uma plataforma
+        outer: for (let r = 0; r <= 40; r += 4) for (let a = 0; a < (r ? 8 : 1); a++) {
+          const qx = tx + Math.round(Math.cos(a * Math.PI / 4) * r), qz = tz + Math.round(Math.sin(a * Math.PI / 4) * r);
+          const f = findAetherFloor(idAt, qx, qz, 200);
+          if (f > 0) { bx = qx; bz = qz; by = f; break outer; }
+        }
+        if (by < 0) {
+          by = 90;
+          for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) {
+            if (dx * dx + dz * dz > 30) continue;
+            dest.setBlock(tx + dx, by - 1, tz + dz, packState(AETHER.GRASS, 0));
+            dest.setBlock(tx + dx, by - 2, tz + dz, packState(3, 0));
+            dest.setBlock(tx + dx, by - 3, tz + dz, packState(AETHER.HOLYSTONE, 0));
+          }
+        }
       } else {
         by = 64;
-        for (let y = 120; y > 1; y--) { if (stateId(dest.getBlock(tx, y, tz)) !== 0) { by = y + 1; break; } }
+        for (let y = 200; y > 1; y--) { if (idAt(tx, y, tz) !== 0) { by = y + 1; break; } }
       }
-      buildPortal(dest, tx, by, tz, () => {});
-      portal = { x: tx, y: by, z: tz, meta: 1 };
+      buildPortal(dest, bx, by, bz, () => {}, kind);
+      portal = { x: bx, y: by, z: bz, meta: 1 };
     }
     setProg(60, 'Construindo terreno');
     await wait(0);
     // 3) troca de mundo e coloca o jogador; o motor segura o jogador parado até o chão dele estar carregado (_awaitChunk)
     this._attachWorld(dest);
     this.dimension = target;
-    p.x = portal.x + 0.5; p.y = portal.y; p.z = portal.z + 0.5 + (portal.meta === 1 ? 1.2 : 0);
+    this._dimFrozen = true;
+    p.x = portal.x + 0.5; p.y = portal.y; p.z = portal.z + 0.5 + (portal.meta === 1 && !portal.fall ? 1.2 : 0);
     if (this.player.vel) { this.player.vel.x = this.player.vel.y = this.player.vel.z = 0; }
-    unstickPlayer(this.world, p);
+    if (portal.fall) { this._noFall = true; this.player.fallDistance = 0; } else unstickPlayer(this.world, p);
     this.sky?.setVisible(target !== 'nether');
     this._portalCooldown = 60;
-    this.weather?.setEnabled?.(target !== 'nether');
+    this.weather?.setEnabled?.(target === 'overworld');
     this._awaitChunk = true;
     // 4) espera as malhas do entorno (até 6 s); a barra sobe com o que falta
     const t0 = performance.now(); let q0 = 0;
@@ -1584,7 +1646,7 @@ export class GameEngine {
     if (this.worldTime % 20 !== 0 || Math.random() > 0.3) return;
     const p = this.player.pos, bx = Math.floor(p.x), by = Math.floor(p.y), bz = Math.floor(p.z);
     for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) for (let dy = -3; dy <= 3; dy++) {
-      if (stateId(this.world.getBlock(bx + dx, by + dy, bz + dz)) === 90) {
+      if (kindOfPortalBlock(stateId(this.world.getBlock(bx + dx, by + dy, bz + dz)))) {
         playEvent('block.portal.ambient', { pos: { x: bx + dx + 0.5, y: by + dy + 0.5, z: bz + dz + 0.5 }, volume: 0.5, pitch: Math.random() * 0.4 + 0.8 });
         return;
       }
@@ -1596,31 +1658,33 @@ export class GameEngine {
     if (this._portalCooldown > 0) this._portalCooldown--;
     this._tickPortalAmbient();
     const p = this.player.pos;
-    const inPortal = stateId(this.world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) === 90
-      || stateId(this.world.getBlock(Math.floor(p.x), Math.floor(p.y + 1), Math.floor(p.z))) === 90;
-    if (!inPortal) { this._portalTicks = 0; return; }
+    const pid = [stateId(this.world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))), stateId(this.world.getBlock(Math.floor(p.x), Math.floor(p.y + 1), Math.floor(p.z)))].find((i) => kindOfPortalBlock(i));
+    if (!pid) { this._portalTicks = 0; return; }
     if (this._portalCooldown > 0) { this._portalCooldown = 60; return; }  // só reativa depois de sair do portal
     // 1.8.9 (Entity.portalCounter): 80 ticks (4 s) em cima do portal no sobrevivência; no criativo atravessa na hora
     if (this._portalTicks === 0) playEvent('block.portal.trigger', { volume: 0.25 });
     this._portalTicks++;
     const need = this.player.gameMode === 'creative' || this.player.creative ? 1 : 80;
-    if (this._portalTicks >= need) this.switchDimension(this.dimension === 'nether' ? 'overworld' : 'nether');
+    if (this._portalTicks >= need) this.switchDimension(this.dimension === 'overworld' ? kindOfPortalBlock(pid).dim : 'overworld');
   }
 
   // Quebrou obsidiana ou um bloco do portal: o portal inteiro some na hora (sem som extra: só o do bloco quebrado) e a conexão com o portal
   // do outro mundo também quebra (esta regra é do Mind Cave: no 1.8.9 o portal do outro lado continuava lá)
   _portalIntegrity(x, y, z) {
+    let kind = null;   // de que tipo era o portal que estava colado no bloco quebrado (antes de a cascata apagá-lo)
+    for (const [dx, dy, dz] of [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) { kind = kindOfPortalBlock(stateId(this.world.getBlock(x + dx, y + dy, z + dz))); if (kind) break; }
     const removed = checkPortalIntegrity(this.world, x, y, z, (a, b, c, st) => this._setBlockSync(a, b, c, st));
-    if (removed > 0) this._breakLinkedPortal(x, y, z);
+    if (removed > 0 && kind) this._breakLinkedPortal(x, y, z, kind);
     return removed;
   }
 
-  _breakLinkedPortal(x, y, z) {
-    const toNether = this.dimension === 'overworld';
-    const other = this.worlds[toNether ? 'nether' : 'overworld'];
+  _breakLinkedPortal(x, y, z, kind) {
+    const toDim = this.dimension === 'overworld';
+    const other = this.worlds[toDim ? kind.dim : 'overworld'];
     if (!other || other === this.world) return;
-    const tx = Math.floor(toNether ? x / 8 : x * 8), tz = Math.floor(toNether ? z / 8 : z * 8);
-    const found = findNearbyPortal(other, tx, Math.floor(y), tz, toNether ? 16 : 32);
+    const scale = kind.name === 'nether' ? 8 : 1;
+    const tx = Math.floor(toDim ? x / scale : x * scale), tz = Math.floor(toDim ? z / scale : z * scale);
+    const found = findNearbyPortal(other, tx, Math.floor(y), tz, kind.name === 'nether' ? (toDim ? 16 : 32) : 16, kind);
     if (!found) return;
     other.setBlock(found.x, found.y, found.z, 0);
     checkPortalIntegrity(other, found.x, found.y, found.z, () => {});
@@ -1636,7 +1700,7 @@ export class GameEngine {
       const pkt = { t: 'jukebox', x, y, z, disc: 0, startMs: 0 };
       if (this.netManager) { if (this.netManager.broadcast) this.netManager.broadcast(pkt); else this.netManager.conn?.send(pkt); }
     }
-    if (stateId(state) === 49 || stateId(state) === 90) this._portalIntegrity(x, y, z);
+    if ([49, 90, 89, AETHER.PORTAL].includes(stateId(state))) this._portalIntegrity(x, y, z);
     const id = stateId(state);
     if (id === 26) {
       const pt = bedPartner(x, z, stateMeta(state));
@@ -1740,6 +1804,7 @@ export class GameEngine {
       this._awaitChunk = false;
       unstickPlayer(this.world, this.player.pos);
     }
+    if (this._dimFrozen) return;   // tela de carregamento do outro mundo: o jogador espera parado (não cai nem anda por baixo dela)
     const p = this.player;
     this._prevPos = { x: p.pos.x, y: p.pos.y, z: p.pos.z };
     this._tickFovModifier();
@@ -1918,8 +1983,13 @@ export class GameEngine {
         if (this._ladderPush) p.vel.y = 0.2;
         p.fallDistance = 0;
       }
+      const vyBefore = p.vel.y;
       const res = moveEntity(p.pos, p.vel, this.world, 1, { sneaking: p.sneaking, onGround: p.onGround, flying: p.flying });
       p.onGround = res.onGround;
+      if (res.onGround && vyBefore < -0.2 && !p.sneaking) {   // nuvem azul/dourada: quica em vez de parar
+        const under = getBlock(stateId(this.world.getBlock(Math.floor(p.pos.x), Math.floor(p.pos.y - 0.2), Math.floor(p.pos.z))));
+        if (under && under.bounce) { p.vel.y = Math.min(1.8, -vyBefore * 0.85 * under.bounce + 0.35); p.onGround = false; p.fallDistance = 0; }
+      }
       this._ladderPush = res.collidedX || res.collidedZ;
       p.vel.x *= friction;
       p.vel.z *= friction;
@@ -1940,7 +2010,9 @@ export class GameEngine {
     }
 
     pushOutOfBlocks(this.world, p.pos);
-    if (p.pos.y < -64) { p.pos.x = this.spawn.x; p.pos.y = this.spawn.y; p.pos.z = this.spawn.z; p.vel.y = 0; }
+    if (this.dimension === 'aether' && p.pos.y < -20 && !this._switching) this.switchDimension('overworld', { fall: true });
+    if (this._noFall) { p.fallDistance = 0; if (p.onGround) this._noFall = false; }
+    if (p.pos.y < -64 && this.dimension !== 'aether') { p.pos.x = this.spawn.x; p.pos.y = this.spawn.y; p.pos.z = this.spawn.z; p.vel.y = 0; }
 
     if (this.breakCd > 0) this.breakCd--;
     if (this.placeCd > 0) this.placeCd--;
@@ -2058,7 +2130,7 @@ export class GameEngine {
 
     // Clima (PRD 05)
     this.tickPortal();
-    if (this.weather && this.dimension !== 'nether') {
+    if (this.weather && this.dimension === 'overworld') {
       this.weather.tick(this.worldTime, p, this.world, this.gameRules);
       this.weather.extinguishExposed(this.world, p);
     }
@@ -2067,6 +2139,7 @@ export class GameEngine {
     tickFire(this.world, this.worldTime, this.weather, this.gameRules, this.difficulty);
     this.signs?.update(this.world, this.player.pos);
     this.jukebox?.update(this.world, this.player.pos);
+    if (this.fireworks) { this.fireworks.world = this.world; this.fireworks.tick(); }
     if (this.recordNote && --this.recordNote.ticks <= 0) { this.recordNote = null; this.emitHud(); }
     this._tickFireAmbient();
 
@@ -2440,10 +2513,20 @@ export class GameEngine {
       u.uFogFar.value = 4;
       this.scene.background = this._uwColor;
     } else {
-      u.uFogColor.value.copy(this.sky.fogColor);
-      u.uFogNear.value = fogDist * 0.75;
-      u.uFogFar.value = fogDist;
-      this.scene.background = this.sky.skyColor;
+      if (this.dimension === 'aether') {   // céu e névoa lavanda, como nas imagens do Aether
+        if (!this._aetherFog) this._aetherFog = new THREE.Color();
+        const k = 0.3 + 0.7 * sb;
+        this._aetherFog.setRGB(0.72 * k, 0.68 * k, 0.97 * k);
+        u.uFogColor.value.copy(this._aetherFog);
+        u.uFogNear.value = fogDist * 0.5;
+        u.uFogFar.value = fogDist;
+        this.scene.background = this._aetherFog;
+      } else {
+        u.uFogColor.value.copy(this.sky.fogColor);
+        u.uFogNear.value = fogDist * 0.75;
+        u.uFogFar.value = fogDist;
+        this.scene.background = this.sky.skyColor;
+      }
     }
 
     // Partículas de chuva/neve
@@ -3904,6 +3987,7 @@ export class GameEngine {
     this._tntRender?.dispose(); this._tntRender = null;
     this.signs?.dispose(); this.signs = null;
     this.jukebox?.dispose(); this.jukebox = null;
+    this.fireworks?.dispose(); this.fireworks = null;
     this.tntEntities = [];
     this.pendingTnt = [];
     this.crosshair?.dispose();

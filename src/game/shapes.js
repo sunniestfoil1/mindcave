@@ -284,7 +284,7 @@ const WALL_BOUND = new Set([50, 75, 76, 69, 77, 143, 68, 131]);
 export const isWallBound = (id) => WALL_BOUND.has(id);
 const solidCube = (b) => !!b && b.solid && b.opaque && (b.model || 'cube') === 'cube';
 // Onde cada planta pode ficar (BlockBush.canPlaceBlockOn e as classes de cada uma no 1.8.9): só em terra que sustenta planta
-const GROWS_ON_SOIL = (b) => b === 2 || b === 3 || b === 60;                     // grama, terra, terra arada
+const GROWS_ON_SOIL = (b) => b === 2 || b === 3 || b === 60 || b === 210;                     // grama, terra, terra arada
 const isFullCube = (b) => { const d = BLOCKS[b]; return !!d && d.solid && d.opaque && (d.model || 'cube') === 'cube'; };
 const waterAt = (getState, x, y, z) => { const i = stateIdOf(getState(x, y, z)); return i === 8 || i === 9; };
 export const PLANT_RULES = {

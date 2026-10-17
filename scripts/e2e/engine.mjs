@@ -395,6 +395,46 @@ const result = await page.evaluate(async () => {
     engine.breakBedPartner(FX, B0 + 3, FZ, packState(49, 0)); cw.setBlock(FX, B0 + 3, FZ, 0); engine.breakBedPartner(FX, B0 + 3, FZ, packState(49, 0));
     ok(stateId(cw.getBlock(FX + 1, B0 + 2, FZ)) !== 90, 'quebrar a moldura apaga o portal');
 
+    // ======== AETHER: moldura de glowstone + balde de água, travessia ida e volta, queda devolve ao mundo normal sem dano ========
+    reset(); pState.gameMode = 'survival'; pState.pos = { x: 8.5, y: B0 + 1, z: 1.5 }; tickN(2);
+    const AX = 6, AZ = 24;
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 5; j++) {
+      if (i === 0 || i === 3 || j === 0 || j === 4) cw.setBlock(AX + i, B0 + 1 + j, AZ, packState(89, 0));
+    }
+    pState.hotbar[0] = { id: 259, count: 1, meta: 0 }; pState.selectedSlot = 0;
+    pState.pos = { x: AX + 1.5, y: B0 + 1, z: AZ - 2.5 }; tickN(2); aimTop(AX + 1, B0 + 1, AZ);
+    engine.useHeldItem(pState.hotbar[0]);
+    ok(stateId(cw.getBlock(AX + 1, B0 + 2, AZ)) !== 215 && stateId(cw.getBlock(AX + 1, B0 + 2, AZ)) !== 90, 'pederneira na moldura de glowstone NÃO acende portal nenhum');
+    pState.hotbar[0] = { id: 326, count: 1, meta: 0 }; aimTop(AX + 1, B0 + 1, AZ);
+    const wet = engine.useHeldItem(pState.hotbar[0]);
+    ok(stateId(cw.getBlock(AX + 1, B0 + 2, AZ)) === 215 && stateId(cw.getBlock(AX + 2, B0 + 4, AZ)) === 215 && pState.hotbar[0].id === 325, `balde de água dentro da moldura de glowstone acende o portal do Aether 2×3 e o balde fica vazio (retorno ${wet})`);
+    pState.pos = { x: AX + 1.5, y: B0 + 2, z: AZ + 0.5 }; pState.gameMode = 'creative'; pState.vel = { x: 0, y: 0, z: 0 }; engine._portalCooldown = 0;
+    tickN(5); await settleDim();
+    ok(engine.dimension === 'aether' && engine.world.generatorOpts.generatorId === 'aether', `entrar no portal leva ao Aether (dimensão: ${engine.dimension})`);
+    const aw = engine.world;
+    let aeGrass = 0, aeStone = 0; for (let x = -24; x < 24; x += 2) for (let z = -24; z < 24; z += 2) for (let y = 40; y < 150; y += 1) { const b = stateId(aw.getBlock(Math.floor(pState.pos.x) + x, y, Math.floor(pState.pos.z) + z)); if (b === 210) aeGrass++; else if (b === 211) aeStone++; }
+    ok(aeGrass > 20 && aeStone > 20, `o Aether tem grama (${aeGrass}) e pedra sagrada (${aeStone}) em volta do jogador`);
+    tickN(60);
+    ok(pState.pos.y > 30 && pState.onGround, `o jogador fica em pé no chão do Aether (y ${pState.pos.y.toFixed(1)}, no chão: ${pState.onGround})`);
+    let ap = null; { const bx = Math.floor(pState.pos.x), bz = Math.floor(pState.pos.z); for (let x = -8; x <= 8 && !ap; x++) for (let z = -8; z <= 8 && !ap; z++) for (let y = 20; y < 200; y++) if (stateId(aw.getBlock(bx + x, y, bz + z)) === 215) { ap = { x: bx + x, y, z: bz + z }; break; } }
+    ok(!!ap, 'o portal de chegada (azul) existe no Aether');
+    // sair e voltar pelo portal de chegada
+    pState.pos.x += 4; tickN(70);
+    if (ap) { pState.pos = { x: ap.x + 0.5, y: ap.y, z: ap.z + 0.5 }; tickN(5); await settleDim(); }
+    ok(engine.dimension === 'overworld' && engine.world === cw, 'voltar pelo portal retorna ao mundo normal');
+    // de novo para o Aether e cair no vazio: volta ao mundo normal, vindo do céu, sem dano
+    pState.pos = { x: AX + 1.5, y: B0 + 2, z: AZ + 0.5 }; pState.vel = { x: 0, y: 0, z: 0 }; engine._portalCooldown = 0; tickN(5); await settleDim();
+    pState.gameMode = 'survival'; pState.health = 20; pState.pos = { x: pState.pos.x, y: -30, z: pState.pos.z }; pState.vel = { x: 0, y: -1, z: 0 };
+    tickN(3); await settleDim();
+    ok(engine.dimension === 'overworld' && pState.pos.y > 200, `cair do Aether devolve ao mundo normal, vindo do alto (y ${pState.pos.y.toFixed(0)})`);
+    for (let i = 0; i < 600 && !(pState.onGround && i > 5); i++) tickN(1);
+    ok(pState.health === 20, `a queda do Aether não machuca (vida ${pState.health})`);
+    // quebrar um bloco da moldura de glowstone apaga o portal inteiro de uma vez
+    reset(); pState.gameMode = 'survival';
+    engine.breakBedPartner(AX, B0 + 3, AZ, packState(89, 0)); cw.setBlock(AX, B0 + 3, AZ, 0); engine.breakBedPartner(AX, B0 + 3, AZ, packState(89, 0));
+    let left = 0; for (let i = 1; i <= 2; i++) for (let j = 1; j <= 3; j++) if (stateId(cw.getBlock(AX + i, B0 + 1 + j, AZ)) === 215) left++;
+    ok(left === 0, `quebrar a moldura de glowstone apaga o portal do Aether inteiro (sobraram ${left} blocos)`);
+
     // ======== ESC: pausar e retomar rápido, em software (o navegador não aceita Esc como gesto para travar o mouse) ========
     reset(); engine.paused = true; engine.guiOpenFn = () => false;
     engine.onKey({ code: 'Escape', repeat: false, preventDefault() {}, target: document.body }, true);

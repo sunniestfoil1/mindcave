@@ -69,6 +69,9 @@ export class ParticleManager {
     this.life = new Uint8Array(CAP); this.maxLife = new Uint8Array(CAP);
     this.alive = new Uint8Array(CAP); this.ground = new Uint8Array(CAP);
     this.size = new Float32Array(CAP);
+    // faíscas de fogos: gravidade e arrasto próprios, cor de esmaecer, rastro (as partículas comuns usam os padrões)
+    this.grav = new Float32Array(CAP); this.drag = new Float32Array(CAP); this.dragY = new Uint8Array(CAP);
+    this.fadeAt = new Uint8Array(CAP); this.fadeCol = new Float32Array(CAP * 3); this.trail = new Uint8Array(CAP);
     this.look = new Float32Array(CAP * 8);      // parte fixa da instância: u v textura luzBloco r g b luzCéu (+1 de folga)
     this.cursor = 0;
     this.count = 0;
@@ -115,6 +118,7 @@ export class ParticleManager {
     this.px[i] = x; this.py[i] = y; this.pz[i] = z;
     this.vx[i] = vx; this.vy[i] = vy; this.vz[i] = vz;
     this.size[i] = size;
+    this.grav[i] = GRAVITY; this.drag[i] = 0.96; this.dragY[i] = 0; this.fadeAt[i] = 0; this.trail[i] = 0;
   }
 
   _look(i, u, v, tex, block, r, g, b, sky) {
@@ -212,6 +216,21 @@ export class ParticleManager {
     }
   }
 
+  // Faísca de fogos de artifício (EntityFireworkSparkFX): brilha sozinha, cai quase nada (grav 0,004), freia (drag 0,91 nos três eixos),
+  // muda para a cor de esmaecer na metade da vida e, com rastro, solta faíscas curtas atrás de si na primeira metade
+  spawnSpark(x, y, z, vx, vy, vz, c, o = {}) {
+    const i = this._slot();
+    const life = Math.min(250, o.life ?? 30);
+    this._init(i, x, y, z, vx, vy, vz, o.size ?? 0.12, life);
+    if (o.grav !== undefined) this.grav[i] = o.grav;
+    if (o.drag !== undefined) this.drag[i] = o.drag;
+    this.dragY[i] = o.dragY ? 1 : 0;
+    this.trail[i] = o.trail ? 1 : 0;
+    if (o.fade) { this.fadeAt[i] = Math.max(1, Math.floor(life * 0.5)); this.fadeCol[i * 3] = o.fade[0]; this.fadeCol[i * 3 + 1] = o.fade[1]; this.fadeCol[i * 3 + 2] = o.fade[2]; }
+    this._solid(i, c[0], c[1], c[2], 1, 1);
+    return i;
+  }
+
   // Partículas por nome (comando /particle) — cores representativas da 1.8.9; brilham sozinhas
   spawnNamed(name, x, y, z, count = 10) {
     const COLORS = {
@@ -251,9 +270,15 @@ export class ParticleManager {
         if (++life[i] >= maxLife[i]) alive[i] = 0;
         continue;
       }
-      if (!ground[i]) vy[i] -= GRAVITY;
+      if (!ground[i]) vy[i] -= this.grav[i];
       px[i] += vx[i]; py[i] += vy[i]; pz[i] += vz[i];
-      vx[i] *= 0.96; vz[i] *= 0.96;
+      vx[i] *= this.drag[i]; vz[i] *= this.drag[i];
+      if (this.dragY[i]) vy[i] *= this.drag[i];
+      if (this.fadeAt[i] && life[i] === this.fadeAt[i]) { const k = i * 8; this.look[k + 4] = this.fadeCol[i * 3]; this.look[k + 5] = this.fadeCol[i * 3 + 1]; this.look[k + 6] = this.fadeCol[i * 3 + 2]; }
+      if (this.trail[i] && life[i] < maxLife[i] / 2 && ((life[i] + maxLife[i]) & 1) === 0) {   // rastro: faísca curta com a cor de agora, quase parada
+        const k = i * 8;
+        this.spawnSpark(px[i], py[i], pz[i], 0, 0, 0, [this.look[k + 4], this.look[k + 5], this.look[k + 6]], { life: 12, size: 0.1, grav: 0.002, drag: 0.9, dragY: true });
+      }
       // colisão com o chão
       if (world && vy[i] <= 0 && py[i] > 0 && py[i] < 256) {
         const by = Math.floor(py[i] - 0.06);

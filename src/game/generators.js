@@ -8,6 +8,7 @@ import { hash3, mulberry32 } from './prng';
 import { BLOCKS } from './blocks';
 import { SPAWN_BIOMES, getBiome, BIOME_IDS } from './biomes';
 import { generateNetherChunk } from './netherGen';
+import { generateAetherChunk } from './aetherGen';
 
 const STONE = 1, DIRT = 3, BEDROCK = 7, GRASS = 2, SAND = 12, WATER = 9;
 const STONE_BRICKS = 98, COBBLESTONE = 4, GLOWSTONE = 89;
@@ -30,6 +31,10 @@ export const GENERATORS = {
   nether: {
     id: 'nether', name: 'Nether', version: 1,
     generate(seed, cx, cz) { return generateNetherChunk(seed, cx, cz); },
+  },
+  aether: {
+    id: 'aether', name: 'Aether', version: 1,
+    generate(seed, cx, cz) { return generateAetherChunk(seed, cx, cz); },
   },
   superflat: {
     id: 'superflat', name: 'Mundo Plano', version: 1,

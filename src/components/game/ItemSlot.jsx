@@ -5,12 +5,14 @@ import { getDurabilityRatio } from "@/game/mining";
 import { getPackUrl, MC, isPackReady, onPackReady, onPackChanged } from "@/game/pack";
 import { getAtlasTileCanvas, getAtlasVersion } from "@/game/textures";
 import { itemIconFile, itemBlockTile, ICON_TINT } from "@/game/gui/iconNames";
+import { composeEggCanvas } from "@/game/spawnEggIcon";
 import { hasGlint } from "@/game/glint";
 import { drawIsoBoxes, ICON_SLAB, ICON_STAIRS, ICON_FENCE, ICON_GATE, ICON_CHEST } from "@/game/gui/isoIcon";
 
 const blockCanvasCache = new Map();
 const flatCanvasCache = new Map();
 const itemUrlCache = new Map();
+const eggUrlCache = new Map();
 
 // PNG sem perdas: o WebP com perda manchava os pixels dos ícones
 function canvasToOptimizedDataUrl(canvas) {
@@ -178,6 +180,13 @@ const ItemSlot = React.memo(function ItemSlot({ item, onClick, onRightClick, onS
       const t = ['skeleton', 'wither', 'zombie', 'steve', 'creeper'][item.meta || 0] || 'skeleton';
       const top = tile(`skull_${t}_top`, null), face = tile(`skull_${t}_front`, null);
       if (top && face) { setImgUrl(get3DBlockDataUrl(top, face, `skull|${t}`)); return; }
+    }
+    if (it.name === 'spawn_egg') {   // ovo de spawn: casca e pintas tingidas com as cores do mob
+      const meta = item.meta || 0;
+      if (eggUrlCache.has(meta)) { setImgUrl(eggUrlCache.get(meta)); return; }
+      let alive = true;
+      composeEggCanvas(meta).then((cv) => { if (!cv || !alive) return; const u = cv.toDataURL(); eggUrlCache.set(meta, u); setImgUrl(u); });
+      return () => { alive = false; };
     }
     const itemKey = it.name === 'dye' ? `dye:${(item.meta || 0) & 15}` : it.name;
     if (itemUrlCache.has(itemKey)) {

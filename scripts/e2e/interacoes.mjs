@@ -21,6 +21,7 @@ page.on('request', (r) => {
 await page.goto(`http://localhost:${port}/`, { waitUntil: 'domcontentloaded', timeout: 90000 });
 const out = [];
 const ok = (c, m) => out.push((c ? 'OK   ' : 'FALHA') + ' ' + m);
+const G_ = 99;
 const r = await page.evaluate(async () => {
   const { ClientWorld } = await import('/src/game/world.js');
   const { GameEngine } = await import('/src/game/engine.js');
@@ -150,6 +151,28 @@ const r = await page.evaluate(async () => {
   eng.breakBedPartner(36, G + 1, 10, cw.getBlock(36, G + 1, 10)); cw.setBlock(36, G + 1, 10, 0);
   res.placaApagou = C.getSign(36, G + 1, 10);
 
+  // ovo de spawn: cada clique solta um mob na posição clicada, várias vezes seguidas; sobrevivência gasta o ovo; o ovo é persistente
+  put(20, 0, 20, 1); put(20, 1, 20, 0);
+  eng.mobs.mobs.length = 0;
+  hold(383, 54, 64);
+  for (let i = 0; i < 3; i++) { look(20.5, G + 3.2, 23.5, 20.5, G + 1, 20.5); eng._cachedRaycastFrame = -1; eng.useHeldItem(ps.hotbar[0]); }
+  res.ovo = { n: eng.mobs.mobs.length, tipo: eng.mobs.mobs[0] && eng.mobs.mobs[0].typeId, persistente: eng.mobs.mobs.every((m) => m.persistent), x: eng.mobs.mobs[0] && eng.mobs.mobs[0].pos.x, y: eng.mobs.mobs[0] && eng.mobs.mobs[0].pos.y, z: eng.mobs.mobs[0] && eng.mobs.mobs[0].pos.z, restam: ps.hotbar[0].count };
+  ps.gameMode = 'survival'; hold(383, 92, 2); eng.mobs.mobs.length = 0;
+  for (let i = 0; i < 3; i++) { look(20.5, G + 3.2, 23.5, 20.5, G + 1, 20.5); eng._cachedRaycastFrame = -1; eng.useHeldItem(ps.hotbar[0] || { id: 0 }); }
+  res.ovoSurv = { mobs: eng.mobs.mobs.length, tipo: eng.mobs.mobs[0] && eng.mobs.mobs[0].typeId, sobrou: ps.hotbar[0] };
+  ps.gameMode = 'creative'; eng.mobs.mobs.length = 0;
+
+  // jukebox: o disco da mão entra (meta do bloco = disco, toca), o clique seguinte devolve o disco ao chão e para a música
+  put(30, 0, 10, 1); put(30, 1, 10, 84); hold(2257, 0, 1);
+  look(30.5, G + 3.2, 13.5, 30.5, G + 1.5, 10.5); eng._cachedRaycastFrame = -1; eng.interactBlock(ps);
+  res.jukeDentro = { meta: get(30, 1, 10) & 15, tocando: eng.jukebox.playing.size };
+  const antes = eng.itemEntities.items.length; hold(1, 0, 1); eng._cachedRaycastFrame = -1; eng.interactBlock(ps);
+  res.jukeFora = { meta: get(30, 1, 10) & 15, tocando: eng.jukebox.playing.size, disco: eng.itemEntities.items.slice(antes).map((e) => e.id).join() };
+  hold(2268, 0, 1); eng._cachedRaycastFrame = -1; eng.interactBlock(ps);
+  res.jukeNovo = get(30, 1, 10) & 15;
+  eng.breakBedPartner(30, G + 1, 10, cw.getBlock(30, G + 1, 10)); cw.setBlock(30, G + 1, 10, 0);
+  res.jukeQuebrou = { tocando: eng.jukebox.playing.size, disco: eng.itemEntities.items.slice(antes).map((e) => e.id).join() };
+
   // Nether: só porcos-zumbis
   const spawnSys = new MobSpawnSystem(); const mobs = [];
   const nw = eng._worldFor('nether');
@@ -180,6 +203,11 @@ ok(r.placa.id === 63 && r.placa.abriu === 1, `placa: colocar abre o editor de te
 ok(r.placaTexto && r.placaTexto[0] === 'Ola' && r.placaTexto[1] === 'Mundo' && r.placaTexto[3].length === 15, `texto da placa volta do salvamento (linha longa cortada em ${r.placaTexto && r.placaTexto[3].length} letras)`);
 ok(r.placaClique === 1 && r.placaMalha === 1, `botão direito na placa abre a edição (${r.placaClique}×) e o texto vira malha na placa (${r.placaMalha})`);
 ok(r.placaApagou === null, 'quebrar a placa apaga o texto');
+ok(r.ovo.n === 3 && r.ovo.tipo === 'zombie' && r.ovo.persistente && Math.abs(r.ovo.x - 20.5) < 0.01 && Math.abs(r.ovo.z - 20.5) < 0.01 && Math.abs(r.ovo.y - (G_ + 1)) < 0.01, `ovo de zumbi: 3 cliques no mesmo chão = 3 zumbis na posição clicada (${r.ovo.n}, em ${r.ovo.x},${r.ovo.y},${r.ovo.z}), persistentes, e no criativo o ovo não acaba (${r.ovo.restam})`);
+ok(r.ovoSurv.mobs === 2 && r.ovoSurv.tipo === 'cow' && r.ovoSurv.sobrou === null, `sobrevivência: 2 ovos de vaca = 2 vacas e o ovo some da mão no fim (${r.ovoSurv.mobs} vacas, mão ${JSON.stringify(r.ovoSurv.sobrou)})`);
+ok(r.jukeDentro.meta === 2 && r.jukeDentro.tocando === 1, `jukebox: o disco cat entra (meta do bloco ${r.jukeDentro.meta}) e começa a tocar (${r.jukeDentro.tocando})`);
+ok(r.jukeFora.meta === 0 && r.jukeFora.tocando === 0 && r.jukeFora.disco === '2257', `jukebox: novo clique tira o disco (item ${r.jukeFora.disco}) e a música para (${r.jukeFora.tocando})`);
+ok(r.jukeNovo === 13 && r.jukeQuebrou.tocando === 0 && r.jukeQuebrou.disco === '2257,2268', `jukebox: disco 5 entra na meta 13 (${r.jukeNovo}); quebrar o bloco solta o disco (${r.jukeQuebrou.disco}) e para a música`);
 ok(r.nether.total > 5 && r.nether.tipos.length === 1 && r.nether.tipos[0] === 'zombie_pigman', `no Nether só nasce porco-zumbi: ${r.nether.total} mobs, tipos ${r.nether.tipos}`);
 ok(errors.length === 0, `sem erro de página (${errors[0] || ''})`);
 console.log(out.join('\n'));

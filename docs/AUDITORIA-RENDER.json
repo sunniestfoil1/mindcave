@@ -1,6 +1,13 @@
 {
- "total": 330,
- "iconesComProblema": [],
+ "total": 417,
+ "iconesComProblema": [
+  "36:0 piston_extension → SEM IMAGEM",
+  "166:0 barrier → SEM IMAGEM",
+  "383:0 spawn_egg → SEM IMAGEM",
+  "2268:0 record_5 → SEM IMAGEM",
+  "2269:0 record_otherside → SEM IMAGEM",
+  "2270:0 record_pigstep → SEM IMAGEM"
+ ],
  "malhasComProblema": [],
  "itensCaidosComProblema": [],
  "errosPagina": [],

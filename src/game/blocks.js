@@ -1,6 +1,7 @@
 // Registro de blocos data-driven — PRD 02 RF-001. Adicionar bloco = adicionar entrada.
 import { packState as packS } from './chunk';
 import { registerMoreBlocks, onWall, WALL_META_DIR } from './blocksMore';
+import { registerAetherBlocks } from './blocksAether';
 
 export const RenderType = { OPAQUE: 'opaque', CUTOUT: 'cutout', TRANSLUCENT: 'translucent' };
 
@@ -310,6 +311,9 @@ BLOCKS[65] = shaped(65, 'ladder', 'Escada de Mão', { model: 'ladder', hardness:
 BLOCKS[96] = shaped(96, 'trapdoor', 'Alçapão', { model: 'trapdoor', hardness: 3.0, faces: { all: 'trapdoor' }, drop: 96, render: 'cutout', lightOpacity: 0, soundCategory: 'wood' });
 for (const [id, kind, on] of [[93, 'repeater', false], [94, 'repeater', true], [149, 'comparator', false], [150, 'comparator', true]]) BLOCKS[id].diode = { kind, on };
 registerMoreBlocks({ BLOCKS, B, shaped });
+registerAetherBlocks({ BLOCKS, B });
+// Blocos que brilham: as faces ignoram luz do céu, sombra de lado e oclusão (ficam no brilho máximo, também de noite) — visto no mesher
+for (const id of [89, 169, 91, 124]) if (BLOCKS[id]) BLOCKS[id].glow = true;
 export const SLAB_IDS = [44, 126, 182];
 export const STAIR_IDS = STAIRS.map(s => s[0]);
 

@@ -250,6 +250,11 @@ export class NetHost {
         this.broadcast(msg, userId);
         break;
       }
+      case 'firework': {
+        this.engine?.fireworks?.launch(msg.x, msg.y, msg.z, msg.preset || 0, this.engine.player.pos);
+        this.broadcast(msg, userId);
+        break;
+      }
       case 'item_drop': {
         if (this.engine?.itemEntities && msg.item) {
           this.engine.itemEntities.spawnItem(msg.item, msg.pos, msg.vel, msg.pickupDelay || 20);
@@ -542,6 +547,10 @@ export class NetClient {
       }
       case 'jukebox': {
         this.engine?.jukebox?.onRemote(msg);
+        break;
+      }
+      case 'firework': {
+        this.engine?.fireworks?.launch(msg.x, msg.y, msg.z, msg.preset || 0, this.engine.player.pos);
         break;
       }
       case 'item_drop': {

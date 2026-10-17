@@ -31,6 +31,8 @@ const ITEM_FILE = {
   firework_charge: 'fireworks_charge',
   armor_stand: 'wooden_armorstand',
   banner: 'banner_base',
+  // discos que o pacote 1.8.9 não tem (vêm de versões novas): usam o desenho de um disco parecido
+  record_5: 'record_13', record_otherside: 'record_cat', record_pigstep: 'record_blocks',
 };
 
 // Itens do registro que são blocos sem ícone próprio: usam a textura do bloco (nome do ladrilho do atlas)
@@ -48,7 +50,7 @@ export function itemIconFile(name, meta = 0) {
   return ITEM_FILE[name] || name;
 }
 // Chave de cache do ícone: só o corante muda de ícone por meta
-export const iconKey = (id, meta = 0) => (id === 351 ? `351:${(meta || 0) & 15}` : id === 261 ? `261:${(meta || 0) & 3}` : id);
+export const iconKey = (id, meta = 0) => (id === 351 ? `351:${(meta || 0) & 15}` : id === 261 ? `261:${(meta || 0) & 3}` : id === 383 ? `383:${meta || 0}` : id);
 export function itemBlockTile(name) { return ITEM_AS_BLOCK_TILE[name] || null; }
 
 // Cor da tinta de bioma aplicada nos ícones (planície): grama e folhagem

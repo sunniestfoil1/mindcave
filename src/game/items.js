@@ -73,6 +73,7 @@ export const ITEMS = {
   375: I(375, 'spider_eye', 'Olho de Aranha', { color: 0x602080, food: true, category: 'materials' }),
   376: I(376, 'fermented_spider_eye', 'Olho Fermentado', { color: 0x8040a0, category: 'materials' }),
   382: I(382, 'speckled_melon', 'Melancia Reluzente', { color: 0xe0e040, category: 'materials' }),
+  383: I(383, 'spawn_egg', 'Ovo de Spawn', { color: 0xc8c8c8, category: 'misc', variantNames: SPAWN_EGG_NAMES }),
   399: I(399, 'nether_star', 'Estrela do Nether', { color: 0xffffff, rarity: 'epic', category: 'materials' }),
   406: I(406, 'quartz', 'Quartzo', { color: 0xe8e8e8, category: 'materials' }),
   405: I(405, 'netherbrick', 'Tijolo do Nether', { color: 0x402020, category: 'materials' }),
@@ -192,8 +193,8 @@ export const ITEMS = {
   420: I(420, 'lead', 'Guia', { maxStack:1, color:0x806040, category:'misc' }),
   421: I(421, 'name_tag', 'Etiqueta', { maxStack:1, color:0xc0c080, category:'misc' }),
   398: I(398, 'carrot_on_a_stick', 'Cenoura na Vara', { maxStack:1, color:0x80a040, category:'transport' }),
-  402: I(402, 'firework_charge', 'Estrela de Fogos', { color:0xc04040, category:'misc' }),
-  401: I(401, 'fireworks', 'Fogos de Artifício', { maxStack:1, color:0xc04040, category:'misc' }),
+  402: I(402, 'firework_charge', 'Estrela de Fogos', { color:0xc04040, category:'misc', variantNames: STAR_NAMES }),
+  401: I(401, 'fireworks', 'Fogos de Artifício', { maxStack:64, color:0xc04040, category:'misc', variantNames: FIREWORK_NAMES }),
   344: I(344, 'egg', 'Ovo', { maxStack:16, color:0xe8e0c0, category:'misc' }),
 
   // Comidas (IDs alinham com FOODS do survival.js)
@@ -288,6 +289,8 @@ for (const id in ITEMS) {
 
 //getItem: procura em ITEMS, depois em BLOCKS
 import { BLOCKS } from './blocks';
+import { SPAWN_EGG_NAMES } from './spawnEggData';
+import { FIREWORK_NAMES, STAR_NAMES } from './fireworkData';
 export function getItem(id) { return ITEMS[id] || BLOCKS[id] || null; }
 
 export function getItemName(id) {

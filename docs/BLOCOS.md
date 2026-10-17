@@ -1,7 +1,7 @@
 # Blocos do jogo
 
 O registro cobre os **198 blocos do Minecraft 1.8.9** (`node scripts/compare-real.mjs` confere contra os dados reais em `data/mc-1.8.9/`)
-mais dois blocos próprios do Mind Cave (175 Tijolos de Pedra Musgosos e 177 Bancada de Armeiro).
+mais a Bancada de Armeiro (177) e os 6 blocos do Aether (210–215).
 
 ## Onde mexer
 
@@ -17,6 +17,12 @@ mais dois blocos próprios do Mind Cave (175 Tijolos de Pedra Musgosos e 177 Ban
 | mudar o clique direito (alavanca, botão, bolo, portas, baús) | `interactBlock` em `src/game/engine.js` |
 | mudar o item que vira bloco (placa, caldeirão, porta de pinheiro…) | `ITEM_TO_BLOCK` e `DOOR_ITEMS` no topo da seção de formas em `src/game/engine.js` |
 | mudar o que aparece no inventário do criativo | `CreativeUI.jsx` lista todo bloco com `variantNames`; esconder = `hiddenInCreative: true` |
+| mexer no Aether (blocos, ilhas, nuvens, portal) | blocos em `src/game/blocksAether.js` (ids 210–215), gerador em `src/game/aetherGen.js`, texturas montadas em `textures.js` (`composeAether`), moldura/portal em `src/game/portal.js` (`KINDS`) |
+| mudar a moldura ou a ativação de um portal | `src/game/portal.js`: `KINDS.nether` (obsidiana + pederneira) e `KINDS.aether` (glowstone + balde de água, em `useHeldItem` no `engine.js`) |
+| fazer um bloco brilhar no máximo (glowstone, lanterna do mar) | `glow: true` no fim de `src/game/blocks.js`; o mesher ignora luz e sombra nas faces dele |
+| trocar cores ou mobs dos ovos de spawn | `src/game/spawnEggData.js` (a meta do item 383 é o id da entidade do 1.8.9) |
+| trocar os fogos de artifício (cores, formato, voo) | `src/game/fireworkData.js` (presets) e `src/game/fireworks.js` (foguete e explosões) |
+| mudar quando os mobs somem sozinhos | `_shouldNaturallyDespawn` em `src/game/mobManager.js` (hostil longe some; animal, ovo e `/summon` ficam) |
 | mudar receitas | `scripts/gen-recipes.mjs` (importa as reais do 1.8.9) e depois `node scripts/gen-recipes.mjs` |
 
 ## Como cada bloco é testado
@@ -34,12 +40,13 @@ mais dois blocos próprios do Mind Cave (175 Tijolos de Pedra Musgosos e 177 Ban
 
 ## O que ainda não funciona como no 1.8.9
 
-- **Sem tela**: mesa de encantamento, bigorna, suporte de poções, ejetor, largador, funil, sinalizador e jukebox (disco). O clique avisa no chat
-  e não coloca bloco ao lado.
+- **Sem tela**: mesa de encantamento, bigorna, suporte de poções, ejetor, largador, funil e sinalizador. O clique avisa no chat e não coloca
+  bloco ao lado. (Jukebox, placa com texto, cabeças, vaso de flor e placas de pressão já funcionam.)
 - **Pistões** só existem como bloco; não empurram nem puxam. **Trilhos** são só o bloco (não há vagonete).
-- **Placa**: não há texto. **Cabeça**: só a de esqueleto (o tipo no 1.8.9 fica na entidade do bloco, que o jogo não tem).
-- **Vaso de flor** não recebe planta; **bolo** não tem velas (não existem no 1.8.9).
-- **Placa de pressão** só liga a energia pelo bloco (nada pisa nela ainda); as de peso (ouro e ferro) são só decoração.
 - **Bloco de notas** troca o tom a cada clique, mas só toca a harpa (o instrumento pelo bloco de baixo não existe).
-- **Bloco infestado** não solta peixe-de-prata (não solta nada).
-- **Árvores novas** (bétula, pinheiro, selva, acácia, carvalho escuro): ver `src/game/trees.js`; ainda sem teste visual próprio.
+- **Bloco infestado** não solta peixe-de-prata (não solta nada). **Estandartes** (ids 176/177 do 1.8.9) não existem.
+- **Mobs não são sincronizados no online**: cada jogador simula os seus (só sons e itens soltos viajam pela rede).
+- **Aether**: só ilhas, nuvens, árvores claras e animais comuns. Não tem os mobs, a masmorra, o ouro-do-Aether nem a luz própria do mod; as
+  árvores usam tronco e folha de bétula. Não é salvo no arquivo do mundo (como o Nether, vale só durante a sessão).
+- **Discos 5, otherside e Pigstep** vêm de versões novas: tocam no jukebox, mas o ícone do item é o de um disco parecido.
+- **Árvores novas** (bétula, pinheiro, selva, acácia, carvalho escuro): ver `src/game/trees.js`.

@@ -15,6 +15,7 @@ import { getAtlasTileCanvas, getAtlasVersion } from './textures';
 import { extrudedGeometryFor } from './itemExtrude';
 import { clientStore } from './client/clientStore';
 import { itemIconFile, itemBlockTile, iconKey } from './gui/iconNames';
+import { composeEggCanvas } from './spawnEggIcon';
 import { fastSin } from './fastMath';
 
 const GRAVITY = 18.0;
@@ -150,8 +151,8 @@ function iconTexture(id, meta = 0) {
     ? MC + 'textures/blocks/' + blockTile + '.png'
     : MC + 'textures/items/' + iconName + '.png';
 
-  getPackCanvas(path).then((cv) => {
-    if (!cv) return;
+  (def.name === 'spawn_egg' ? composeEggCanvas(meta) : getPackCanvas(path)).then((cv) => {
+    if (!cv) { iconTexCache.delete(key); return; }   // pacote ainda não carregou: a próxima chamada tenta de novo
     spriteCanvasCache.set(key, cv);
     const tex = new THREE.CanvasTexture(cv);
     tex.magFilter = THREE.NearestFilter;

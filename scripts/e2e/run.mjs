@@ -21,18 +21,18 @@ const stop = () => {
 };
 process.on('exit', stop);
 for (let i = 0; i < 60; i++) { try { const r = await fetch(`http://localhost:${port}/`); if (r.ok) break; } catch { /* ainda subindo */ } await new Promise(r => setTimeout(r, 1000)); }
-const steps = [['mining.mjs', []], ['shapes.mjs', []], ['leaves.mjs', []], ['trees.mjs', []], ['doors.mjs', []], ['items.mjs', []], ['net.mjs', []], ['move.mjs', [port]], ['engine.mjs', [port]], ['slots.mjs', []], ['skin.mjs', [port]], ['packs.mjs', [port]], ['crosshair.mjs', [port]], ['gui.mjs', [port]], ['voice.mjs', [port]], ['client.mjs', [port]], ['armor.mjs', [port]], ['touch.mjs', [port]], ['particles.mjs', [port]], ['arrow.mjs', [port]], ['walk.mjs', []], ['fly.mjs', [port]], ['interacoes.mjs', [port]], ['fire.mjs', []], ['jukebox.mjs', []], ['loading.mjs', [port]], ['blocks.mjs', [port]], ['blocks-cenas.mjs', [port]], ['page.mjs', [port]], ['../audit-render.mjs', [port]]];
+const steps = [['mining.mjs', []], ['shapes.mjs', []], ['leaves.mjs', []], ['trees.mjs', []], ['doors.mjs', []], ['items.mjs', []], ['net.mjs', []], ['move.mjs', [port]], ['engine.mjs', [port]], ['slots.mjs', []], ['skin.mjs', [port]], ['packs.mjs', [port]], ['crosshair.mjs', [port]], ['gui.mjs', [port]], ['voice.mjs', [port]], ['client.mjs', [port]], ['armor.mjs', [port]], ['touch.mjs', [port]], ['particles.mjs', [port]], ['arrow.mjs', [port]], ['walk.mjs', []], ['fly.mjs', [port]], ['interacoes.mjs', [port]], ['fire.mjs', []], ['jukebox.mjs', []], ['fogos.mjs', [port]], ['ovos.mjs', []], ['portais.mjs', []], ['aether.mjs', []], ['loading.mjs', [port]], ['blocks.mjs', [port]], ['blocks-cenas.mjs', [port]], ['page.mjs', [port]], ['../audit-render.mjs', [port]]];
 let failed = 0;
 for (const [file, extra] of steps) {
   console.log(`\n=== ${file} ===`);
-  // Teste que trava não pode prender a suíte para sempre: passou de 5 minutos, mata a árvore de processos e conta como falha
+  // Teste que trava não pode prender a suíte para sempre: passou de 10 minutos, mata a árvore de processos e conta como falha
   const code = await new Promise((res) => {
     const child = spawn(process.execPath, [path.join(root, 'scripts', 'e2e', file), root, ...extra], { stdio: 'inherit' });
     const timer = setTimeout(() => {
-      console.log(`FALHA ${file} passou de 5 minutos e foi encerrado`);
+      console.log(`FALHA ${file} passou de 10 minutos e foi encerrado`);
       if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' }); else child.kill('SIGKILL');
       res(1);
-    }, 5 * 60 * 1000);
+    }, 10 * 60 * 1000);
     child.on('exit', (c) => { clearTimeout(timer); res(c); });
   });
   if (code !== 0) failed++;

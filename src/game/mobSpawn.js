@@ -37,6 +37,13 @@ export class MobSpawnSystem {
     // Nether: outro conjunto de criaturas, sem passivos nem ambiente do mundo normal
     if (ctx.dimension === 'nether') { this.tickNether(world, player, mobs, counts); return; }
 
+    // Aether: só animais pacíficos (sem hostis, sem morcegos)
+    if (ctx.dimension === 'aether') {
+      this.passiveTimer++;
+      if (this.passiveTimer >= 400 && Math.random() < 0.05 && counts.passive < SPAWN_LIMITS.passive) { this.passiveTimer = 0; this.trySpawn(world, player, mobs, 'passive', ctx); }
+      return;
+    }
+
     // Hostis: todo tick (RF-010)
     if (counts.hostile < SPAWN_LIMITS.hostile) {
       this.trySpawn(world, player, mobs, 'hostile', ctx);
@@ -142,7 +149,7 @@ export class MobSpawnSystem {
       if (!world.hasChunkAt(x, z)) continue;
       let y = -1;
       for (let yy = 255; yy >= 1; yy--) { if (isSolid(stateId(world.getBlock(x, yy, z)))) { y = yy + 1; break; } }
-      if (y < 1 || stateId(world.getBlock(x, y - 1, z)) !== 2) continue;
+      if (y < 1 || ![2, 210].includes(stateId(world.getBlock(x, y - 1, z)))) continue;
       if (isSolid(stateId(world.getBlock(x, y, z))) || isSolid(stateId(world.getBlock(x, y + 1, z)))) continue;
       mobs.push(new MobEntity(typeId, { x: x + 0.5, y, z: z + 0.5 }));
       placed++;
@@ -183,7 +190,7 @@ export class MobSpawnSystem {
 
     if (category === 'passive') {
       // Em grama, luz ≥ 9
-      if (groundBlock !== 2) return false; // grass block
+      if (groundBlock !== 2 && groundBlock !== 210) return false; // grama (a do Aether também)
       const light = world.getLight(x, y, z);
       if (light.sky < 9) return false;
       return true;
@@ -259,7 +266,7 @@ export function spawnChunkAnimals(world, cx, cz, mobs, ctx) {
       // Encontrar grama
       for (let y = 255; y >= 1; y--) {
         const b = stateId(world.getBlock(ax, y, az));
-        if (b === 2) { // grass
+        if (b === 2 || b === 210) { // grama (a do Aether também)
           const feetBlock = stateId(world.getBlock(ax, y + 1, az));
           const headBlock = stateId(world.getBlock(ax, y + 2, az)); // sem checar a cabeça o animal nasce com a cabeça dentro de teto/folha e morre
           if (!isSolid(feetBlock) && !isSolid(headBlock)) {

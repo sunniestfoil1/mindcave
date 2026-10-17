@@ -380,6 +380,9 @@ for (const w of ['spruce', 'birch', 'jungle', 'acacia', 'big_oak']) {
 // ladrilhos dos blocos novos (cada nome é o do arquivo); os que já existem com outro nome de arquivo não são sobrescritos
 for (const [n, f] of Object.entries(MORE_TILES)) if (!(n in EXTRA_TILES) && !(n in MC_TEXTURE_MAP)) EXTRA_TILES[n] = f;
 for (const t of Object.keys(EXTRA_TILES)) if (!TILE_ORDER.includes(t)) TILE_ORDER.push(t);
+// Aether: ladrilhos montados em código a partir do próprio pacote (grama e pedra tingidas, nuvens desenhadas, portal azul animado)
+const AETHER_TILES = ['aether_grass_top', 'aether_grass_side', 'holystone', 'cloud_cold', 'cloud_blue', 'cloud_golden', 'aether_portal'];
+for (const t of AETHER_TILES) if (!TILE_ORDER.includes(t)) TILE_ORDER.push(t);
 Object.assign(MC_TEXTURE_MAP, EXTRA_TILES);
 
 let _realLoaded = false;
@@ -457,6 +460,62 @@ async function composeChest(ctx) {
   }
 }
 
+// Cópia do desenho (ou da faixa animada inteira) com cada canal multiplicado: m = [r, g, b] ou matriz 3×3 [[rr,rg,rb],[gr,gg,gb],[br,bg,bb]]
+function tintedCopy(src, m) {
+  const cv = document.createElement('canvas');
+  cv.width = src.width; cv.height = src.height;
+  const g = cv.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.drawImage(src, 0, 0);
+  const img = g.getImageData(0, 0, cv.width, cv.height), d = img.data;
+  const M = Array.isArray(m[0]) ? m : [[m[0], 0, 0], [0, m[1], 0], [0, 0, m[2]]];
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], gr = d[i + 1], b = d[i + 2];
+    d[i] = Math.min(255, r * M[0][0] + gr * M[0][1] + b * M[0][2]);
+    d[i + 1] = Math.min(255, r * M[1][0] + gr * M[1][1] + b * M[1][2]);
+    d[i + 2] = Math.min(255, r * M[2][0] + gr * M[2][1] + b * M[2][2]);
+  }
+  g.putImageData(img, 0, 0);
+  return cv;
+}
+
+async function composeAether(ctx) {
+  const P = (n) => getPackCanvas(MC + 'textures/blocks/' + n + '.png');
+  const [gtop, gside, gover, stone, portal] = await Promise.all([P('grass_top'), P('grass_side'), P('grass_side_overlay'), P('stone'), P('portal')]);
+  // grama do Aether: verde-menta; o desenho original é cinza, então a cor entra pela luminância (mesma sombra do original, outra tinta)
+  const GRASS = [0.78, 1.25, 0.96].map((c) => [c / 3, c / 3, c / 3]);   // matriz: cada canal de saída = cor × média dos canais de entrada
+  if (gtop) drawTile(ctx, 'aether_grass_top', (c) => c.drawImage(tintedCopy(gtop, GRASS), 0, 0, gtop.width, gtop.width, 0, 0, TILE, TILE));
+  if (gside) {
+    drawTile(ctx, 'aether_grass_side', (c) => {
+      c.drawImage(gside, 0, 0, gside.width, gside.width, 0, 0, TILE, TILE);
+      if (gover) c.drawImage(tintedCopy(gover, GRASS), 0, 0, gover.width, gover.width, 0, 0, TILE, TILE);
+    });
+  }
+  if (stone) drawTile(ctx, 'holystone', (c) => c.drawImage(tintedCopy(stone, [1.08, 1.14, 1.28]), 0, 0, stone.width, stone.width, 0, 0, TILE, TILE));
+  // nuvens: cor lisa com mosaico de 2×2 pixels mais claros e mais escuros (sem arquivo no pacote)
+  const cloud = (name, [r, g, b]) => drawTile(ctx, name, (c) => {
+    for (let y = 0; y < TILE; y += 2) for (let x = 0; x < TILE; x += 2) {
+      const k = 0.93 + 0.07 * (((x * 7 + y * 13 + x * y) % 5) / 4) * 2 - 0.07;
+      c.fillStyle = `rgb(${Math.min(255, r * k) | 0},${Math.min(255, g * k) | 0},${Math.min(255, b * k) | 0})`;
+      c.fillRect(x, y, 2, 2);
+    }
+  });
+  cloud('cloud_cold', [236, 244, 252]); cloud('cloud_blue', [160, 205, 250]); cloud('cloud_golden', [255, 216, 112]);
+  // portal: o do Nether (faixa animada) trocado do roxo para o azul
+  if (portal) {
+    const idx = TILE_ORDER.indexOf('aether_portal');
+    const strip = tintedCopy(portal, [[0.25, 0, 0], [0, 0.5, 0.35], [0, 0, 1.0]]);
+    drawFrame(ctx, strip, 0, idx);
+    const frames = Math.floor(strip.height / strip.width);
+    if (frames > 1) {
+      const meta = await getPackJson(MC + 'textures/blocks/portal.png.mcmeta');
+      const a = meta && meta.animation ? meta.animation : {};
+      const order = Array.isArray(a.frames) && a.frames.length ? a.frames.map((f) => (typeof f === 'number' ? f : f.index)) : Array.from({ length: frames }, (_, i) => i);
+      _anims.push({ idx, strip, order, frametime: Math.max(1, a.frametime || 1), cur: 0 });
+    }
+  }
+}
+
 export function loadRealTextures(force = false, onProgress = null) {
   if (_realLoaded && !force) return Promise.resolve(true);
   if (_loadingPromise) return _loadingPromise;
@@ -489,6 +548,7 @@ export function loadRealTextures(force = false, onProgress = null) {
       }));
       await composeGrassSide(ctx);
       await composeChest(ctx);
+      await composeAether(ctx);
       texture.needsUpdate = true;
       _atlasVersion++;
       _realLoaded = true;

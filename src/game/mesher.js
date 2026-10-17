@@ -530,7 +530,7 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
         } else if (model === 'portal') {
           // plano fino no meio do bloco (a malha do vidro fino), de dois lados; a textura animada do pacote enche o plano todo
           const l = getLightAbs(wx, wy, wz);
-          const tile = tiles.portal || tiles.error;
+          const tile = tiles[block.faces && block.faces.all] || tiles.portal || tiles.error;
           const alongZ = (meta & 3) === 2;
           const quad = alongZ ? [[0.5, 0, 0], [0.5, 1, 0], [0.5, 1, 1], [0.5, 0, 1]] : [[0, 0, 0.5], [0, 1, 0.5], [1, 1, 0.5], [1, 0, 0.5]];
           const base = wa.pos.length / 3;
@@ -688,9 +688,8 @@ export function buildSectionMesh(getBlockLocal, sectionY, baseX, baseZ, getBlock
           BP_TEMP[ta1] = (f.c[i][ta1] === 0) ? ra1 : ra1 + rh - 1;
           BP_TEMP[ta2] = (f.c[i][ta2] === 0) ? ra2 : ra2 + rw - 1;
           const vl = vertexLightAO(getLightAbs, getBlockAbs, baseX + BP_TEMP[0], yBase + BP_TEMP[1], baseZ + BP_TEMP[2], f.c[i], dir, na);
-          AO_VALS[i] = vl.ao * sh;
-          LV_VALS[i * 2] = vl.block / 15;
-          LV_VALS[i * 2 + 1] = vl.sky / 15;
+          if (block.glow) { AO_VALS[i] = 1; LV_VALS[i * 2] = 1; LV_VALS[i * 2 + 1] = 1; }   // bloco que brilha: brilho máximo, sem sombra de lado nem oclusão
+          else { AO_VALS[i] = vl.ao * sh; LV_VALS[i * 2] = vl.block / 15; LV_VALS[i * 2 + 1] = vl.sky / 15; }
           const tt = tintFor(block, f.face, meta, tintArr, BP_TEMP[0], BP_TEMP[2]);
           TCOLS_VALS[i * 3] = tt ? tt[0] : 1;
           TCOLS_VALS[i * 3 + 1] = tt ? tt[1] : 1;

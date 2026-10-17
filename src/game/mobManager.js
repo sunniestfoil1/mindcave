@@ -10,6 +10,7 @@ import { clientStore } from './client/clientStore';
 import { canBlockDamage, getBlockedDamage } from './combat';
 
 const _mobBox = new THREE.Box3();
+const NO_DESPAWN = new Set(['pig', 'cow', 'sheep', 'chicken', 'wolf']);   // EntityAnimal.canDespawn = false
 
 export class MobManager {
   constructor(scene, world) {
@@ -26,7 +27,7 @@ export class MobManager {
     return mob;
   }
 
-  summon(typeId, pos) { return this.spawn(typeId, pos); }
+  summon(typeId, pos) { const m = this.spawn(typeId, pos); m.persistent = true; return m; }
 
   killAll(typeFilter) {
     for (const m of this.mobs) {
@@ -87,6 +88,7 @@ export class MobManager {
       if (!this.world.hasChunkAt(Math.floor(mob.pos.x), Math.floor(mob.pos.z))) continue;
       // Rede de segurança: abaixo do mundo some sem morte, partículas, drops nem som
       if (mob.pos.y < -32) { mob.removeModel(this.scene); toRemove.push(mob); continue; }
+      if (this._shouldNaturallyDespawn(mob, player)) { mob.removeModel(this.scene); toRemove.push(mob); continue; }
       mob.tick(this.world, mobCtx);
 
       // Drops ao morrer
@@ -130,6 +132,17 @@ export class MobManager {
       const idx = this.mobs.indexOf(m);
       if (idx >= 0) this.mobs.splice(idx, 1);
     }
+  }
+
+  // EntityLiving.despawnEntity (1.8.9): só mob que nasceu do mundo e não é animal. Mais longe que 128 blocos some na hora; entre 32 e 128, depois de
+  // 600 ticks (30 s) sem jogador a menos de 32, tem 1 chance em 800 por tick de sumir; a menos de 32 o relógio zera. Ovo, /summon e nome fixam o mob.
+  _shouldNaturallyDespawn(mob, player) {
+    if (mob.isDead || mob.persistent || NO_DESPAWN.has(mob.typeId) || !player) return false;
+    const d2 = (player.pos.x - mob.pos.x) ** 2 + (player.pos.y - mob.pos.y) ** 2 + (player.pos.z - mob.pos.z) ** 2;
+    if (d2 > 16384) return true;
+    mob._idle = (mob._idle || 0) + 1;
+    if (d2 < 1024) { mob._idle = 0; return false; }
+    return mob._idle > 600 && Math.floor(Math.random() * 800) === 0;
   }
 
   _explode(pos, power, player, ctx) {
@@ -270,6 +283,7 @@ export class MobManager {
         pitch: m.pitch,
         health: m.health,
         isBaby: !!m.isBaby,
+        persistent: !!m.persistent,
       }));
     if (this.populated?.size) list.push({ _populated: [...this.populated] });
     return list;
@@ -287,6 +301,7 @@ export class MobManager {
       if (typeof item.pitch === 'number') mob.pitch = item.pitch;
       if (typeof item.health === 'number') mob.health = item.health;
       if (item.isBaby) mob.isBaby = true;
+      if (item.persistent) mob.persistent = true;
       mob.ensureModel(this.scene);
       this.mobs.push(mob);
     }
