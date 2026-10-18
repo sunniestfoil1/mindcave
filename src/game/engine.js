@@ -56,12 +56,12 @@ import { SignRenderer } from './signRender';
 import { JukeboxManager, DISCS, discMetaForItem } from './jukebox';
 import { loadRealTextures, reloadRealTextures, isRealTexturesLoaded, tickTextureAnimations } from './textures';
 import { lookDirFromAngles } from './viewMath';
-import { buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel, setModelHeldItem, setModelCape, setModelArmor, armorCodeFromSlots } from './playerModel';
-import { interpolateRemotePlayer } from './net/netInterpolation';
+import { addEntityLights, buildPlayerModel, loadPlayerGlb, loadFirstPersonArmGlb, applyPackSkin, placePlayerModel, setModelHeldItem, setModelCape, setModelArmor, armorCodeFromSlots } from './playerModel';
+import { interpolateRemotePlayer, POSE } from './net/netInterpolation';
 
 let _activeEngine = null;
 export function getActiveEngine() { return _activeEngine; }
-import { onSkinChange, onCapeChange, getCapeChoice, preloadLocalSkin } from './skinStore';
+import { onSkinChange, onCapeChange, getCapeChoice, getSkinChoice, preloadLocalSkin } from './skinStore';
 import { fetchCraftheadCape, fetchCraftheadSkin } from './crafthead';
 import { loadPack, ensurePack, isPackReady, isPackDownloading, getPackUrl, MC } from './pack';
 import { createCrosshair } from './crosshair';
@@ -69,7 +69,7 @@ import { createMotionBlur } from './motionBlur';
 import { clientStore } from './client/clientStore';
 import { initBiomeTint } from './biomeTint';
 import { playStepSound, playDigSound, playBlockBreakSound, playBlockPlaceSound, playHurtSound, playPlayerHurtSound, playHitSound, playMobSound, playSplashSound, playEvent, playEatSound, playBurpSound, playBowSound, startRainSound, stopRainSound, playExplodeSound, playFuseSound, playLevelUpSound, updateAudioListener, playPopSound, playArmorEquipSound } from './sounds';
-import { createNametag } from './nametag';
+import { createNametag, updateNametagFade } from './nametag';
 import { ParticleManager } from './particles';
 import { ItemEntityManager, createItemMesh, isItemSpriteReady } from './itemEntity';
 import { perfMonitor } from './perfMonitor';
@@ -348,10 +348,8 @@ export class GameEngine {
     this._destroyStageTextures = new Map();
 
     // Luzes para materiais do GLB (blocos usam MeshBasicMaterial — não afetados)
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.85));
-    const _dirLight = new THREE.DirectionalLight(0xffffff, 0.4);
-    _dirLight.position.set(0.5, 1, 0.3);
-    this.scene.add(_dirLight);
+    // Entidades (jogadores, mobs, itens no chão): sombreamento fixo por face como no 1.8.9
+    addEntityLights(this.scene);
 
     this.playerModel = buildPlayerModel();
     this.scene.add(this.playerModel);
@@ -359,7 +357,7 @@ export class GameEngine {
     // Capa do jogador local: textura salva (Crafthead) + reage a troca de skin/capa em tempo real
     this._capeSrc = getCapeChoice()?.png || null;
     this._unsubCape = [
-      onSkinChange(() => { this._capeSrc = getCapeChoice()?.png || null; }),
+      onSkinChange(() => { this._capeSrc = getCapeChoice()?.png || null; this._syncSkin(); }),
       onCapeChange(() => { this._capeSrc = getCapeChoice()?.png || null; }),
     ];
 
@@ -1226,6 +1224,47 @@ export class GameEngine {
   _pingsSig() {
     if (!this.netManager || !this.netManager.getAllPings) return '';
     try { return this.netManager.getAllPings().map((p) => p.name + ':' + (p.pingMs == null ? '-' : Math.floor(p.pingMs / 25))).join('|'); } catch { return ''; }
+  }
+
+  // Skin do jogador local no formato de rede (ver cleanSkinMsg): preset só com o nome; própria com o PNG
+  localSkinMsg() {
+    const c = getSkinChoice();
+    if (c.kind === 'custom') return { k: 'custom', png: c.png, slim: !!c.slim };
+    return { k: c.kind === 'alex' ? 'alex' : 'steve' };
+  }
+
+  // Manda a minha skin à rede (ao entrar e quando eu trocar de skin); o host repassa aos outros
+  _syncSkin() {
+    if (!this.netManager) return;
+    const msg = { t: 'skin', ...this.localSkinMsg() };
+    if (this.netManager.broadcast) { msg.id = this.netManager.user?.id || 'host'; this.netManager.broadcast(msg); }
+    else this.netManager.conn?.send(msg);
+  }
+
+  // Skin que chegou da rede: decodifica o PNG (ou o arquivo do preset) e aplica no modelo do jogador (id = id de conexão do jogador)
+  onRemoteSkin(id, sk) {
+    if (!this._remoteSkinById) this._remoteSkinById = new Map();
+    const src = sk.k === 'custom' ? sk.png : `/assets/skins/${sk.k}.png`;
+    this._remoteSkinById.set(id, { pending: true });
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement('canvas');
+      cv.width = 64; cv.height = 64;
+      cv.getContext('2d').drawImage(img, 0, 0, 64, img.height >= 64 ? 64 : 32);   // skin antiga 64×32 também cabe
+      const tex = new THREE.CanvasTexture(cv);
+      tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.needsUpdate = true;
+      this._remoteSkinById.set(id, { tex, slim: sk.k === 'alex' || !!sk.slim });
+      const entry = this._remoteMeshes && this._remoteMeshes.get(id);
+      if (entry) entry._skinApplied = false;   // aplica de novo
+    };
+    img.onerror = () => this._remoteSkinById.set(id, null);
+    img.src = src;
+  }
+
+  // Balançar o braço: anima aqui e conta o golpe para a rede (cada incremento do contador = um balanço no outro navegador)
+  _swing() {
+    startSwing(this.anim);
+    this._swingCount = ((this._swingCount || 0) + 1) & 255;
   }
 
   _netSend(pkt, reliable = true) {
@@ -2114,7 +2153,7 @@ export class GameEngine {
     // Se o jogador clicou de novo ou mudou de bloco mirado, zera o cooldown de quebra
     if (attackPressed) {
       this.breakCd = 0;
-      startSwing(this.anim);
+      this._swing();
       recordClick(this.cps);
       const entHit = this.raycastEntity();
       if (entHit) {
@@ -2130,7 +2169,7 @@ export class GameEngine {
 
     if (attackActive) {
       if (!this.anim.isSwinging) {
-        startSwing(this.anim);
+        this._swing();
       }
       if (!this.raycastEntity()) {
         if (p.gameMode === 'creative' || p.gameMode === 'spectator') {
@@ -2335,6 +2374,7 @@ export class GameEngine {
 
     // Transmitir posição em multiplayer (a cada tick = 20 TPS com Idle Deadband e compactação estilo Eaglercraft)
     if (this.netManager) {
+      if (this._skinSyncedFor !== this.netManager) { this._skinSyncedFor = this.netManager; this._syncSkin(); }
       const curX = Math.round(p.pos.x * 100) / 100;
       const curY = Math.round(p.pos.y * 100) / 100;
       const curZ = Math.round(p.pos.z * 100) / 100;
@@ -2346,6 +2386,14 @@ export class GameEngine {
       const curDead = !!p.isDead;
       const curSleeping = !!p.sleeping;
       const curGm = p.gameMode === 'creative' ? 1 : p.gameMode === 'spectator' ? 3 : p.gameMode === 'adventure' ? 2 : 0;
+      // pose na hora: agachar, correr, bloquear, arco, comer, voar, e o contador de golpes; item (id + meta) e carga do arco
+      const curSt = (p.sneaking ? POSE.SNEAK : 0) | (p.sprinting ? POSE.SPRINT : 0) | (p.blocking ? POSE.BLOCK : 0) | (p.bowDrawing ? POSE.BOW : 0) | (p.eating ? POSE.EAT : 0) | (p.flying ? POSE.FLY : 0);
+      const curHm = this.getHeldItem()?.meta || 0;
+      const curBc = p.bowDrawing ? Math.round(Math.min(1, p.bowCharge || 0) * 20) * 5 : 0;
+      const curSw = this._swingCount || 0;
+      // bloco que eu estou quebrando (x, y, z, estágio da rachadura 0–9): os outros veem a rachadura crescer no mesmo bloco
+      const curDg = (this.miningTarget && this.miningProgress > 0 && p.gameMode !== 'creative') ? [this.miningTarget.x, this.miningTarget.y, this.miningTarget.z, Math.min(9, Math.floor(this.miningProgress * 10))] : 0;
+      const curDgKey = curDg ? curDg.join(',') : '';
 
       const last = this._lastSentPos;
       this._ticksSinceNetMove = (this._ticksSinceNetMove || 0) + 1;
@@ -2361,12 +2409,13 @@ export class GameEngine {
         curArmor !== last.armor ||
         curDead !== last.dead ||
         curSleeping !== last.sleeping ||
-        curGm !== last.gm;
+        curGm !== last.gm ||
+        curSt !== last.st || curHm !== last.hm || curBc !== last.bc || curSw !== last.sw || curDgKey !== last.dgKey;
 
       // Envia se houver movimento/mudança de estado ou como heartbeat a cada 20 ticks (1s)
       if (hasMoved || this._ticksSinceNetMove >= 20) {
         this._ticksSinceNetMove = 0;
-        this._lastSentPos = { x: curX, y: curY, z: curZ, yaw: curYaw, pitch: curPitch, held: curHeld, voice: curVoice, armor: curArmor, dead: curDead, sleeping: curSleeping, gm: curGm };
+        this._lastSentPos = { x: curX, y: curY, z: curZ, yaw: curYaw, pitch: curPitch, held: curHeld, voice: curVoice, armor: curArmor, dead: curDead, sleeping: curSleeping, gm: curGm, st: curSt, hm: curHm, bc: curBc, sw: curSw, dgKey: curDgKey };
 
         const posMsg = {
           t: 'move',
@@ -2383,6 +2432,8 @@ export class GameEngine {
           v: curVoice,
           a: curArmor,
           g: curGm,
+          st: curSt, hm: curHm, bc: curBc, sw: curSw, dg: curDg,
+          ts: Math.round(performance.now()),   // hora do remetente: quem recebe suaviza a rajada de pacotes (ver netInterpolation)
         };
         if (this.netManager.broadcast) {
           this.netManager.broadcast(posMsg, undefined, false);
@@ -2770,35 +2821,44 @@ export class GameEngine {
     });
   }
 
+  // Textura do estágio de rachadura (0–9): carrega uma vez; devolve null enquanto não chegou
+  _destroyTexture(stage) {
+    const hit = this._destroyStageTextures.get(stage);
+    if (hit) return hit;
+    if (hit === undefined) {
+      this._destroyStageTextures.set(stage, null);   // carregando
+      getPackUrl(MC + 'textures/blocks/destroy_stage_' + stage + '.png').then((url) => {
+        if (!url) return;
+        new THREE.TextureLoader().load(url, (tex) => { tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; this._destroyStageTextures.set(stage, tex); });
+      }).catch(() => {});
+    }
+    return null;
+  }
+
+  // Rachadura dos blocos que os OUTROS jogadores estão quebrando (cada um tem a sua, como no 1.8.9)
+  _updateRemoteDestroy(id, dig) {
+    if (!this._remoteDestroy) this._remoteDestroy = new Map();
+    let m = this._remoteDestroy.get(id);
+    if (!dig) { if (m) m.visible = false; return; }
+    if (!m) {
+      m = new THREE.Mesh(new THREE.BoxGeometry(1.002, 1.002, 1.002), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+      this.scene.add(m);
+      this._remoteDestroy.set(id, m);
+    }
+    m.position.set(dig.x + 0.5, dig.y + 0.5, dig.z + 0.5);
+    const tex = this._destroyTexture(Math.max(0, Math.min(9, dig.stage | 0)));
+    if (tex && m.material.map !== tex) { m.material.map = tex; m.material.needsUpdate = true; }
+    m.visible = !!tex;
+  }
+
   updateDestroyOverlay() {
     if (this.miningProgress > 0 && this.miningTarget && !this.paused) {
       const stage = Math.min(9, Math.floor(this.miningProgress * 10));
       const target = this.miningTarget;
       this.destroyMesh.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
-      this.destroyMesh.visible = true;
-
-      if (!this._destroyStageTextures.has(stage)) {
-        getPackUrl(MC + 'textures/blocks/destroy_stage_' + stage + '.png').then(url => {
-          if (url) {
-            const loader = new THREE.TextureLoader();
-            loader.load(url, (tex) => {
-              tex.magFilter = THREE.NearestFilter;
-              tex.minFilter = THREE.NearestFilter;
-              this._destroyStageTextures.set(stage, tex);
-              if (this.destroyMesh && Math.min(9, Math.floor(this.miningProgress * 10)) === stage) {
-                this.destroyMesh.material.map = tex;
-                this.destroyMesh.material.needsUpdate = true;
-              }
-            });
-          }
-        });
-      } else {
-        const tex = this._destroyStageTextures.get(stage);
-        if (this.destroyMesh.material.map !== tex) {
-          this.destroyMesh.material.map = tex;
-          this.destroyMesh.material.needsUpdate = true;
-        }
-      }
+      const tex = this._destroyTexture(stage);
+      if (tex && this.destroyMesh.material.map !== tex) { this.destroyMesh.material.map = tex; this.destroyMesh.material.needsUpdate = true; }
+      this.destroyMesh.visible = !!tex;
     } else {
       if (this.destroyMesh) this.destroyMesh.visible = false;
     }
@@ -2819,7 +2879,7 @@ export class GameEngine {
       const partialTick = Math.min(1, Math.max(0, this.tickAcc / TICK_MS));
       placePlayerModel(m, p.pos, p.yaw);
       applyThirdPersonPose(m, this.anim, p, this.worldTime, partialTick);
-      setModelHeldItem(m, this.getHeldItem()?.id);
+      setModelHeldItem(m, this.getHeldItem()?.id, this.getHeldItem()?.meta || 0, this.world?.atlas);
       setModelArmor(m, armorCodeFromSlots(this.inventory?.armor));
       setModelCape(m, this._capeSrc, settingsStore.get('user.skinParts.cape') !== false);
     }
@@ -2897,7 +2957,21 @@ export class GameEngine {
     return Promise.all(todo.map((n) => this._fetchRemoteSkin(n)));
   }
 
-  _ensureRemoteSkin(entry, name) {
+  _ensureRemoteSkin(entry, name, id) {
+    // 1) skin enviada pelo próprio jogador pela conexão (a que ele escolheu)
+    const own = this._remoteSkinById && this._remoteSkinById.get(id);
+    if (own && own.tex) {
+      if (!entry._skinApplied) {
+        const player = entry.group?.userData?.playerObject;
+        if (player) { player.setSkinTexture(own.tex); player.modelType = own.slim ? 'slim' : 'default'; entry._skinApplied = true; }
+      }
+      entry.group.visible = true;
+      return;
+    }
+    if (own && own.pending) return;   // decodificando
+    // sem skin pela rede (cliente antigo ou ainda a caminho): espera um instante e cai no Crafthead pelo nome
+    if (id !== undefined && this.netManager && !entry._skinWaitUntil) entry._skinWaitUntil = performance.now() + 1500;
+    if (id !== undefined && entry._skinWaitUntil && performance.now() < entry._skinWaitUntil && own === undefined) return;
     const generic = !name || name === 'Player' || name === 'Steve';
     if (generic) { entry.group.visible = true; return; }
     if (!this._remoteSkinCache) this._remoteSkinCache = new Map();
@@ -2945,6 +3019,7 @@ export class GameEngine {
 
         const now = performance.now();
         interpolateRemotePlayer(rp, now);
+        this._updateRemoteDestroy(id, rp.dig);
 
         const rx = rp.x || 0;
         const ry = rp.y || 0;
@@ -2970,6 +3045,11 @@ export class GameEngine {
           inFrustum = this._cameraFrustum.intersectsBox(entry._box);
         }
 
+        // skin, item na mão, armadura e capa ficam prontos MESMO fora da vista: ao virar a câmera o jogador já aparece completo (antes aparecia com a skin padrão)
+        setModelHeldItem(entry.group, rp.held, rp.heldMeta, this.world?.atlas);
+        setModelArmor(entry.group, rp.armor);
+        this._ensureRemoteCape(entry, rp.name);
+        this._ensureRemoteSkin(entry, rp.name, id);   // deixa o modelo visível só quando a skin chegou (sem piscar Steve)
         if (tooFar || !inFrustum) {
           entry.group.visible = false;
           entry._prev = { x: rx, y: ry, z: rz, t: now };
@@ -2977,12 +3057,6 @@ export class GameEngine {
         }
 
         placePlayerModel(entry.group, { x: rx, y: ry, z: rz }, rp.yaw || 0);
-        // Item que o jogador remoto está segurando (chegou junto com o move)
-        setModelHeldItem(entry.group, rp.held);
-        setModelArmor(entry.group, rp.armor);
-        // Capa e skin do remoto: busca pelo nickname (cacheada)
-        this._ensureRemoteCape(entry, rp.name);
-        this._ensureRemoteSkin(entry, rp.name);
         if (entry._prev) {
           const dt = Math.max(0.001, (now - entry._prev.t) / 1000);
           const spd = Math.hypot(rx - entry._prev.x, rz - entry._prev.z) / dt;
@@ -3003,6 +3077,17 @@ export class GameEngine {
             a.limbSwingAmount += (f - a.limbSwingAmount) * (1 - Math.pow(0.6, ticks));
             a.limbSwing += a.limbSwingAmount * ticks;
             a.hasLimb = true; a.age += ticks;
+            // pose que chegou na rede: bloquear, arco, comer e o balanço de braço (cada incremento do contador de golpes = 1 balanço, em 6 ticks)
+            a.blocking = !!rp.blocking; a.bowDrawing = !!rp.bowDrawing; a.bowCharge = rp.bowCharge || 0; a.eating = !!rp.eating;
+            if (rp.swingCount !== undefined) {
+              if (entry.swingCount === undefined) entry.swingCount = rp.swingCount;
+              else if (rp.swingCount !== entry.swingCount) { entry.swingCount = rp.swingCount; startSwing(a); }
+            }
+            if (a.isSwinging) {
+              a.prevSwingProgress = a.swingProgress;
+              a.swingProgress += ticks / 6;
+              if (a.swingProgress >= 1) { a.swingProgress = 0; a.prevSwingProgress = 0; a.isSwinging = false; }
+            }
             applyThirdPersonPose(entry.group, entry.anim, rp, this.worldTime, 0);
           }
         }
@@ -3023,8 +3108,9 @@ export class GameEngine {
             entry.group.traverse(c => { if (c.material && c.material.color && !c.isSprite) c.material.color.setHex(tint); });
           }
           if (entry.tag) {
-            entry.tag.position.y = rp.isDead ? 0.85 : 2.35;
+            entry.tag.position.y = rp.isDead ? 0.85 : (rp.sneaking ? 2.1 : 2.35);
             entry.tag.visible = clientStore.isOn('nametags') && clientStore.get('nametags', 'others');
+            updateNametagFade(entry.tag, Math.hypot(rx - myPos.x, ry - myPos.y, rz - myPos.z), rp.sneaking);   // esmaece e some por distância (64 blocos; 32 agachado)
           }
           if (entry.icon) entry.icon.position.y = (rp.isDead ? 0.85 : 2.35) + 0.3;
         }
@@ -3033,6 +3119,7 @@ export class GameEngine {
 
     for (const [id, entry] of this._remoteMeshes.entries()) {
       if (!activeIds.has(id)) {
+        this._updateRemoteDestroy(id, null);
         this.scene.remove(entry.group);
         disposeVoiceIcon(entry.icon);
         this._remoteMeshes.delete(id);
@@ -3271,7 +3358,7 @@ export class GameEngine {
       dimension: this.dimension,
       portalProgress: this._portalTicks > 0 ? Math.min(1, this._portalTicks / 80) : 0,
       playerListOpen: !!this.playerListOpen,
-      pings: this.netManager?.getAllPings() || [{ name: p.nomeJogador || 'Jogador', pingMs: 0, isHost: true, id: 'local', rank: 'owner' }],
+      pings: this.netManager?.getAllPings?.() || [{ name: p.nomeJogador || 'Jogador', pingMs: 0, isHost: true, id: 'local', rank: 'owner' }],
       selfName: p.nomeJogador || null,
       scoreboard: this.world?.scoreboard || null,
       worldName: this.world?.name || 'Mundo',
@@ -4073,6 +4160,9 @@ export class GameEngine {
     window.removeEventListener('beforeunload', this._onBeforeUnload);
     if (this._unsubCape) { this._unsubCape.forEach((fn) => fn()); this._unsubCape = null; }
     document.exitPointerLock?.();
+    // sair do jogo fecha a conexão: o host que sai fecha a sala (antes o aquecedor de sala seguia batendo e a sala ficava aberta/listada com o jogador no menu)
+    try { const r = this.netManager?.close?.(); if (r && r.catch) r.catch(() => {}); } catch { /* já fechada */ }
+    this.netManager = null;
     MobEntity.onSound = null;
     if (this.projectiles) this.projectiles.dispose();
     if (this.particles) this.particles.dispose();

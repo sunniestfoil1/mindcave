@@ -11,7 +11,7 @@ const STEPS = [
   'Baixando terreno...',
 ];
 
-function ConnectionContent({ room, user, world, engine, onSuccess, onCancel }) {
+function ConnectionContent({ room, user, world, engine, engineReady, onSuccess, onCancel }) {
   const { guiHeight, scale } = useGui();
   const [step, setStep] = useState(0);
   const [route, setRoute] = useState(null);
@@ -64,6 +64,7 @@ function ConnectionContent({ room, user, world, engine, onSuccess, onCancel }) {
         onRouteChange: (r) => setRoute(r),
         onChatMessage: () => {},
       });
+      engineReady?.then((e) => client.attachEngine(e));   // o motor pode chegar depois da conexão
       await client.connect(pwd);
       setTimeout(() => {   // a conexão já tem limite de 30 s por dentro; este só cobre travar antes de a negociação começar
         if (!done) setError('Falha ao conectar: ' + explainFailure(client.conn && client.conn.failureInfo && client.conn.failureInfo()));

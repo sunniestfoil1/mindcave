@@ -13,6 +13,15 @@ import { recordPlayerSnapshot } from './netInterpolation';
 import { buildMobSnapshot } from './mobSync';
 import { SPAWN_EGGS } from '@/game/spawnEggData';
 
+// Skin pela própria conexão: { k: 'steve' | 'alex' | 'custom', png?: data URL de PNG, slim? }. Preset vai só com o nome (o outro navegador tem o arquivo);
+// skin própria vai como PNG de até 60 KB. Devolve a skin limpa ou null.
+export function cleanSkinMsg(msg) {
+  if (!msg) return null;
+  if (msg.k === 'steve' || msg.k === 'alex') return { k: msg.k };
+  if (msg.k === 'custom' && typeof msg.png === 'string' && msg.png.startsWith('data:image/png;base64,') && msg.png.length <= 60000) return { k: 'custom', png: msg.png, slim: !!msg.slim };
+  return null;
+}
+
 // === HOST ===
 export class NetHost {
   constructor(opts) {
@@ -22,6 +31,7 @@ export class NetHost {
     this.room = null;
     this.peers = new Map(); // userId → { conn, name }
     this.playerNames = [opts.user.full_name || opts.user.email || 'Host'];
+    this.skins = new Map();   // userId → skin limpa (a do host fica de fora: vai pelo engine)
     this.flood = new FloodController();
     this.heartbeatTimer = null;
     this.signalUnsub = null;
@@ -32,6 +42,8 @@ export class NetHost {
 
   async start(settings) {
     this.room = await roomManager.openRoom(this.world, settings, this.user);
+    this._onUnload = () => roomManager.closeRoomOnUnload(this.room && this.room.id);
+    window.addEventListener('pagehide', this._onUnload);   // fechar a aba fecha a sala
     this.onChatMessage(systemMessage('Mundo aberto. Código: §e§l' + this.room.code + '§r — visível para todos'));
     this.ranks = new Map(); // userId → cargo (profiles.rank)
     // O host mede o ping de cada convidado e difunde a lista a cada 2 s, para o TAB de todos mostrar o ping de todos
@@ -128,6 +140,10 @@ export class NetHost {
           roomManager.updatePlayerList(this.room.id, this.playerNames);
           this.onChatMessage(joinMessage(signal.fromName));
           this._loadRank(signal.fromUserId);
+          // Skins: a do host e as dos outros convidados vão para quem acabou de entrar
+          const mine = this.engine?.localSkinMsg?.();
+          if (mine) conn.send({ t: 'skin', id: this.user.id, ...mine });
+          for (const [uid, sk] of this.skins) conn.send({ t: 'skin', id: uid, ...sk });
           // Envia lista de jogadores e configurações
           conn.send({ t: 'init', motd: this.room.motd, gameMode: this.room.guestGameMode,
             allowCommands: this.room.allowCommands, pvp: this.room.pvp, players: this.playerNames });
@@ -216,7 +232,7 @@ export class NetHost {
         }
         recordPlayerSnapshot(p, { ...msg, n: userName });   // o nome vale o da conexão, não o que o convidado diz de si
         // Repassa posição do jogador para outros convidados via canal UDP/não confiável
-        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, sleeping: !!msg.sleeping, h: msg.h || 0, v: msg.v | 0, a: msg.a | 0, g: msg.g | 0 }, userId, false);
+        this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, sleeping: !!msg.sleeping, h: msg.h || 0, hm: msg.hm | 0, v: msg.v | 0, a: msg.a | 0, g: msg.g | 0, st: msg.st | 0, bc: msg.bc | 0, sw: msg.sw | 0, ts: msg.ts, dg: msg.dg }, userId, false);
         break;
       }
       case 'sleep': {
@@ -251,6 +267,14 @@ export class NetHost {
           playSound(msg.sound, { pos: msg.pos, volume: msg.volume, pitch: msg.pitch });
         }
         this.broadcast(msg, userId);
+        break;
+      }
+      case 'skin': {
+        const sk = cleanSkinMsg(msg);
+        if (!sk) break;
+        this.skins.set(userId, sk);
+        this.engine?.onRemoteSkin?.(userId, sk);
+        this.broadcast({ t: 'skin', id: userId, ...sk }, userId);
         break;
       }
       case 'jukebox': {
@@ -458,6 +482,7 @@ export class NetHost {
 
   async close() {
     this._closed = true;
+    if (this._onUnload) { window.removeEventListener('pagehide', this._onUnload); this._onUnload = null; }
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.listTimer) clearInterval(this.listTimer);
     if (this.signalUnsub) this.signalUnsub();
@@ -482,6 +507,15 @@ export class NetClient {
     this.onStateChange = opts.onStateChange || (() => {});
     this.onRouteChange = opts.onRouteChange || (() => {});
     this.ignored = new Set();
+    this.skins = new Map();   // id do jogador → skin limpa
+    this._pendingMsgs = [];   // mensagens do host que chegaram antes de o motor existir: entram na ordem quando ele chegar
+  }
+
+  // O motor ainda carrega quando a conexão abre (a negociação roda junto com o carregamento do mundo): guarda as mensagens e entrega depois
+  attachEngine(engine) {
+    this.engine = engine;
+    const list = this._pendingMsgs.splice(0);
+    for (const m of list) this._handleHostMessage(m);
   }
 
   getPing() {
@@ -535,6 +569,10 @@ export class NetClient {
   }
 
   _handleHostMessage(msg) {
+    if (!this.engine && !['init', 'plist', 'chat', 'whisper', 'disconnect', 'scoreboard'].includes(msg.t)) {   // estas funcionam sem motor; o resto espera por ele
+      if (this._pendingMsgs.length < 600) this._pendingMsgs.push(msg);
+      return;
+    }
     switch (msg.t) {
       case 'init': {
         this.onChatMessage(systemMessage('Conectado a §e' + this.room.worldName));
@@ -604,6 +642,11 @@ export class NetClient {
       }
       case 'mobs': {
         this.engine?.mobs?.applySnapshot(msg, this.engine.dimension);
+        break;
+      }
+      case 'skin': {
+        const sk = cleanSkinMsg(msg);
+        if (sk && msg.id) { if (!this.skins) this.skins = new Map(); this.skins.set(msg.id, sk); this.engine?.onRemoteSkin?.(msg.id, sk); }
         break;
       }
       case 'mobatk': {
@@ -699,8 +742,10 @@ export class NetClient {
     }
   }
 
-  sendChat(text) {
+  // Mesmo formato do host: sendChat(texto) ou sendChat(nome, texto). O ChatUI chama com (nome, texto); antes o convidado lia só o 1º argumento e mandava o NOME no lugar do texto
+  sendChat(arg1, arg2) {
     if (!this.conn) return;
+    const text = arg2 !== undefined ? arg2 : arg1;
     const author = this.engine?.player?.nomeJogador || this.user?.full_name || this.user?.email || 'Player';
     const parsed = parseChatMessage(text, author);
 

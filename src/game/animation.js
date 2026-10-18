@@ -200,12 +200,32 @@ export function applyThirdPersonPose(model, anim, player, time, partialTick = 0)
     model.rotation.z = 0;
   }
 
-  // === Agachar (skinview3d CrouchAnimation) ===
-  if (sneaking && u.body) {
-    u.body.rotation.x = 0.4538 * Math.abs(fastSin((t * 0.5 * Math.PI) / 2));
-  } else if (u.body) {
-    u.body.rotation.x = 0;
+  // === Agachar (ModelBiped.isSneak do 1.8.9): o tronco, a cabeça e os braços inclinam 0,5 rad para frente em volta do quadril, os braços
+  // pendem mais 0,4 rad e o corpo desce; na hora, sem animação (o 1.8.9 também não anima o agachar). Posições-base são guardadas ao entrar
+  // no agachar e devolvidas ao sair (a pose normal não mexe em posição).
+  if (u.body) {
+    const parts = { head: u.head, body: u.body, armL: u.armL, armR: u.armR };
+    if (sneaking) {
+      if (!u._sneakBase) {
+        u._sneakBase = {};
+        for (const k in parts) u._sneakBase[k] = parts[k].position.clone();
+      }
+      const th = 0.5, c = Math.cos(th), sn = Math.sin(th), hipY = -12;
+      for (const k in parts) {
+        const b0 = u._sneakBase[k];
+        const ry = b0.y - hipY, rz = b0.z;
+        parts[k].position.set(b0.x, hipY + ry * c - rz * sn - 1, rz * c + ry * sn);   // gira em volta do quadril; -1 px: o corpo desce um pouco
+        parts[k].rotation.x += th;
+      }
+      u.armL.rotation.x += 0.4; u.armR.rotation.x += 0.4;
+    } else if (u._sneakBase) {
+      for (const k in parts) parts[k].position.copy(u._sneakBase[k]);
+      u._sneakBase = null;
+    }
   }
+
+  // === Segurando item: o braço direito sobe ~18° para a frente (ModelBiped.heldItemRight: armR.x = armR.x*0.5 - π/10) ===
+  if (u.heldHolder && u.heldHolder.children.length) u.armR.rotation.x = u.armR.rotation.x * 0.5 - Math.PI / 10;
 
   // === Estados de ação (sobrepõe a locomoção do braço direito) ===
   if (anim.blocking) {
@@ -238,7 +258,7 @@ export function applyThirdPersonPose(model, anim, player, time, partialTick = 0)
   // === Cabeça: segue pitch + head bobbing ao andar (skinview3d) ===
   if (u.head) {
     u.head.rotation.y = limb ? 0 : (walking ? fastSin(t / 4) * 0.2 : 0);   // o 1.8.9 não balança a cabeça ao andar
-    u.head.rotation.x = player.pitch + (limb ? 0 : (walking ? fastSin(t / 5) * 0.1 : 0));
+    u.head.rotation.x = player.pitch + (limb ? 0 : (walking ? fastSin(t / 5) * 0.1 : 0)) + (sneaking ? 0.5 : 0);   // agachado a cabeça acompanha a inclinação do tronco
   }
 }
 

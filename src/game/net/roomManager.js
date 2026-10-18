@@ -57,6 +57,21 @@ export const roomManager = {
     return room;
   },
 
+  // Fecha a sala quando a aba está fechando (fetch com keepalive sobrevive ao fechamento; um await comum morre com a página).
+  // Sem isto a sala ficava "aberta" no banco até o heartbeat vencer, listada para quem tentava entrar.
+  closeRoomOnUnload(roomId) {
+    try {
+      const url = import.meta.env.VITE_SUPABASE_URL || 'https://ddwdgwaliywymcatdekg.supabase.co';
+      const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!key || !roomId) return;
+      fetch(`${url}/rest/v1/rooms?id=eq.${encodeURIComponent(roomId)}`, {
+        method: 'PATCH', keepalive: true,
+        headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'closed', playercount: 0, playernames: [] }),
+      }).catch(() => {});
+    } catch { /* sem rede: o heartbeat vence sozinho */ }
+  },
+
   async closeRoom(roomId) {
     await mindcaveApi.entities.Room.update(roomId, {
       status: 'closed',

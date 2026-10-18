@@ -138,6 +138,40 @@ const r = await page.evaluate(async () => {
   cli._handleHostMessage({ t: 'plist', list: [{ name: 'Host', pingMs: 0, isHost: true, rank: 'owner' }, { name: 'Conv', pingMs: 40, isHost: false, rank: 'player' }] });
   res.tabConvidado = cli.getAllPings().map((p) => p.name);
   eng.netManager = null;
+
+  // ---- 7) conexão ANTES do motor (negociação em paralelo com o carregamento do mundo): chat e init funcionam já; o resto espera o motor e entra em ordem
+  const NC = (await import('/src/game/net/netManager.js')).NetClient;
+  const chats = [];
+  const early = new NC({ engine: null, world: null, user: { id: 'g2', full_name: 'Cedo' }, room: { playerNames: [] }, onChatMessage: (m) => chats.push(m.text) });
+  early._handleHostMessage({ t: 'chat', u: 'Sunni', m: 'oi antes do motor' });
+  early._handleHostMessage({ t: 'time', worldTime: 777 });
+  early._handleHostMessage({ t: 'BLOCK_CHANGE', x: 1, y: 2, z: 3, blockState: 16 });
+  const calls = [];
+  const fakeEng = { worldTime: 0, world: { setBlock: (x, y, z, s) => calls.push([x, y, z, s]) }, emitHud() {} };
+  res.cedo = { chatSemMotor: chats.slice(), pendentes: early._pendingMsgs.length, tempoAntes: fakeEng.worldTime };
+  early.attachEngine(fakeEng);
+  res.cedo.depois = { tempo: fakeEng.worldTime, blocos: calls.length, pendentes: early._pendingMsgs.length, engine: early.engine === fakeEng };
+
+  // ---- 8) aquecimento do WebRTC: uma conexão de descarte, uma vez só
+  const Orig = window.RTCPeerConnection; let criadas = 0;
+  window.RTCPeerConnection = function (...a) { criadas++; return new Orig(...a); };
+  window.RTCPeerConnection.prototype = Orig.prototype;
+  await Promise.all([RTC.prewarmWebRTC(), RTC.prewarmWebRTC(), RTC.prewarmWebRTC()]);
+  window.RTCPeerConnection = Orig;
+  res.aquecimento = criadas;
+
+  // ---- 9) sala fantasma: fechar a aba fecha a sala (fetch com keepalive) e sair do jogo fecha a conexão
+  const RM = (await import('/src/game/net/roomManager.js')).roomManager;
+  const origFetch = window.fetch; const feitos = [];
+  window.fetch = (u, o) => { feitos.push({ u: String(u), method: o && o.method, keepalive: o && o.keepalive, body: o && o.body }); return Promise.resolve(new Response('[]')); };
+  RM.closeRoomOnUnload('sala-abc');
+  window.fetch = origFetch;
+  const f = feitos[0];
+  res.salaFecha = f ? { url: /\/rest\/v1\/rooms\?id=eq\.sala-abc$/.test(f.u), patch: f.method === 'PATCH', keepalive: f.keepalive === true, status: JSON.parse(f.body).status } : null;
+  let fechou = 0;
+  eng.netManager = { close: () => { fechou++; return Promise.resolve(); } };
+  eng.stop();
+  res.sairFecha = { fechou, netManagerNulo: eng.netManager === null };
   return res;
 });
 ok(r.escOnline === true && r.hudPausado === true, `online: Esc abre o menu de pausa (${r.escOnline}) e o HUD mostra a pausa (${r.hudPausado})`);
@@ -155,6 +189,11 @@ ok(r.nick.igual && r.nick.guardado && r.nick.formato && r.nick.resolve, `o apeli
 ok(r.nomeNaConexao === 'Conv', `o host usa o nome da conexão (${r.nomeNaConexao}), não o que o convidado diz de si ("OutroNome")`);
 ok(r.tabHost.nomes.includes('Host') && r.tabHost.nomes.includes('Conv') && r.tabHost.eu === 'Host', `TAB do host lista os dois (${r.tabHost.nomes.join(', ')}) e sabe quem é "eu" (${r.tabHost.eu})`);
 ok(r.tabConvidado.includes('Host') && r.tabConvidado.includes('Conv'), `TAB do convidado lista os dois (${r.tabConvidado.join(', ')})`);
+ok(r.cedo.chatSemMotor[0] === 'oi antes do motor' && r.cedo.pendentes === 2 && r.cedo.tempoAntes === 0, `conectado antes do motor: o chat já aparece (${r.cedo.chatSemMotor.length}) e as outras mensagens ficam guardadas (${r.cedo.pendentes})`);
+ok(r.cedo.depois.tempo === 777 && r.cedo.depois.blocos === 1 && r.cedo.depois.pendentes === 0 && r.cedo.depois.engine, 'quando o motor chega, as mensagens guardadas entram em ordem (hora do mundo e bloco)');
+ok(r.aquecimento === 1, `o aquecimento do WebRTC cria 1 conexão de descarte, mesmo chamado 3 vezes (${r.aquecimento})`);
+ok(r.salaFecha && r.salaFecha.url && r.salaFecha.patch && r.salaFecha.keepalive && r.salaFecha.status === 'closed', `fechar a aba fecha a sala no banco (PATCH com keepalive: ${JSON.stringify(r.salaFecha)})`);
+ok(r.sairFecha.fechou === 1 && r.sairFecha.netManagerNulo, `sair do jogo fecha a conexão/sala (fechou ${r.sairFecha.fechou}×)`);
 ok(r.ordem[0] === 'subscribe' && r.ordem.indexOf('create:offer') > r.ordem.indexOf('subscribe'), `o convidado começa a escutar antes de mandar a oferta (ordem: ${r.ordem.join(' → ')})`);
 ok(r.respostaAplicadaEm !== null && r.respostaAplicadaEm < 50, `a resposta do host é aplicada na hora (${r.respostaAplicadaEm === null ? 'nunca' : r.respostaAplicadaEm.toFixed(0) + ' ms'}) mesmo com o banco levando 600 ms por escrita`);
 ok(r.hostAceitouEm < 450, `o host aceita a oferta sem esperar o banco lento (${r.hostAceitouEm.toFixed(0)} ms; esperando o banco seriam 600 ms mais o resto)`);

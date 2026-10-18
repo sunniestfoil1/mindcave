@@ -35,7 +35,7 @@ import ConnectionScreen from "@/components/game/ConnectionScreen";
 import OpenToLANDialog from "@/components/game/OpenToLANDialog";
 import FeedbackModal from "@/components/game/FeedbackModal";
 import { roomManager } from "@/game/net/roomManager";
-import { prewarmIceServers } from "@/game/net/webrtc";
+import { prewarmIceServers, prewarmWebRTC } from "@/game/net/webrtc";
 import { SaveQueue } from "@/game/saveQueue";
 import { serializeStats } from "@/game/stats";
 import { serializeAchievements } from "@/game/achievements";
@@ -100,6 +100,9 @@ export default function Game() {
   const { worldId } = useParams();
   const canvasRef = useRef(null);
   const engineRef = useRef(null);
+  // o motor pode ficar pronto DEPOIS de a conexão abrir (a negociação do convidado roda junto com o carregamento do mundo)
+  const engineReadyRef = useRef(null);
+  if (!engineReadyRef.current) { let res; const p = new Promise((r) => { res = r; }); engineReadyRef.current = { p, res }; }
   const [hud, setHud] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState({ percent: 0, status: 'Lendo o mundo salvo...' });
@@ -140,6 +143,9 @@ export default function Game() {
   const showOpenToLANRef = useRef(false);
   const showFeedbackRef = useRef(false);
   const showClientMenuRef = useRef(false);
+  // Quem entrou na partida de outro (?room=) ou abriu pela URL um mundo que NÃO é dele joga numa cópia sem salvar nada e sem poder abrir LAN
+  const [isOwner, setIsOwner] = useState(true);
+  const readOnlyRef = useRef(false);
   const worldRecRef = useRef(null); // registro do mundo (pvp/maxPlayers/ajustes da tela de opções)
 
   useEffect(() => { showInventoryRef.current = showInventory; }, [showInventory]);
@@ -203,6 +209,9 @@ export default function Game() {
         const roomP = roomParam0 ? roomManager.getRoom(roomParam0).then((r) => { if (r) r._fetchedAt = Date.now(); return r; }).catch(() => null) : null;
         if (roomParam0) prewarmIceServers();
         const userP = resolveUser();
+        // convidado: a tela de conexão abre JUNTO com o carregamento do mundo (antes só depois dele pronto); o motor entra na conexão quando ficar pronto
+        if (roomP) Promise.all([roomP, userP]).then(([room]) => { if (!cancelled && room && room.status === 'open') setConnecting(room); });
+        prewarmWebRTC();
         const worldP = getWorld(worldId);
         const deltasP = loadDeltas(worldId);
         preloadLocalSkin(); // decodifica a skin já, em paralelo com o banco e os chunks
@@ -219,6 +228,8 @@ export default function Game() {
           return;
         }
         worldRecRef.current = world;
+        readOnlyRef.current = !!roomParam0 || (!!world._cloud && world.ownerId !== u?.id);
+        setIsOwner(!readOnlyRef.current);
         const seed = seedFromString(world.seed);
         await cloudP; // as opções (distância de renderização etc.) precisam estar prontas antes do motor
         const deltas = await deltasP;
@@ -349,6 +360,7 @@ export default function Game() {
             document.exitPointerLock?.();
           },
           onAutosave: async () => {
+            if (readOnlyRef.current) return;   // convidado / mundo de outra pessoa: nada vai para o navegador nem para a nuvem (antes gravava blocos e o mundo do amigo)
             try {
               const dirty = cw.dirtyChunks();
               await saveDirtyChunks(worldId, dirty);
@@ -389,6 +401,7 @@ export default function Game() {
         });
 
         engineRef.current = engine;
+        engineReadyRef.current.res(engine);
         if (import.meta.env.DEV) window.__mindcave = { get engine() { return engineRef.current; } }; // ganchos só para os testes de navegador
         engine.containerOpenFn = () => showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showClientMenuRef.current || !!signPosRef.current;
         engine.guiOpenFn = () => !!signPosRef.current || showInventoryRef.current || showCreativeRef.current || showCraftingTableRef.current || showFurnaceRef.current || showChestRef.current || showClientMenuRef.current || showStatsRef.current || showOpenToLANRef.current || showOptionsRef.current || showFeedbackRef.current;
@@ -400,15 +413,7 @@ export default function Game() {
         // sons de uso imediato (quebrar, colocar, passos) já decodificados, em segundo plano
         setTimeout(() => { prewarmEvents(['block.stone.break', 'block.stone.place', 'block.stone.step', 'block.grass.break', 'block.grass.place', 'block.grass.step', 'block.wood.break', 'block.wood.step', 'block.gravel.step', 'block.sand.step']).catch(() => {}); }, 1500);
 
-        // Multiplayer: check if joining a room
-        const urlParams = new URLSearchParams(window.location.search);
-        const roomParam = urlParams.get('room');
-        if (roomParam) {
-          const room = (roomP && roomParam === roomParam0) ? await roomP : await roomManager.getRoom(roomParam);
-          if (room && room.status === 'open') {
-            setConnecting(room);
-          }
-        }
+        setTimeout(prewarmWebRTC, 1500);   // quem abrir o mundo para LAN depois já encontra a rede do navegador aquecida
       } catch (e) {
         console.error(e);
         setError(e.message || "Erro ao carregar o mundo");
@@ -538,7 +543,7 @@ export default function Game() {
             onClientMenu: engineRef.current?.touch ? () => { if (engineRef.current) { engineRef.current.paused = false; engineRef.current.emitHud(); } setShowClientMenu(true); } : undefined,
             onOptions: () => { document.exitPointerLock?.(); setShowOptions(true); },
             onStats: () => { document.exitPointerLock?.(); setShowStats(true); },
-            onOpenToLAN: () => { document.exitPointerLock?.(); setShowOpenToLAN(true); },
+            onOpenToLAN: (isOwner && !(netManager && !netManager.broadcast)) ? () => { document.exitPointerLock?.(); setShowOpenToLAN(true); } : undefined,   // só o dono do mundo abre LAN (convidado e mundo alheio, não)
             onFeedback: () => { document.exitPointerLock?.(); setShowFeedback(true); }
           }}
           onPause={handleResume}
@@ -648,12 +653,15 @@ export default function Game() {
           user={{ ...(user || { id: 'guest' }), full_name: sanitizeName(user?.full_name || user?.email) }}   // o mesmo nome que o jogador tem dentro do jogo
           world={{ id: worldId }}
           engine={engineRef.current}
+          engineReady={engineReadyRef.current.p}
           onSuccess={(room, client) => {
-            setNetManager(client);
-            engineRef.current.netManager = client;
-            engineRef.current.onChatSend = (text) => client.sendChat(text);
-            setConnecting(null);
-            safePointerLock(canvasRef.current);
+            engineReadyRef.current.p.then((eng) => {   // conectou antes de o mundo terminar de carregar: espera o motor
+              setNetManager(client);
+              eng.netManager = client;
+              eng.onChatSend = (text) => client.sendChat(text);
+              setConnecting(null);
+              safePointerLock(canvasRef.current);
+            });
           }}
           onCancel={() => { setConnecting(null); navigate('/multiplayer'); }}
         />

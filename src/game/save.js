@@ -102,7 +102,7 @@ export async function getWorld(id) {
 
   // Fallback cloud
   const { data } = await supabase.from('worlds').select('*').eq('id', id).maybeSingle();
-  return data || null;
+  return data ? { ...data, _cloud: true } : null;   // veio da nuvem, não do navegador deste jogador: não é dele (ver Game.jsx: não salva e não abre LAN)
 }
 
 // Atualiza campos do mundo: IndexedDB local é a fonte; Supabase no máximo espelho

@@ -28,6 +28,21 @@ function readIceCache() {
 // Chamado cedo (lista de salas, abertura do jogo): a função de servidores ICE leva até 1 s na primeira chamada e não precisa esperar a negociação
 export function prewarmIceServers() { return getOptimalIceServers(); }
 
+// A primeira RTCPeerConnection de uma sessão do navegador paga um custo único de inicialização da rede (medido: ~4 s numa página parada, 1 ms
+// nas seguintes). Criar uma de descarte antes faz esse custo acontecer longe da hora de entrar na partida.
+let _warmed = false;
+export async function prewarmWebRTC() {
+  if (_warmed || typeof RTCPeerConnection === 'undefined') return;
+  _warmed = true;
+  try {
+    const servers = await getOptimalIceServers();
+    const pc = new RTCPeerConnection({ iceServers: servers, iceCandidatePoolSize: 2 });
+    pc.createDataChannel('aquecimento');
+    await pc.setLocalDescription(await pc.createOffer());
+    setTimeout(() => { try { pc.close(); } catch { /* já fechada */ } }, 4000);
+  } catch { /* sem WebRTC: a conexão real avisa */ }
+}
+
 async function getOptimalIceServers() {
   if (_cachedIceServers) return _cachedIceServers;
   const stored = readIceCache();
@@ -107,14 +122,20 @@ export class WebRTCConnection {
     this._closed = false;
     this._answered = false;          // host: a oferta deste convidado já foi respondida (evita responder duas vezes)
     this.candidateTypes = new Set(); // tipos de candidata local (host, srflx, relay)
+    this.trace = [];                 // linha do tempo da negociação (ms desde o início): mostra onde o tempo vai quando a conexão demora
+    this._t0 = performance.now();
     this.srflxAddrs = new Set();
   }
+
+  _mark(nome) { this.trace.push([nome, Math.round(performance.now() - this._t0)]); }
 
   // O que explica a falha: tem relay na lista? quais candidatas locais saíram?
   failureInfo() { return { hasRelay: _hasRelay, types: [...this.candidateTypes], srflx: this.srflxAddrs.size }; }
 
   async connect(iceServers) {
+    this._t0 = performance.now();
     const servers = iceServers?.length ? iceServers : await getOptimalIceServers();
+    this._mark('ice-servers');
     const Configuration = { iceServers: servers, iceCandidatePoolSize: 2 };   // candidatas já coletadas antes da oferta
 
     this.setState('connecting');
@@ -137,6 +158,7 @@ export class WebRTCConnection {
 
       this.pc.oniceconnectionstatechange = () => {
         const s = this.pc.iceConnectionState;
+        this._mark('ice:' + s);
         if (s === 'connected' || s === 'completed') {
           if (this._disconnectTimer) {
             clearTimeout(this._disconnectTimer);
@@ -251,7 +273,7 @@ export class WebRTCConnection {
         this.pingMs = null;
       }
       if (this.reliableDc && this.reliableDc.bufferedAmount > 65536) return;
-      this.send({ t: 'ping', id: Math.random().toString(36).slice(2), ts: Date.now() }, true);
+      this.send({ t: 'ping', id: Math.random().toString(36).slice(2), ts: performance.now() }, false);   // canal não confiável: não espera atrás de mensagem grande do canal confiável
     }, 1000);
   }
 
@@ -303,6 +325,7 @@ export class WebRTCConnection {
         return;
       }
       try {
+        this._mark('resposta-recebida');
         await this.pc.setRemoteDescription({ type: 'answer', sdp: signal.data });
         await this._processPendingCandidates();
       } catch (err) {
@@ -338,6 +361,7 @@ export class WebRTCConnection {
       const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
       await this._sendSignal(this.peerUserId, 'offer', offer.sdp);
+      this._mark('oferta-enviada');
     } catch (err) {
       console.error('[WebRTC] Erro ao criar offer:', err);
       this.setState('failed');
@@ -364,6 +388,7 @@ export class WebRTCConnection {
       const answer = await this.pc.createAnswer();
       await this.pc.setLocalDescription(answer);
       await this._sendSignal(fromUserId, 'answer', answer.sdp);
+      this._mark('resposta-enviada');
     } catch (err) {
       console.warn('[WebRTC] Falha ao processar offer recebida:', err);
     }
@@ -390,6 +415,7 @@ export class WebRTCConnection {
     else if (dc.label === 'unreliable') this.unreliableDc = dc;
 
     dc.onopen = () => {
+      this._mark('canal-aberto:' + dc.label);
       if (this.reliableDc?.readyState === 'open' || this.unreliableDc?.readyState === 'open') {
         this.setState('connected');
       }
@@ -398,11 +424,11 @@ export class WebRTCConnection {
       try {
         const msg = JSON.parse(e.data);
         if (msg.t === 'ping') {
-          this.send({ t: 'pong', id: msg.id, ts: msg.ts }, true);
+          this.send({ t: 'pong', id: msg.id, ts: msg.ts }, false);
           return;
         }
         if (msg.t === 'pong') {
-          const rtt = Date.now() - msg.ts;
+          const rtt = Math.max(0, performance.now() - msg.ts);
           this._lastPongTime = Date.now();
           this.rttHistory.push(rtt);
           if (this.rttHistory.length > 10) this.rttHistory.shift();

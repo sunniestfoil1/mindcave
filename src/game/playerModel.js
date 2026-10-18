@@ -4,6 +4,8 @@
 import * as THREE from 'three';
 import { modelRotationYFromYaw } from './viewMath';
 import { getItem } from './items';
+import { createItemMesh } from './itemEntity';
+import { BLOCKS } from './blocks';
 import { getPackCanvas, onPackChanged, MC } from './pack';
 
 // === UV mapping — porte exato de setUVs() do skinview3d ===
@@ -45,13 +47,23 @@ function setSkinUVs(box, u, v, width, height, depth) {
 }
 
 // === Skin padrão — steve.png oficial empacotado (carrega local, sem esperar o pacote) ===
+// Sombreamento das entidades como no 1.8.9: topo mais claro, lados médios, base mais escura, sem escuridão.
+// A cena do jogo escreve em espaço linear sem codificar para sRGB (como os blocos), então as texturas da pele são lidas sem decodificar
+// (NoColorSpace); com o decode sRGB o Steve saía na metade do brilho. O three.js divide a luz Lambert por π, daí o ×π.
+export function addEntityLights(scene) {
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x808080, 0.9 * Math.PI));   // topo 0,90 · lados ~0,68 · base ~0,45
+  const d = new THREE.DirectionalLight(0xffffff, 0.2 * Math.PI);              // um pouco mais de luz nas faces da frente/trás que nas laterais
+  d.position.set(0.5, 0, 1);
+  scene.add(d);
+}
+
 let _defaultSkinTexture = null;
 function getDefaultSkin() {
   if (!_defaultSkinTexture) {
     _defaultSkinTexture = new THREE.TextureLoader().load('/assets/skins/steve.png');
     _defaultSkinTexture.magFilter = THREE.NearestFilter;
     _defaultSkinTexture.minFilter = THREE.NearestFilter;
-    _defaultSkinTexture.colorSpace = THREE.SRGBColorSpace;
+    _defaultSkinTexture.colorSpace = THREE.NoColorSpace;
   }
   return _defaultSkinTexture;
 }
@@ -366,7 +378,7 @@ export function setModelCape(model, src, visible) {
         if (pivot._src !== token) { tex.dispose(); return; } // trocou antes de carregar
         tex.magFilter = THREE.NearestFilter;
         tex.minFilter = THREE.NearestFilter;
-        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.colorSpace = THREE.NoColorSpace;
         mat.map = tex;
         mat.needsUpdate = true;
         pivot._loaded = true;
@@ -391,29 +403,39 @@ export async function applyCapeToModel(model, visible = true) {
 
 // === Item segurado no modelo (F5 e jogadores remotos) — em pixels, como o resto do modelo ===
 const _heldGeo = {};
-export function setModelHeldItem(model, itemId) {
+// Item na mão (terceira pessoa): o mesmo modelo do item largado no chão (bloco com as faces certas, ícone extrudado com espessura), no tamanho da mão.
+// Antes era uma caixa de uma cor só. `atlas` é o atlas de blocos do mundo (os blocos precisam dele para ter textura).
+export function setModelHeldItem(model, itemId, meta = 0, atlas = null) {
   const holder = model?.userData?.heldHolder;
   if (!holder) return;
-  const id = itemId || 0;
-  if (holder._heldId === id) return;
+  const id = itemId || 0, key = id + ':' + (meta || 0);
+  if (holder._heldKey === key) return;
   holder.clear();
-  holder._heldId = id;
+  holder._heldKey = key;
   if (!id) return;
   const def = getItem(id);
   if (!def) return;
+  const group = createItemMesh({ id, meta: meta || 0 }, 1, atlas);
+  const isBlock = id < 256 && !!(BLOCKS[id] && BLOCKS[id].id > 0);
   const isTool = !!(def.tool || def.weapon || def.weaponDamage);
-  const isBlock = id < 256;
-  if (!_heldGeo.tool) {
-    _heldGeo.tool = new THREE.BoxGeometry(1, 8, 1);
-    _heldGeo.block = new THREE.BoxGeometry(4.5, 4.5, 4.5);
-    _heldGeo.item = new THREE.BoxGeometry(4, 4, 0.8);
+  const wrap = new THREE.Group();   // `wrap` posiciona e orienta na mão; `group` tem o desenho
+  wrap.add(group);
+  // Eixos do braço (jogador olhando para +z): +z = frente, +y = cima, -x = fora, para o lado direito do jogador.
+  if (isBlock) {
+    wrap.scale.setScalar(19);       // bloco de 0,25 → ~4,8 px
+    wrap.position.set(-0.5, 1, 3);
+    wrap.rotation.set(0, Math.PI / 4, 0);
+  } else {
+    wrap.scale.setScalar(isTool ? 38 : 28);   // ícone de 0,3 → ~11 px (ferramenta; na diagonal ~16 px) ou ~8 px
+    // O ícone fica de pé no plano do braço, de frente para FORA (normal = -x) e com a direção do desenho (esquerda→direita) apontando para a FRENTE:
+    // rotação de -90° em y. Antes era +90°, que virava o desenho ao contrário: ponta da espada para trás e o ícone atravessando o corpo.
+    wrap.rotation.set(0, -Math.PI / 2, 0);
+    wrap.position.set(-0.5, 0, 2);
+    // ferramenta/arma: o desenho é uma diagonal com o cabo embaixo à esquerda e a ponta em cima à direita → empunhadura na mão, ponta para frente e para cima
+    group.position.set(isTool ? 0.1 : 0.02, isTool ? 0.1 : 0.04, 0);
   }
-  const mat = new THREE.MeshBasicMaterial({ color: def.color || 0x888888 });
-  const mesh = new THREE.Mesh(isTool ? _heldGeo.tool : isBlock ? _heldGeo.block : _heldGeo.item, mat);
-  if (isTool) mesh.rotation.set(0.4, 0, 0.2);
-  holder.add(mesh);
+  holder.add(wrap);
 }
-
 
 // === Armadura vestida (ModelBiped do 1.8.9 com expansão 1,0 / 0,5) ===
 // Código de rede: 3 bits por peça (0 nada, 1 couro, 2 malha, 3 ferro, 4 diamante, 5 ouro), capacete nos bits 0-2, botas nos 9-11.
@@ -541,7 +563,7 @@ export async function loadPlayerSkin(model, skinUrl) {
     const texture = await loader.loadAsync(skinUrl);
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.NearestFilter;
-    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.colorSpace = THREE.NoColorSpace;
     const player = model.userData.playerObject;
     if (player) player.setSkinTexture(texture);
   } catch (e) {

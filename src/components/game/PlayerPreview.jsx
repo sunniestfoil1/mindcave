@@ -2,7 +2,7 @@
 // de frente, o corpo gira um pouco e a cabeça segue o mouse.
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { buildPlayerModel, applyPackSkin, applyCapeToModel, setModelArmor, armorCodeFromSlots } from '@/game/playerModel';
+import { addEntityLights, buildPlayerModel, applyPackSkin, applyCapeToModel, setModelArmor, armorCodeFromSlots } from '@/game/playerModel';
 import { createAnimationState, applyThirdPersonPose } from '@/game/animation';
 
 const DEG = Math.PI / 180;
@@ -40,10 +40,8 @@ export default function PlayerPreview({ S, preset = PREVIEW_SURVIVAL, capeVisibl
     renderer.setClearColor(0x000000, 0);
 
     const scene = new THREE.Scene();
-    scene.add(new THREE.AmbientLight(0xffffff, 1.1));
-    const key = new THREE.DirectionalLight(0xffffff, 0.35);
-    key.position.set(-1, 2, 3);
-    scene.add(key);
+    renderer.outputColorSpace = THREE.LinearSRGBColorSpace;   // mesmo espaço da cena do jogo (as texturas da pele são lidas sem decodificar)
+    addEntityLights(scene);
 
     // Ortográfica: 1 bloco = UNIT px de GUI; y = 0 (pés) cai em FEET_Y a partir do topo
     const left = -CENTER_X / unit, right = (box.w - CENTER_X) / unit;

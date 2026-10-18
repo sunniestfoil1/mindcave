@@ -250,7 +250,8 @@ export default function ChatUI({ engine, netManager, playerNames = [] }) {
     setHistory((prev) => [...prev.slice(-49), text]);
     setHistoryIdx(-1);
     const myName = engine?.player?.nomeJogador || '';
-    if (netManager) {
+    // comando do host (/gamemode, /give...) roda no próprio jogo dele; o convidado manda ao host (sendChat já roteia o '/' como comando)
+    if (netManager && !(text.startsWith('/') && netManager.broadcast)) {
       netManager.sendChat(myName || 'Player', text);
     } else {
       engine.executeCommand(text);
