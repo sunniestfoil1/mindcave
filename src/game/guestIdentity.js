@@ -1,4 +1,4 @@
-import { supabase } from '@/api/supabaseClient';
+import { supabase, mindcaveApi } from '@/api/supabaseClient';
 
 const GUEST_ID_KEY = 'mc_guest_id';
 const NICKNAME_KEY = 'mc_nickname';
@@ -13,7 +13,13 @@ export function getGuestId() {
 }
 
 export function getNickname() {
-  return localStorage.getItem(NICKNAME_KEY) || 'Player' + Math.floor(Math.random() * 9999);
+  let nick = null;
+  try { nick = localStorage.getItem(NICKNAME_KEY); } catch { /* sem localStorage */ }
+  if (nick) return nick;
+  // um nome sorteado precisa FICAR: antes cada chamada sorteava outro (a lista de salas, o TAB e o chat mostravam nomes diferentes do mesmo jogador)
+  nick = 'Player' + Math.floor(Math.random() * 9999);
+  try { localStorage.setItem(NICKNAME_KEY, nick); } catch { /* sem localStorage */ }
+  return nick;
 }
 
 export function setNickname(name) {

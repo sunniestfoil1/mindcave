@@ -44,6 +44,8 @@ await sleep(2500);
 const text = () => page.evaluate(() => document.body.innerText);
 const hasPauseMenu = async () => /Menu do jogo/.test(await text());
 ok(!!(await page.$('canvas')), 'canvas do jogo presente');
+const nm = await page.evaluate(() => ({ n: window.__mindcave.engine.player.nomeJogador, nick: localStorage.getItem('mc_nickname') }));
+ok(!!nm.n && /^[A-Za-z0-9_]{3,16}$/.test(nm.n) && nm.n === nm.nick, `o jogador entra no jogo COM nome (${nm.n}), igual ao apelido guardado (${nm.nick}): é ele que vai no TAB, no chat e nos pacotes de posição`);
 
 // trava o ponteiro com um clique (gesto de usuário)
 await page.evaluate(() => document.querySelector('canvas').click());

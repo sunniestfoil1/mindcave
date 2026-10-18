@@ -272,6 +272,7 @@ export default function Game() {
           onGround: false, flying: startFlying, sneaking: false, sprinting: false,
           gameMode: player.gameMode || "creative",
           hotbar: parseHotbar(player.hotbar), selectedSlot: player.selectedSlot || 0,
+          nomeJogador: nome,   // sem isto o motor não tinha nome: TAB, chat, nome sobre o boneco e o pacote de posição usavam nomes diferentes (ou nenhum)
         };
 
         if (cancelled) return;
@@ -628,7 +629,7 @@ export default function Game() {
               ? { id: worldId, name: hud.worldName || 'Mundo', gameMode: hud.gamemode, pvp: rec?.pvp ?? true, maxPlayers: rec?.maxPlayers ?? 8 }
               : { id: worldId, pvp: rec?.pvp ?? true, maxPlayers: rec?.maxPlayers ?? 8 };
           })()}
-          user={{ id: user?.id || 'guest', full_name: user?.full_name || 'Player' }}
+          user={{ id: user?.id || 'guest', full_name: sanitizeName(user?.full_name || user?.email) }}
           netHost={netManager}
           onNetHostChange={(host) => { setNetManager(host); engineRef.current.netManager = host; }}
           onClose={closeAllGuis}
@@ -644,7 +645,7 @@ export default function Game() {
       {connecting && (
         <ConnectionScreen
           room={connecting}
-          user={user || { id: 'guest', full_name: 'Player' }}
+          user={{ ...(user || { id: 'guest' }), full_name: sanitizeName(user?.full_name || user?.email) }}   // o mesmo nome que o jogador tem dentro do jogo
           world={{ id: worldId }}
           engine={engineRef.current}
           onSuccess={(room, client) => {

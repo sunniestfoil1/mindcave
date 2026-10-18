@@ -120,6 +120,24 @@ const r = await page.evaluate(async () => {
   res.hostAceitouEm = performance.now() - t2;
   for (const p of host2.peers.values()) { try { p.conn.close(); } catch { /* ok */ } }
   Object.assign(S, orig);
+
+  // ---- 6) nomes: o sorteado fica guardado, o host manda o nome da conexão, e o TAB lista os dois nos dois lados
+  const GI = await import('/src/game/guestIdentity.js');
+  localStorage.removeItem('mc_nickname');
+  const n1 = GI.getNickname(), n2 = GI.getNickname();
+  res.nick = { igual: n1 === n2, guardado: localStorage.getItem('mc_nickname') === n1, formato: /^Player\d{1,4}$/.test(n1) };
+  const u1 = await GI.resolveUser(), u2 = await GI.resolveUser();
+  res.nick.resolve = u1.user.full_name === u2.user.full_name && u1.user.full_name === n1;
+  const host3 = new NetHost({ engine: eng, world: {}, user: { id: 'host', full_name: 'Host' } });
+  host3.peers.set('g1', { conn: { send() {}, pingMs: 25 }, name: 'Conv' });
+  host3._handleGuestMessage('g1', 'Conv', { t: 'move', n: 'OutroNome', x: 1, y: 2, z: 3, yaw: 0, pitch: 0 });
+  res.nomeNaConexao = host3.remotePlayers.get('g1').name;
+  eng.netManager = host3; eng.player.nomeJogador = 'Host'; eng.emitHud();
+  res.tabHost = { nomes: eng._lastHud.pings.map((p) => p.name), eu: eng._lastHud.selfName };
+  const cli = new (await import('/src/game/net/netManager.js')).NetClient({ engine: eng, world: cw, user: { id: 'g1', full_name: 'Conv' }, room: { playerNames: ['Host'], hostName: 'Host' } });
+  cli._handleHostMessage({ t: 'plist', list: [{ name: 'Host', pingMs: 0, isHost: true, rank: 'owner' }, { name: 'Conv', pingMs: 40, isHost: false, rank: 'player' }] });
+  res.tabConvidado = cli.getAllPings().map((p) => p.name);
+  eng.netManager = null;
   return res;
 });
 ok(r.escOnline === true && r.hudPausado === true, `online: Esc abre o menu de pausa (${r.escOnline}) e o HUD mostra a pausa (${r.hudPausado})`);
@@ -133,6 +151,10 @@ ok(r.troca.diferentes && r.troca.primeiraFechada && r.troca.peers === 1, `nova t
 ok(/relay \(TURN\)/.test(r.msgSemRelay) && !/relay \(TURN\)/.test(r.msgComRelay) && /esgotado/.test(r.msgVazia), 'a falha explica a causa: sem TURN fala de CGNAT e relay; com TURN fala de tempo esgotado');
 ok(r.diag.srflx === 2 && r.diag.types.includes('srflx') && r.diag.types.includes('host'), `o diagnóstico guarda os tipos de candidata e os 2 endereços públicos IPv4 distintos (${r.diag.srflx})`);
 ok(r.aos13s.estado === 'connecting' && !r.aos13s.falhou, 'aos 13 s a conexão ainda está tentando (o limite antigo de 12 s foi trocado por 30 s)');
+ok(r.nick.igual && r.nick.guardado && r.nick.formato && r.nick.resolve, `o apelido sorteado fica guardado: 2 pedidos dão o mesmo nome (${r.nick.igual}), no localStorage (${r.nick.guardado}) e no resolveUser (${r.nick.resolve})`);
+ok(r.nomeNaConexao === 'Conv', `o host usa o nome da conexão (${r.nomeNaConexao}), não o que o convidado diz de si ("OutroNome")`);
+ok(r.tabHost.nomes.includes('Host') && r.tabHost.nomes.includes('Conv') && r.tabHost.eu === 'Host', `TAB do host lista os dois (${r.tabHost.nomes.join(', ')}) e sabe quem é "eu" (${r.tabHost.eu})`);
+ok(r.tabConvidado.includes('Host') && r.tabConvidado.includes('Conv'), `TAB do convidado lista os dois (${r.tabConvidado.join(', ')})`);
 ok(r.ordem[0] === 'subscribe' && r.ordem.indexOf('create:offer') > r.ordem.indexOf('subscribe'), `o convidado começa a escutar antes de mandar a oferta (ordem: ${r.ordem.join(' → ')})`);
 ok(r.respostaAplicadaEm !== null && r.respostaAplicadaEm < 50, `a resposta do host é aplicada na hora (${r.respostaAplicadaEm === null ? 'nunca' : r.respostaAplicadaEm.toFixed(0) + ' ms'}) mesmo com o banco levando 600 ms por escrita`);
 ok(r.hostAceitouEm < 450, `o host aceita a oferta sem esperar o banco lento (${r.hostAceitouEm.toFixed(0)} ms; esperando o banco seriam 600 ms mais o resto)`);

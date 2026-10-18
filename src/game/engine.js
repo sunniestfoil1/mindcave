@@ -1222,6 +1222,12 @@ export class GameEngine {
     this.placeCd = 4;
   }
 
+  // Assinatura da lista de jogadores (TAB): quem está e a faixa de ping de cada um
+  _pingsSig() {
+    if (!this.netManager || !this.netManager.getAllPings) return '';
+    try { return this.netManager.getAllPings().map((p) => p.name + ':' + (p.pingMs == null ? '-' : Math.floor(p.pingMs / 25))).join('|'); } catch { return ''; }
+  }
+
   _netSend(pkt, reliable = true) {
     if (!this.netManager) return;
     if (this.netManager.broadcast) this.netManager.broadcast(pkt, undefined, reliable);
@@ -3087,7 +3093,8 @@ export class GameEngine {
                             musicManager.trackName !== sig.musicTrack ||
                             voiceChat.micMuted !== sig.voiceMuted ||
                             voiceChat.isSpeaking !== sig.voiceSpeaking ||
-                            voiceChat.localStream !== sig.voiceActive;
+                            voiceChat.localStream !== sig.voiceActive ||
+                            this._pingsSig() !== sig.pingsSig;   // alguém entrou/saiu ou o ping mudou de faixa: a TAB atualiza na hora
 
       if (!posMoved && !fpsChanged && !cpsChanged && !playerChanged && !engineChanged) {
         return;
@@ -3131,6 +3138,7 @@ export class GameEngine {
       voiceMuted: voiceChat.micMuted,
       voiceSpeaking: voiceChat.isSpeaking,
       voiceActive: voiceChat.localStream,
+      pingsSig: this._pingsSig(),
     };
 
     const yawRad = ((p.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);

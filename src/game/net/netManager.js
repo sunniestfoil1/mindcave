@@ -214,7 +214,7 @@ export class NetHost {
           p = { id: userId, name: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch };
           this.remotePlayers.set(userId, p);
         }
-        recordPlayerSnapshot(p, msg);
+        recordPlayerSnapshot(p, { ...msg, n: userName });   // o nome vale o da conexão, não o que o convidado diz de si
         // Repassa posição do jogador para outros convidados via canal UDP/não confiável
         this.broadcast({ t: 'move', id: userId, n: userName, x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch, dead: !!msg.dead, sleeping: !!msg.sleeping, h: msg.h || 0, v: msg.v | 0, a: msg.a | 0, g: msg.g | 0 }, userId, false);
         break;
