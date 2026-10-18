@@ -1,8 +1,8 @@
 // Monta a lista de servidores ICE (STUN + TURN) para o jogo online. Funções puras (sem Deno nem rede), para o teste de Node importar igual à função da Supabase.
 // TURN é o que faz o jogo conectar quando o jogador ou o host está atrás de NAT simétrico (CGNAT de operadora/provedor): só STUN não atravessa.
 // Fontes de TURN, na ordem em que entram (a primeira que estiver configurada nos Secrets entra na frente das outras):
-//   1) Cloudflare Realtime TURN  → CF_TURN_KEY_ID + CF_TURN_API_TOKEN   (grátis até 1 TB/mês)
-//   2) Metered                   → METERED_DOMAIN + METERED_API_KEY      (grátis até 50 GB/mês)
+//   1) Cloudflare Realtime TURN  → CF_TURN_KEY_ID + CF_TURN_API_TOKEN   (1 TB/mês grátis; cobra US$ 0,05/GB depois)
+//   2) Metered                   → METERED_DOMAIN + METERED_API_KEY      (plano grátis sem cartão: só 500 MB/mês)
 //   3) servidor próprio fixo     → TURN_URL (+ TURN_USERNAME, TURN_CREDENTIAL)
 //   4) coturn com segredo HMAC   → TURN_HOST + TURN_SECRET
 export const STUN_SERVERS = [
@@ -39,7 +39,7 @@ export async function buildIceServers(env, fetchFn, now = Date.now()) {
   const cfKey = env('CF_TURN_KEY_ID'), cfTok = env('CF_TURN_API_TOKEN');
   if (cfKey && cfTok) {
     try {
-      const r = await fetchFn(`https://rtc.live.cloudflare.com/v1/turn/keys/${cfKey}/credentials/generate`, {
+      const r = await fetchFn(`https://rtc.live.cloudflare.com/v1/turn/keys/${cfKey}/credentials/generate-ice-servers`, {
         method: 'POST', headers: { Authorization: `Bearer ${cfTok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ttl: 86400 }),
       });
       if (!r.ok) throw new Error('Cloudflare HTTP ' + r.status);

@@ -58,8 +58,8 @@ relay estiver configurado.
 **Passo a passo (uma vez, leva uns 5 minutos):**
 
 1. Crie a credencial de relay em um destes (os dois têm plano grátis):
-   * **Cloudflare Realtime TURN** (1 TB/mês grátis): painel da Cloudflare → *Realtime* → *TURN Server* → *Create* → anote o **Key ID** e o **API Token**.
-   * **Metered** (50 GB/mês grátis): crie o app em metered.ca → anote o **domínio do app** (a parte antes de `.metered.live`) e a **API Key**.
+   * **Metered** (grátis, **sem cartão**, mas só **500 MB/mês**; conferido na página de preços em 17/10/2026): crie o app em metered.ca → anote o **domínio do app** (a parte antes de `.metered.live`) e a **API Key**.
+   * **Cloudflare Realtime TURN** (1.000 GB/mês grátis, depois US$ 0,05/GB; a documentação não diz se pede cartão para ativar): painel da Cloudflare → *Realtime* → *TURN Server* → *Create* → anote o **Key ID** e o **API Token**.
 2. Grave nos Secrets da Supabase (rode no seu terminal; **não cole a chave em conversa**):
 
 ```bash

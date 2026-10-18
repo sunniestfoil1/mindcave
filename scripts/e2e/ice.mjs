@@ -12,9 +12,9 @@ const resp = (status, body) => ({ ok: status >= 200 && status < 300, status, jso
 { const r = await I.buildIceServers(env({}), async () => { throw new Error('não devia chamar'); });
   ok(r.turn === null && r.iceServers.length === I.STUN_SERVERS.length && !r.iceServers.some(isTurn) && r.erros.length === 0, 'sem Secrets: só os 7 STUN, turn = null e nenhuma chamada de rede'); }
 
-{ const calls = []; const r = await I.buildIceServers(env({ CF_TURN_KEY_ID: 'k1', CF_TURN_API_TOKEN: 't1' }), async (u, o) => { calls.push([u, o]); return resp(200, { iceServers: { urls: ['stun:stun.cloudflare.com:3478', 'turn:turn.cloudflare.com:3478?transport=udp', 'turns:turn.cloudflare.com:5349?transport=tcp'], username: 'u', credential: 'c' } }); });
-  ok(r.turn === 'cloudflare' && isTurn(r.iceServers[0]) && r.iceServers[0].username === 'u' && r.iceServers.length === 1 + I.STUN_SERVERS.length, 'Cloudflare: o relay entra na frente (resposta em objeto, não lista) e os STUN seguem depois');
-  ok(calls[0][0].endsWith('/v1/turn/keys/k1/credentials/generate') && calls[0][1].method === 'POST' && calls[0][1].headers.Authorization === 'Bearer t1' && JSON.parse(calls[0][1].body).ttl === 86400, 'Cloudflare: pede a credencial no endereço certo, com o token no cabeçalho e validade de 24 h'); }
+{ const calls = []; const r = await I.buildIceServers(env({ CF_TURN_KEY_ID: 'k1', CF_TURN_API_TOKEN: 't1' }), async (u, o) => { calls.push([u, o]); return resp(200, { iceServers: [{ urls: ['stun:stun.cloudflare.com:3478'] }, { urls: ['turn:turn.cloudflare.com:3478?transport=udp', 'turns:turn.cloudflare.com:5349?transport=tcp'], username: 'u', credential: 'c' }] }); });
+  ok(r.turn === 'cloudflare' && isTurn(r.iceServers[0]) && r.iceServers[0].username === 'u' && r.iceServers.length === 1 + I.STUN_SERVERS.length, 'Cloudflare: o relay entra na frente (resposta em lista, com o STUN da Cloudflare descartado) e os STUN seguem depois');
+  ok(calls[0][0].endsWith('/v1/turn/keys/k1/credentials/generate-ice-servers') && calls[0][1].method === 'POST' && calls[0][1].headers.Authorization === 'Bearer t1' && JSON.parse(calls[0][1].body).ttl === 86400, 'Cloudflare: pede a credencial no endereço certo, com o token no cabeçalho e validade de 24 h'); }
 
 { const r = await I.buildIceServers(env({ CF_TURN_KEY_ID: 'k1', CF_TURN_API_TOKEN: 'ruim' }), async () => resp(401, {}));
   ok(r.turn === null && r.erros.length === 1 && /401/.test(r.erros[0]) && !r.iceServers.some(isTurn), 'Cloudflare recusou (401): cai para STUN e devolve o motivo em "erros", sem derrubar a função'); }
