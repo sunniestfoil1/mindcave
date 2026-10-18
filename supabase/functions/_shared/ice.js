@@ -1,6 +1,7 @@
 // Monta a lista de servidores ICE (STUN + TURN) para o jogo online. Funções puras (sem Deno nem rede), para o teste de Node importar igual à função da Supabase.
 // TURN é o que faz o jogo conectar quando o jogador ou o host está atrás de NAT simétrico (CGNAT de operadora/provedor): só STUN não atravessa.
 // Fontes de TURN, na ordem em que entram (a primeira que estiver configurada nos Secrets entra na frente das outras):
+//   0) Twilio Network Traversal  → TWILIO_ACCOUNT_SID + TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET (ou TWILIO_AUTH_TOKEN no lugar da chave)  (pago por GB, sem plano grátis)
 //   1) Cloudflare Realtime TURN  → CF_TURN_KEY_ID + CF_TURN_API_TOKEN   (1 TB/mês grátis; cobra US$ 0,05/GB depois)
 //   2) Metered                   → METERED_DOMAIN + METERED_API_KEY      (plano grátis sem cartão: só 500 MB/mês)
 //   3) servidor próprio fixo     → TURN_URL (+ TURN_USERNAME, TURN_CREDENTIAL)
@@ -19,7 +20,7 @@ const isTurn = (s) => [].concat(s && s.urls || []).some((u) => /^turns?:/i.test(
 
 // A Cloudflare devolve { iceServers: { urls: [...], username, credential } } (objeto, não lista); a Metered devolve a lista direto
 export function normalizeIceResponse(json) {
-  const raw = json && (json.iceServers ?? json);
+  const raw = json && (json.iceServers ?? json.ice_servers ?? json);   // Twilio devolve ice_servers (com url e urls em cada item)
   const list = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? [raw] : [];
   return list.filter((s) => s && s.urls && (isTurn(s) ? s.username && s.credential : true));
 }
@@ -36,6 +37,18 @@ export async function buildIceServers(env, fetchFn, now = Date.now()) {
   const erros = [];
   let fonte = null;
 
+  const twSid = env('TWILIO_ACCOUNT_SID'), twPass = env('TWILIO_API_KEY_SECRET') || env('TWILIO_AUTH_TOKEN');
+  if (twSid && twPass) {
+    try {
+      const user = env('TWILIO_API_KEY_SID') || twSid;   // com API Key o usuário é o SID da chave (SK...); com Auth Token, o da conta (AC...)
+      const r = await fetchFn(`https://api.twilio.com/2010-04-01/Accounts/${twSid}/Tokens.json`, {
+        method: 'POST', headers: { Authorization: 'Basic ' + btoa(`${user}:${twPass}`), 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'Ttl=86400',
+      });
+      if (!r.ok) throw new Error('Twilio HTTP ' + r.status);
+      const l = normalizeIceResponse(await r.json()).filter(isTurn).map((s) => ({ urls: s.urls, username: s.username, credential: s.credential }));
+      if (l.length) { turnList.push(...l); fonte = fonte || 'twilio'; } else erros.push('Twilio sem servidor TURN na resposta');
+    } catch (e) { erros.push(String(e.message || e)); }
+  }
   const cfKey = env('CF_TURN_KEY_ID'), cfTok = env('CF_TURN_API_TOKEN');
   if (cfKey && cfTok) {
     try {

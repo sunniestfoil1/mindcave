@@ -79,10 +79,19 @@ curl -s -X POST "https://ddwdgwaliywymcatdekg.supabase.co/functions/v1/webrtc-tu
 
 A lógica fica em `_shared/ice.js` e é testada por `scripts/e2e/ice.mjs`.
 
+### Twilio (o que está ligado hoje)
+
+O relay em produção é o **Twilio Network Traversal** (pago por uso, sem plano grátis: US$ 0,40/GB nos EUA e Europa, US$ 0,80/GB em São Paulo; STUN é grátis).
+Só quem está atrás de CGNAT passa pelo relay, então o gasto fica em centavos por hora de jogo relayado. Secrets gravados no projeto:
+`TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET` (uma **API Key** só para isto; o Auth Token da conta não fica guardado em lugar nenhum).
+Para trocar a chave: crie outra em Twilio → Account → API keys & tokens, rode `npx supabase secrets set TWILIO_API_KEY_SID=... TWILIO_API_KEY_SECRET=... --project-ref ddwdgwaliywymcatdekg`
+e `npx supabase functions deploy webrtc-turn --no-verify-jwt --project-ref ddwdgwaliywymcatdekg`.
+
 ## ⚙️ Variáveis e Secrets (Configuráveis no Supabase)
 
 No menu **Settings > Edge Functions > Secrets** (ordem em que entram na lista; a primeira configurada fica na frente):
 
+* `TWILIO_ACCOUNT_SID` + `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET` (ou `TWILIO_AUTH_TOKEN` no lugar da chave): Twilio (credencial gerada na hora, validade de 24 h; a função guarda 5 min em memória).
 * `CF_TURN_KEY_ID` + `CF_TURN_API_TOKEN`: Cloudflare Realtime TURN (credencial gerada na hora, validade de 24 h).
 * `METERED_DOMAIN` + `METERED_API_KEY`: Metered (credencial buscada na hora).
 * `TURN_URL` (+ `TURN_USERNAME`, `TURN_CREDENTIAL`): servidor TURN próprio fixo; URLs separadas por vírgula.

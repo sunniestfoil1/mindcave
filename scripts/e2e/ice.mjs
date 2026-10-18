@@ -22,6 +22,16 @@ const resp = (status, body) => ({ ok: status >= 200 && status < 300, status, jso
 { const r = await I.buildIceServers(env({ METERED_DOMAIN: 'meujogo', METERED_API_KEY: 'abc' }), async (u) => { ok(u === 'https://meujogo.metered.live/api/v1/turn/credentials?apiKey=abc', 'Metered: endereço montado com domínio e chave'); return resp(200, [{ urls: 'stun:stun.relay.metered.ca:80' }, { urls: 'turn:global.relay.metered.ca:80', username: 'a', credential: 'b' }, { urls: 'turn:sem-credencial.example:80' }]); });
   ok(r.turn === 'metered' && r.iceServers.filter(isTurn).length === 1, 'Metered: entra só o TURN com usuário e senha (o sem credencial é descartado)'); }
 
+{ const calls = [];
+  const tw = { ice_servers: [{ url: 'stun:global.stun.twilio.com:3478', urls: 'stun:global.stun.twilio.com:3478' }, { url: 'turn:global.turn.twilio.com:3478?transport=udp', urls: 'turn:global.turn.twilio.com:3478?transport=udp', username: 'tu', credential: 'tc' }, { url: 'turn:global.turn.twilio.com:443?transport=tcp', urls: 'turn:global.turn.twilio.com:443?transport=tcp', username: 'tu', credential: 'tc' }] };
+  const r = await I.buildIceServers(env({ TWILIO_ACCOUNT_SID: 'AC1', TWILIO_API_KEY_SID: 'SK1', TWILIO_API_KEY_SECRET: 'seg' }), async (u, o) => { calls.push([u, o]); return resp(201, tw); });
+  ok(r.turn === 'twilio' && r.iceServers.slice(0, 2).every(isTurn) && r.iceServers[0].username === 'tu' && r.iceServers.length === 2 + I.STUN_SERVERS.length, 'Twilio: resposta ice_servers vira 2 relays na frente (o STUN deles sai) e os 7 STUN seguem');
+  ok(calls[0][0] === 'https://api.twilio.com/2010-04-01/Accounts/AC1/Tokens.json' && calls[0][1].method === 'POST' && calls[0][1].headers.Authorization === 'Basic ' + btoa('SK1:seg') && calls[0][1].body === 'Ttl=86400' && /x-www-form-urlencoded/.test(calls[0][1].headers['Content-Type']), 'Twilio: POST em Tokens.json com a API Key (SK:segredo) no Basic e validade de 24 h em formulário');
+  const r2 = await I.buildIceServers(env({ TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok' }), async (u, o) => { calls.push([u, o]); return resp(201, tw); });
+  ok(r2.turn === 'twilio' && calls[1][1].headers.Authorization === 'Basic ' + btoa('AC1:tok'), 'Twilio com o Auth Token da conta: usuário é o AC... (alternativa à API Key)');
+  const r3 = await I.buildIceServers(env({ TWILIO_ACCOUNT_SID: 'AC1', TWILIO_API_KEY_SID: 'SK1', TWILIO_API_KEY_SECRET: 'ruim' }), async () => resp(401, {}));
+  ok(r3.turn === null && /Twilio HTTP 401/.test(r3.erros[0]), 'Twilio recusou (401): cai para STUN e devolve o motivo'); }
+
 { const r = await I.buildIceServers(env({ TURN_URL: 'turn:a.example:3478, turns:a.example:5349', TURN_USERNAME: 'u', TURN_CREDENTIAL: 'p' }), async () => { throw new Error('x'); });
   ok(r.turn === 'fixo' && r.iceServers[0].urls.length === 2 && r.iceServers[0].username === 'u' && r.iceServers[0].credential === 'p', 'servidor fixo (TURN_URL): lista separada por vírgula vira 2 endereços com usuário e senha'); }
 
