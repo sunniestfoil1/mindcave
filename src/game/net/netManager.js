@@ -113,7 +113,7 @@ export class NetHost {
       return;
     }
 
-    try { await mindcaveApi.entities.Signal.update(signal.id, { consumed: true }); } catch {}
+    Promise.resolve().then(() => mindcaveApi.entities.Signal.update(signal.id, { consumed: true })).catch(() => {});   // em segundo plano: a resposta não espera o banco
 
     const conn = new WebRTCConnection({
       isHost: true,

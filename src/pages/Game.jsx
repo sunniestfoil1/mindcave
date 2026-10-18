@@ -35,6 +35,7 @@ import ConnectionScreen from "@/components/game/ConnectionScreen";
 import OpenToLANDialog from "@/components/game/OpenToLANDialog";
 import FeedbackModal from "@/components/game/FeedbackModal";
 import { roomManager } from "@/game/net/roomManager";
+import { prewarmIceServers } from "@/game/net/webrtc";
 import { SaveQueue } from "@/game/saveQueue";
 import { serializeStats } from "@/game/stats";
 import { serializeAchievements } from "@/game/achievements";
@@ -197,6 +198,10 @@ export default function Game() {
       try {
         saveQueueRef.current.onUpdate = ({ pending }) => setSavePending(pending);
         // Tudo que não depende de outra coisa sai ao mesmo tempo (antes eram 6 idas e voltas em fila ao banco/nuvem antes do primeiro chunk)
+        // convidado: a sala e os servidores ICE já vão buscar enquanto o mundo carrega (antes só começavam depois do mundo pronto)
+        const roomParam0 = new URLSearchParams(window.location.search).get('room');
+        const roomP = roomParam0 ? roomManager.getRoom(roomParam0).then((r) => { if (r) r._fetchedAt = Date.now(); return r; }).catch(() => null) : null;
+        if (roomParam0) prewarmIceServers();
         const userP = resolveUser();
         const worldP = getWorld(worldId);
         const deltasP = loadDeltas(worldId);
@@ -398,7 +403,7 @@ export default function Game() {
         const urlParams = new URLSearchParams(window.location.search);
         const roomParam = urlParams.get('room');
         if (roomParam) {
-          const room = await roomManager.getRoom(roomParam);
+          const room = (roomP && roomParam === roomParam0) ? await roomP : await roomManager.getRoom(roomParam);
           if (room && room.status === 'open') {
             setConnecting(room);
           }

@@ -15,8 +15,23 @@ let _cachedIceServers = null;
 let _iceFetchPromise = null;
 let _hasRelay = false;   // a lista de servidores tem TURN? sem isso, quem está atrás de NAT simétrico (CGNAT) nunca conecta
 
+const ICE_CACHE_KEY = 'mc_ice_servers';
+const ICE_CACHE_MS = 10 * 60 * 1000;
+function readIceCache() {
+  try {
+    const c = JSON.parse(sessionStorage.getItem(ICE_CACHE_KEY) || 'null');
+    if (c && Date.now() - c.t < ICE_CACHE_MS && Array.isArray(c.servers) && c.servers.length) { _hasRelay = !!c.relay; return c.servers; }
+  } catch { /* sem sessionStorage */ }
+  return null;
+}
+
+// Chamado cedo (lista de salas, abertura do jogo): a função de servidores ICE leva até 1 s na primeira chamada e não precisa esperar a negociação
+export function prewarmIceServers() { return getOptimalIceServers(); }
+
 async function getOptimalIceServers() {
   if (_cachedIceServers) return _cachedIceServers;
+  const stored = readIceCache();
+  if (stored) { _cachedIceServers = stored; return stored; }
   if (_iceFetchPromise) return _iceFetchPromise;
 
   _iceFetchPromise = (async () => {
@@ -27,6 +42,7 @@ async function getOptimalIceServers() {
       if (!error && data && Array.isArray(data.iceServers) && data.iceServers.length > 0) {
         _cachedIceServers = data.iceServers;
         _hasRelay = data.iceServers.some((s) => [].concat(s.urls || []).some((u) => /^turns?:/i.test(u)));
+        try { sessionStorage.setItem(ICE_CACHE_KEY, JSON.stringify({ t: Date.now(), servers: _cachedIceServers, relay: _hasRelay })); } catch { /* sem sessionStorage */ }
         return _cachedIceServers;
       }
     } catch {
@@ -99,7 +115,7 @@ export class WebRTCConnection {
 
   async connect(iceServers) {
     const servers = iceServers?.length ? iceServers : await getOptimalIceServers();
-    const Configuration = { iceServers: servers };
+    const Configuration = { iceServers: servers, iceCandidatePoolSize: 2 };   // candidatas já coletadas antes da oferta
 
     this.setState('connecting');
 
@@ -154,13 +170,14 @@ export class WebRTCConnection {
         this._setupDataChannel(this.reliableDc);
         this._setupDataChannel(this.unreliableDc);
 
+        this._listenSignals();   // escuta primeiro: a resposta do host chega em meio segundo
         await this._createOffer();
       } else {
         // Host espera os canais de dados do cliente
         this.pc.ondatachannel = (e) => this._setupDataChannel(e.channel);
       }
 
-      this._listenSignals();
+      if (this.isHost) this._listenSignals();
       cleanupSignals(this.roomId);
     } catch (e) {
       console.error('[WebRTC] erro ao criar conexão:', e);
@@ -183,13 +200,13 @@ export class WebRTCConnection {
     // Polling limitado durante a fase de conexão (máximo 8 tentativas = 12 segundos)
     let pollCount = 0;
     this._pollTimer = setInterval(async () => {
-      if (this._closed || this.state !== 'connecting' || pollCount >= 8) {
+      if (this._closed || this.state !== 'connecting' || pollCount >= 40) {
         if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }   // só o polling para; a inscrição em tempo real segue
         return;
       }
       pollCount++;
       await this._checkPendingSignals();
-    }, 1500);
+    }, 300);
     // limite total da negociação: 30 s (ICE com relay leva alguns segundos a mais que o handshake)
     this._connectTimeout = setTimeout(() => {
       if (!this._closed && this.state === 'connecting') {
@@ -262,7 +279,7 @@ export class WebRTCConnection {
     if (!signal || !this.pc || this._closed) return;
     if (this._consumedSignals.has(signal.id)) return;
     this._consumedSignals.add(signal.id);
-    try { await mindcaveApi.entities.Signal.update(signal.id, { consumed: true }); } catch {}
+    Promise.resolve().then(() => mindcaveApi.entities.Signal.update(signal.id, { consumed: true })).catch(() => {});   // em segundo plano
 
     if (signal.type === 'offer' && this.isHost) {
       if (this._answered) return;   // já respondida por handleOffer

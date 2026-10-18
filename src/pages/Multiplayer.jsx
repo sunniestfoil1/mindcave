@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { resolveUser } from '@/game/guestIdentity';
 import { roomManager } from '@/game/net/roomManager';
+import { prewarmIceServers } from '@/game/net/webrtc';
 import { BUILD_VERSION } from '@/game/constants';
 import LobbyChat from '@/components/game/LobbyChat';
 import { GuiScreen, GuiButton, GuiText, GuiList, useGui } from '@/components/java';
@@ -38,6 +39,7 @@ function MultiplayerContent({ user }) {
   }, []);
 
   useEffect(() => {
+    prewarmIceServers();   // o relay/STUN já vem pedido quando o jogador clicar em entrar
     refresh();
     const unsub = roomManager.subscribeToRooms(() => refresh());
     const interval = setInterval(refresh, 10000);

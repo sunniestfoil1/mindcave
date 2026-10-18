@@ -94,6 +94,32 @@ const r = await page.evaluate(async () => {
   await new Promise((r) => setTimeout(r, 13500));   // passou dos 12 s antigos: ainda tem de estar tentando
   res.aos13s = { estado: c2.state, falhou: fired !== null };
   c2._closed = true; c2._stopSignalListeners();
+
+  // ---- 5) velocidade da negociação: o convidado escuta ANTES de ofertar, o sinal é processado sem esperar o banco, o host não espera o banco para aceitar
+  const S = mindcaveApi.entities.Signal;
+  const orig = { subscribe: S.subscribe, create: S.create, filter: S.filter, update: S.update };
+  const ordem = []; let cb = null;
+  S.subscribe = (fn) => { ordem.push('subscribe'); cb = fn; return () => {}; };
+  S.create = async (o) => { ordem.push('create:' + o.type); return {}; };
+  S.filter = async () => [];
+  S.update = () => new Promise((r) => setTimeout(() => r({}), 600));   // banco lento: 600 ms por escrita
+  const g = new RTC.WebRTCConnection({ isHost: false, roomId: 'r9', userId: 'conv', userName: 'C', peerUserId: 'hst', peerName: 'H' });
+  await g.connect([{ urls: 'stun:stun.l.google.com:19302' }]);
+  res.ordem = ordem.slice();
+  let aplicou = null; const t1 = performance.now();
+  g.pc.setRemoteDescription = async () => { aplicou = performance.now() - t1; };
+  cb({ data: { id: 'ans1', roomId: 'r9', toUserId: 'conv', fromUserId: 'hst', type: 'answer', data: 'v=0' } });
+  await new Promise((r) => setTimeout(r, 80));
+  res.respostaAplicadaEm = aplicou;   // com o banco levando 600 ms por escrita, a resposta já tem de ter sido aplicada
+  g._closed = true; g._stopSignalListeners(); try { g.pc.close(); } catch { /* ok */ }
+  // host: aceitar a oferta com o banco lento
+  const host2 = new NetHost({ engine: eng, world: {}, user: { id: 'host', full_name: 'Host' } });
+  host2.room = { id: 'r9', maxPlayers: 8, banned: '[]', whitelistEnabled: false, whitelist: [], ops: [] };
+  const t2 = performance.now();
+  await host2._handleNewPeer({ id: 'sRapido', fromUserId: 'g7', fromName: 'G7', type: 'offer', data: 'v=0', consumed: false });
+  res.hostAceitouEm = performance.now() - t2;
+  for (const p of host2.peers.values()) { try { p.conn.close(); } catch { /* ok */ } }
+  Object.assign(S, orig);
   return res;
 });
 ok(r.escOnline === true && r.hudPausado === true, `online: Esc abre o menu de pausa (${r.escOnline}) e o HUD mostra a pausa (${r.hudPausado})`);
@@ -107,7 +133,33 @@ ok(r.troca.diferentes && r.troca.primeiraFechada && r.troca.peers === 1, `nova t
 ok(/relay \(TURN\)/.test(r.msgSemRelay) && !/relay \(TURN\)/.test(r.msgComRelay) && /esgotado/.test(r.msgVazia), 'a falha explica a causa: sem TURN fala de CGNAT e relay; com TURN fala de tempo esgotado');
 ok(r.diag.srflx === 2 && r.diag.types.includes('srflx') && r.diag.types.includes('host'), `o diagnóstico guarda os tipos de candidata e os 2 endereços públicos IPv4 distintos (${r.diag.srflx})`);
 ok(r.aos13s.estado === 'connecting' && !r.aos13s.falhou, 'aos 13 s a conexão ainda está tentando (o limite antigo de 12 s foi trocado por 30 s)');
+ok(r.ordem[0] === 'subscribe' && r.ordem.indexOf('create:offer') > r.ordem.indexOf('subscribe'), `o convidado começa a escutar antes de mandar a oferta (ordem: ${r.ordem.join(' → ')})`);
+ok(r.respostaAplicadaEm !== null && r.respostaAplicadaEm < 50, `a resposta do host é aplicada na hora (${r.respostaAplicadaEm === null ? 'nunca' : r.respostaAplicadaEm.toFixed(0) + ' ms'}) mesmo com o banco levando 600 ms por escrita`);
+ok(r.hostAceitouEm < 450, `o host aceita a oferta sem esperar o banco lento (${r.hostAceitouEm.toFixed(0)} ms; esperando o banco seriam 600 ms mais o resto)`);
 ok(errors.length === 0, `sem erro de página (${errors[0] || ''})`);
+
+// ---- servidores ICE: guardados por 10 min (sessionStorage) e pedidos uma vez só, mesmo chamando várias vezes
+const page2 = await browser.newPage();
+await page2.setRequestInterception(true);
+let chamadasFuncao = 0;
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' };
+page2.on('request', (rq) => {
+  const u = new URL(rq.url());
+  if (!/supabase\.co$/.test(u.hostname)) return rq.continue();
+  if (rq.method() === 'OPTIONS') return rq.respond({ status: 204, headers: CORS });
+  if (u.pathname.includes('/functions/v1/webrtc-turn')) { chamadasFuncao++; return rq.respond({ status: 200, contentType: 'application/json', headers: CORS, body: JSON.stringify({ iceServers: [{ urls: 'turn:t.example:3478', username: 'u', credential: 'c' }, { urls: 'stun:s.example:19302' }] }) }); }
+  return rq.respond({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+});
+await page2.goto(`http://localhost:${port}/`, { waitUntil: 'domcontentloaded', timeout: 90000 });
+const ice = await page2.evaluate(async () => {
+  sessionStorage.removeItem('mc_ice_servers');
+  const RTC = await import('/src/game/net/webrtc.js');
+  await Promise.all([RTC.prewarmIceServers(), RTC.prewarmIceServers(), RTC.prewarmIceServers()]);
+  const guardado = JSON.parse(sessionStorage.getItem('mc_ice_servers') || 'null');
+  return { guardado: !!guardado && guardado.relay === true && guardado.servers.length === 2 };
+});
+ice.chamadas = chamadasFuncao;
+ok(ice.chamadas === 1 && ice.guardado, `3 pedidos de servidores ICE = 1 chamada à função, e o resultado (com relay) fica guardado para a próxima página (${ice.chamadas} chamada)`);
 console.log(out.join('\n'));
 await browser.close();
 process.exit(out.some((l) => l.startsWith('FALHA')) ? 1 : 0);

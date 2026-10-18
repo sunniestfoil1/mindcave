@@ -23,7 +23,7 @@ function ConnectionContent({ room, user, world, engine, onSuccess, onCancel }) {
     setError(null);
     setStep(0);
     try {
-      const fresh = await roomManager.getRoom(room.id);
+      const fresh = (room._fetchedAt && Date.now() - room._fetchedAt < 10000) ? room : await roomManager.getRoom(room.id);   // a sala acabou de ser lida pelo jogo
       if (!fresh || fresh.status === 'closed') {
         throw new Error('Este mundo não está mais aberto.');
       }
@@ -51,11 +51,8 @@ function ConnectionContent({ room, user, world, engine, onSuccess, onCancel }) {
         onStateChange: (s) => {
           if (s === 'connected') {
             done = true;
-            setStep(2);
-            setTimeout(() => {
-              setStep(3);
-              onSuccess(fresh, client);
-            }, 500);
+            setStep(3);
+            onSuccess(fresh, client);   // sem espera artificial: entra assim que o canal abre
           }
           if (s === 'failed') {
             setError('Falha ao conectar: ' + explainFailure(client.conn && client.conn.failureInfo && client.conn.failureInfo()));
