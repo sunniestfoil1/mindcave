@@ -516,6 +516,12 @@ export class GameEngine {
       if (document.pointerLockElement !== this.canvas) this._requestPointerLock();
     };
     this._onPLChange = () => {
+      // Navegador embutido: o host pode soltar a trava do mouse sozinho logo depois do clique. Isso NÃO pausa o jogo; só o Esc pausa.
+      if (settingsStore.get('user.embeddedBrowser') && !this.chatOpen && !this.guiOpenFn?.()) {
+        if (document.pointerLockElement === this.canvas) this._wantLock = false;
+        this.keys = {};
+        return;
+      }
       if (this.chatOpen) {   // online também pausa (menu aberto, mundo e rede seguem rodando): antes o Esc online soltava o mouse sem abrir menu nenhum
         this.paused = false;
       } else if (this.guiOpenFn?.() && document.pointerLockElement !== this.canvas) {

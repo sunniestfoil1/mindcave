@@ -554,6 +554,9 @@ const result = await page.evaluate(async () => {
       // Esc pausa e o clique volta
       engine.paused = true; engine._onClick();
       ok(engine.paused === false, 'depois de pausar, o clique no jogo retoma');
+      // trava do mouse caindo sozinha (navegador embutido) NÃO pausa
+      engine.paused = false; engine.guiOpenFn = () => false; document.dispatchEvent(new Event('pointerlockchange'));
+      ok(engine.paused === false, 'navegador embutido: perda da trava do mouse não pausa o jogo');
       // desligar restaura os valores que estavam antes
       SS3.setEmbeddedBrowser(false); SS3.set('device.renderDistance', 9);
       SS3.setEmbeddedBrowser(true); const rdOn = SS3.get('device.renderDistance');
