@@ -74,6 +74,7 @@ function KeybindsContent({ onBack }) {
     ] : []),
     { type: 'toggle', key: 'user.invertMouse', label: 'Inverter mouse' },
     { type: 'toggle', key: 'user.rawInput', label: 'Entrada bruta' },
+    { type: 'embedded', key: 'user.embeddedBrowser', label: 'Navegador' },
     { type: 'slider', key: 'user.scrollSensitivity', label: 'Rolagem', min: 1, max: 100, step: 1,
       format: v => `Rolagem: ${(v / 10).toFixed(1)}` },
     { type: 'toggle', key: 'user.discreteScroll', label: 'Rolagem discreta' },
@@ -93,6 +94,8 @@ function KeybindsContent({ onBack }) {
     const value = store.get(opt.key);
     if (opt.type === 'slider')
       return <JavaSlider key={opt.key} label={opt.label} value={value} min={opt.min} max={opt.max} step={opt.step} format={opt.format} onChange={v => store.set(opt.key, v)} width={150} />;
+    if (opt.type === 'embedded')
+      return <JavaButton key={opt.key} label={opt.label} value={!!value} options={[{ value: true, label: 'Ligado' }, { value: false, label: 'Desligado' }]} onChange={v => store.setEmbeddedBrowser(v)} width={150} />;
     if (opt.type === 'toggle')
       return <JavaButton key={opt.key} label={opt.label} value={!!value} options={[{ value: true, label: 'Ligado' }, { value: false, label: 'Desligado' }]} onChange={v => store.set(opt.key, v)} width={150} />;
     return <JavaButton key={opt.key} label={opt.label} value={value} options={opt.options} onChange={v => store.set(opt.key, v)} width={150} />;

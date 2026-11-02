@@ -2,10 +2,11 @@
 // Escopos: dispositivo (localStorage), usuário (localStorage + nuvem), mundo (World entity).
 import { useEffect, useReducer } from 'react';
 import { mindcaveApi } from '@/api/supabaseClient';
-import { DEFAULT_DEVICE, DEFAULT_USER, DEFAULT_WORLD_RULES, QUALITY_PROFILES, SETTINGS_VERSION } from './settingsDefaults';
+import { DEFAULT_DEVICE, DEFAULT_USER, DEFAULT_WORLD_RULES, EMBEDDED_BROWSER_PROFILE, QUALITY_PROFILES, SETTINGS_VERSION } from './settingsDefaults';
 
 const LS_DEVICE = 'mc_device_v1';
 const LS_USER = 'mc_user_v1';
+const LS_EMBED_PREV = 'mc_embedded_prev'; // valores de device antes de ligar o navegador embutido
 
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -137,6 +138,27 @@ class SettingsStore {
     const p = QUALITY_PROFILES[name];
     if (!p) return;
     for (const [k, v] of Object.entries(p)) setByPath(this.data, 'device.' + k, v);
+    this._saveLocal();
+    this._notify();
+    this._scheduleCloud();
+  }
+
+  // Interruptor "Navegador embutido": ligar salva os valores atuais e aplica o perfil leve; desligar devolve esses valores
+  setEmbeddedBrowser(on) {
+    const isOn = !!this.data.user?.embeddedBrowser;
+    if (!!on === isOn) return;
+    if (on) {
+      const prev = {};
+      for (const k of Object.keys(EMBEDDED_BROWSER_PROFILE)) prev[k] = this.data.device?.[k];
+      try { localStorage.setItem(LS_EMBED_PREV, JSON.stringify(prev)); } catch { /* sem armazenamento */ }
+      for (const [k, v] of Object.entries(EMBEDDED_BROWSER_PROFILE)) setByPath(this.data, 'device.' + k, v);
+    } else {
+      let prev = null;
+      try { prev = JSON.parse(localStorage.getItem(LS_EMBED_PREV) || 'null'); } catch { prev = null; }
+      if (prev) for (const [k, v] of Object.entries(prev)) if (v !== undefined && v !== null) setByPath(this.data, 'device.' + k, v);
+      try { localStorage.removeItem(LS_EMBED_PREV); } catch { /* ignora */ }
+    }
+    setByPath(this.data, 'user.embeddedBrowser', !!on);
     this._saveLocal();
     this._notify();
     this._scheduleCloud();

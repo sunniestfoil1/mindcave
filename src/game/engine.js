@@ -484,6 +484,7 @@ export class GameEngine {
     this._onMouseDown = (e) => {
       this._grabIfWanted();
       this.mouseBtn[e.button] = true;
+      if (e.button === 2) { this._dragDist = 0; this._dragLooked = false; this._mx = e.clientX; this._my = e.clientY; }
       if (!this.paused && !this.chatOpen && !this.player?.isDead && !this.player?.sleeping) {
         const keys = settingsStore.get('user.keys') || {};
         const atkCode = keys.attack || 'Mouse0';
@@ -502,13 +503,18 @@ export class GameEngine {
         if (!this.paused && !this.chatOpen) this.pickBlock();
       }
     };
-    this._onMouseUp = (e) => { this.mouseBtn[e.button] = false; };
+    this._onMouseUp = (e) => { this.mouseBtn[e.button] = false; if (e.button === 2) this._dragLooked = false; };
     this._onMouseMove = (e) => this.onMouseMove(e);
     this._onWheel = (e) => this.onWheel(e);
     this._onResize = () => this.onResize();
     this._onContext = (e) => e.preventDefault();
     // Clique no jogo sempre tenta recapturar o mouse se ele não está travado (cobre o pedido de lock recusado pelo navegador)
-    this._onClick = () => { if (!this.chatOpen && document.pointerLockElement !== this.canvas) this._requestPointerLock(); };
+    this._onClick = () => {
+      if (this.chatOpen) return;
+      // Navegador embutido: não existe trava do mouse para devolver o jogo; o clique no jogo retoma (pausa só com Esc)
+      if (this.paused && settingsStore.get('user.embeddedBrowser') && !this.guiOpenFn?.()) { this.resumeNow(); return; }
+      if (document.pointerLockElement !== this.canvas) this._requestPointerLock();
+    };
     this._onPLChange = () => {
       if (this.chatOpen) {   // online também pausa (menu aberto, mundo e rede seguem rodando): antes o Esc online soltava o mouse sem abrir menu nenhum
         this.paused = false;
@@ -713,9 +719,25 @@ export class GameEngine {
     }
   }
 
+  // Mouse sem trava (navegador embutido não entrega movementX): a câmera gira só com o botão direito apertado, pelo deslocamento do cursor
+  _mouseLockedLook() { return document.pointerLockElement === this.canvas || !!this.netManager; }
+
   onMouseMove(e) {
+    const dxRaw = this._mx === undefined ? 0 : e.clientX - this._mx;
+    const dyRaw = this._my === undefined ? 0 : e.clientY - this._my;
+    this._mx = e.clientX; this._my = e.clientY;
     if (this.paused || this.chatOpen || this.player?.isDead || this.player?.sleeping) return;
-    if (document.pointerLockElement !== this.canvas && !this.netManager) return;
+    if (!this._mouseLockedLook()) {
+      // Sem trava: só arrastando com o botão direito, e só se a opção estiver ligada
+      if (!settingsStore.get('user.embeddedBrowser') || !this.mouseBtn[2]) return;
+      if (!this._dragLooked) {
+        this._dragDist = (this._dragDist || 0) + Math.abs(dxRaw) + Math.abs(dyRaw);
+        if (this._dragDist > 4) this._dragLooked = true; // passou de 4 px: deixa de ser clique (não coloca nem usa bloco)
+        if (!this._dragLooked) return;
+      }
+      this._lookPixels(dxRaw, dyRaw);
+      return;
+    }
     const sensPct = settingsStore.get('user.mouseSensitivity') || 100;
     // Vanilla 1.8.9: s = pct/200 (slider 0–200%); graus/px = 1,2 × (0,6·s + 0,2)³ → 100% = 0,15°/px
     const s = sensPct / 200;
@@ -731,6 +753,29 @@ export class GameEngine {
     const dx = Math.max(-maxDelta, Math.min(maxDelta, e.movementX || 0));
     const dy = Math.max(-maxDelta, Math.min(maxDelta, e.movementY || 0));
     this._lookBy(dx * radPerPx, dy * radPerPx);
+  }
+
+  // Mesmo ganho do mouse travado (0,15°/px a 100 %, curva do 1.8.9): o arrasto sem trava gira igual ao mouse travado
+  _lookPixels(dx, dy) {
+    const sensPct = settingsStore.get('user.mouseSensitivity') || 100;
+    const s = sensPct / 200;
+    const f = s * 0.6 + 0.2;
+    let radPerPx = f * f * f * 8 * 0.15 * Math.PI / 180;
+    if (this.isZooming()) radPerPx *= (settingsStore.get('user.zoomSensitivity') || 50) / 100;
+    const maxDelta = 120;
+    this._lookBy(Math.max(-maxDelta, Math.min(maxDelta, dx)) * radPerPx, Math.max(-maxDelta, Math.min(maxDelta, dy)) * radPerPx);
+  }
+
+  // Setas do teclado: 4,5° por tick (≈ 90°/s), sentido igual ao do mouse (direita = girar à direita, baixo = olhar para baixo)
+  _keyLookTick() {
+    if (!settingsStore.get('user.embeddedBrowser') || this._mouseLockedLook()) return;
+    if (this.paused || this.chatOpen || this.player?.isDead || this.player?.sleeping || this.containerOpenFn?.()) return;
+    const k = this.keys;
+    const yaw = (k.ArrowRight ? 1 : 0) - (k.ArrowLeft ? 1 : 0);
+    const pitch = (k.ArrowDown ? 1 : 0) - (k.ArrowUp ? 1 : 0);
+    if (!yaw && !pitch) return;
+    const rate = 4.5 * Math.PI / 180;
+    this._lookBy(yaw * rate, pitch * rate);
   }
 
   // Gira a câmera (rad): usado pelo mouse e pelo toque. Em "olhar em volta" (ALT) só a câmera gira, não o corpo.
@@ -1928,6 +1973,7 @@ export class GameEngine {
     const p = this.player;
     this._prevPos = { x: p.pos.x, y: p.pos.y, z: p.pos.z };
     this._tickFovModifier();
+    this._keyLookTick();
 
     // Verifica fluido em toda a caixa de colisão do jogador (pés, corpo e olhos)
     const eye = this.eyePos();
@@ -2140,9 +2186,11 @@ export class GameEngine {
     // Combate, mineração e colocação de blocos com fila de clique sem perda entre ticks (1.8.9)
     const canAct = !this.paused && !this.chatOpen && !p.isDead && !p.sleeping && !this.containerOpenFn?.();
     const attackHeld = canAct && this.isAction('attack');
-    const useHeld = canAct && this.isAction('use');
+    // Arrastando para girar (sem trava do mouse) o botão direito não coloca nem usa nada
+    const useBlocked = !!this._dragLooked && !!this.mouseBtn[2];
+    const useHeld = canAct && !useBlocked && this.isAction('use');
     const attackPressed = canAct && (this._pendingAttackClick || (attackHeld && !this._prevAttack));
-    const usePressed = canAct && (this._pendingUseClick || (useHeld && !this._prevUse));
+    const usePressed = canAct && !useBlocked && (this._pendingUseClick || (useHeld && !this._prevUse));
     this._pendingAttackClick = false;
     this._pendingUseClick = false;
 

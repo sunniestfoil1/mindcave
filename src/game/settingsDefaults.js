@@ -102,6 +102,7 @@ export const DEFAULT_USER = {
   touchMoveSensitivity: 100,   // celular: quanto o joystick precisa ser empurrado para andar (maior = anda com um toque leve)
   invertMouse: false,
   rawInput: true,
+  embeddedBrowser: false,      // Navegador embutido (ex.: Scan It): câmera com botão direito/setas, começa/pausa por clique, perfil leve (ver EMBEDDED_BROWSER_PROFILE)
   scrollSensitivity: 10,
   discreteScroll: false,
   adsSensitivity: 100,
@@ -162,6 +163,29 @@ export const DEFAULT_WORLD_RULES = {
 };
 
 // ─── Perfis de qualidade (PRD 03 §13) ─────────────────────────────────
+
+// Perfil aplicado pelo interruptor "Navegador embutido". Não mexe em texturas nem no pacote de recursos: só distância, sombras, nuvens,
+// partículas e teto de quadros. Ao desligar, os valores anteriores são restaurados (ver settingsStore.setEmbeddedBrowser).
+export const EMBEDDED_BROWSER_PROFILE = {
+  renderDistance: 2,
+  maxFps: 60,
+  particles: 'minimal',
+  clouds: 'off',
+  smoothLighting: 'off',
+  sunShadows: 'off',
+  entityShadows: false,
+  entityBlobShadows: false,
+  foliageShadows: false,
+  entityShadowCast: false,
+  cloudShadows: false,
+  ambientOcclusion: 'off',
+  bloom: 0,
+  vignette: 0,
+  antialiasing: 'off',
+  dynamicLights: 'off',
+  chunkUpdatesPerFrame: 1,
+  pauseRenderWhenHidden: true,
+};
 
 export const QUALITY_PROFILES = {
   potato: { graphics: 'fast', renderDistance: 3, smoothLighting: 'off', particles: 'minimal', mipmaps: 0, resolutionScale: 50, shaderMode: 'classic', clouds: 'off', entityShadows: false, entityBlobShadows: false, sunShadows: 'off', ambientOcclusion: 'off', fog: 'off', sky: false, customSky: false, stars: false, sun: false, animatedTextures: 'off', entityDistance: 50, maxFps: 30, chunkUpdatesPerFrame: 1, leaves: 'fast', betterGrass: 'off', waterWaves: 'off', bloom: 0, vignette: 0, antialiasing: 'off', anisotropicFiltering: 0, screenShake: 0, dynamicLights: 'off', smoothCamera: false, pauseRenderWhenHidden: true, powerSaver: true, alternatingBlocks: false, foliageShadows: false, entityShadowCast: false, cloudShadows: false },

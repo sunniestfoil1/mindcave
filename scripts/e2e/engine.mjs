@@ -514,6 +514,65 @@ const result = await page.evaluate(async () => {
       pState.flying = false; engine.tickAcc = 0; for (let i = 0; i < 12; i++) engine._tickFovModifier();
       SS.set('user.fov', savedFov ?? 70);
     }
+
+    // ======== CÂMERA SEM TRAVA DO MOUSE (navegador embutido): arrastar com o botão direito e setas; arrasto não coloca bloco ========
+    {
+      const SS3 = (await import('/src/game/settingsStore.js')).settingsStore;
+      const md = (b, x, y) => window.dispatchEvent(new MouseEvent('mousedown', { button: b, clientX: x, clientY: y }));
+      const mu = (b) => window.dispatchEvent(new MouseEvent('mouseup', { button: b }));
+      const mv = (x, y) => window.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y }));
+      reset(); engine.paused = false; engine.chatOpen = false; SS3.setEmbeddedBrowser(true);
+      ok(document.pointerLockElement !== engine.canvas, 'teste sem trava do mouse (como no navegador embutido)');
+      // 40 px com o botão direito: 0,15°/px a 100 % (curva do 1.8.9: 100 % = 0,15°/px) = 6,000°
+      pState.yaw = 0; md(2, 100, 100); mv(140, 100); mu(2); tickN(1);
+      const dYaw = pState.yaw * 180 / Math.PI;
+      ok(Math.abs(dYaw - 6.0) < 0.02, `arrastar 40 px com o botão direito gira ${dYaw.toFixed(3)}° (esperado 6,000°)`);
+      // setas: 4,5°/tick; direita tem o mesmo sentido do mouse (direita)
+      pState.yaw = 0; engine.keys = { ArrowRight: true }; tickN(10); engine.keys = {};
+      ok(Math.abs(pState.yaw * 180 / Math.PI - 45) < 0.05, `seta direita por 10 ticks gira 45° no mesmo sentido do mouse (${(pState.yaw * 180 / Math.PI).toFixed(2)}°)`);
+      pState.pitch = 0; engine.keys = { ArrowDown: true }; tickN(4); engine.keys = {};
+      ok(Math.abs(pState.pitch * 180 / Math.PI - 18) < 0.05, `seta baixo por 4 ticks olha 18° para baixo (${(pState.pitch * 180 / Math.PI).toFixed(2)}°)`);
+      // opção desligada: o botão direito arrastando não gira (volta ao comportamento com mouse travado)
+      SS3.setEmbeddedBrowser(false); pState.yaw = 0; pState.pitch = 0;
+      md(2, 100, 100); mv(140, 100); mu(2); tickN(1); engine.keys = { ArrowRight: true }; tickN(5); engine.keys = {};
+      ok(Math.abs(pState.yaw) < 1e-9, 'com o navegador embutido desligado, arrastar e setas não giram a câmera sem trava');
+      SS3.setEmbeddedBrowser(true);
+
+      // ---- andar, pular e clique retomar SEM trava do mouse (o bug do navegador embutido) ----
+      SS3.setEmbeddedBrowser(true);
+      const keysS = SS3.get('user.keys') || {};
+      engine.paused = true; engine.mouseBtn = {}; engine.keys = {};
+      engine._onClick();
+      ok(engine.paused === false, 'clique no jogo retoma sem trava do mouse (navegador embutido)');
+      pState.pos = { x: 8.5, y: B0 + 1, z: 8.5 }; pState.yaw = 0; pState.pitch = 0; tickN(3);
+      const x0 = pState.pos.z;
+      engine.keys = { [keysS.forward || 'KeyW']: true }; tickN(20); engine.keys = {};
+      ok(Math.abs(pState.pos.z - x0) > 1.5, `andar com ${keysS.forward || 'KeyW'} sem trava move o jogador (${Math.abs(pState.pos.z - x0).toFixed(2)} blocos em 1 s)`);
+      tickN(20);
+      const y0 = pState.pos.y; engine.keys = { [keysS.jump || 'Space']: true }; tickN(2); engine.keys = {}; tickN(3);
+      ok(pState.pos.y > y0 + 0.1, 'pular sem trava do mouse sobe o jogador');
+      // Esc pausa e o clique volta
+      engine.paused = true; engine._onClick();
+      ok(engine.paused === false, 'depois de pausar, o clique no jogo retoma');
+      // desligar restaura os valores que estavam antes
+      SS3.setEmbeddedBrowser(false); SS3.set('device.renderDistance', 9);
+      SS3.setEmbeddedBrowser(true); const rdOn = SS3.get('device.renderDistance');
+      SS3.setEmbeddedBrowser(false); const rdOff = SS3.get('device.renderDistance');
+      ok(rdOn === 2 && rdOff === 9, `navegador embutido: distância 9 → 2 ao ligar, volta a 9 ao desligar (${rdOn} → ${rdOff})`);
+      ok(SS3.get('user.embeddedBrowser') === false, 'o interruptor fica desligado depois de desligar');
+      SS3.set('device.renderDistance', 4);
+      // arrasto não coloca bloco; clique sem arrasto coloca (controle positivo)
+      pState.hotbar[0] = { id: 1, count: 5, meta: 0 }; pState.selectedSlot = 0;
+      pState.pos = { x: 8.5, y: B0 + 3, z: 8.5 }; pState.yaw = 0; pState.pitch = Math.PI / 2 * 0.99; tickN(3);
+      cw.setBlock(8, B0 + 1, 8, 0); engine.placeCd = 0; engine.breakCd = 0;
+      md(2, 100, 100); tickN(2); mu(2); tickN(3);
+      const clickPlaced = stateId(cw.getBlock(8, B0 + 1, 8)) === 1;
+      ok(clickPlaced, 'controle: clicar com o botão direito sem arrastar coloca o bloco');
+      cw.setBlock(8, B0 + 1, 8, 0); engine.placeCd = 0; engine.breakCd = 0;
+      md(2, 100, 100); mv(130, 100); tickN(3); mv(150, 100); tickN(2); mu(2); tickN(3);
+      ok(stateId(cw.getBlock(8, B0 + 1, 8)) === 0, 'arrastar com o botão direito não coloca bloco');
+      cw.setBlock(8, B0 + 1, 8, 0); pState.pitch = 0;
+    }
     engine.stop?.();
   } catch (e) { out.push('ERRO ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')); }
   return out;
