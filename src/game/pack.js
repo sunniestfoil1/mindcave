@@ -1,9 +1,12 @@
-// Pacote de recursos "minecraft-assets-1.8.9.zip": hospedado em nuvem de alta velocidade no Supabase Storage
-// com fallback para Old_Default_1.8.9.zip e armazenamento persistente na Cache API (mc-assets-v2)
+// Pacote de recursos (texturas, modelos e blockstates do 1.8.9): vem do PRÓPRIO projeto (public/assets/Old_Default_1.8.9.zip, servido pela Vercel
+// com cache de um ano) e só se isso falhar tenta o Supabase Storage. Antes o Supabase era a primeira fonte e o zip local estava no .gitignore:
+// se o Storage ficasse fora do ar ou o arquivo sumisse, a Vercel não tinha de onde ler e o jogo caía nas texturas desenhadas por código.
+// Depois de baixado, o zip fica na Cache API (mc-assets-v2) e as visitas seguintes não baixam de novo.
 export const SUPABASE_STORAGE_URL = 'https://ddwdgwaliywymcatdekg.supabase.co/storage/v1/object/public/game-assets';
 export const PACK_URL = `${SUPABASE_STORAGE_URL}/minecraft-assets-1.8.9.zip`;
 export const FALLBACK_PACK_URL = `${SUPABASE_STORAGE_URL}/Old_Default_1.8.9.zip`;
 export const LOCAL_FALLBACK_URL = '/assets/Old_Default_1.8.9.zip';
+const PACK_SOURCES = [LOCAL_FALLBACK_URL, PACK_URL, FALLBACK_PACK_URL];   // na ordem de tentativa
 export const MC = 'assets/minecraft/';
 
 let _entries = null;
@@ -43,7 +46,7 @@ async function fetchBufferWithProgress(url, onProgress) {
 
   try {
     _downloading = true;
-    onProgress?.({ percent: 0, loaded: 0, total: 100, status: 'Conectando ao Supabase Storage...' });
+    onProgress?.({ percent: 0, loaded: 0, total: 100, status: 'Conectando...' });
     const res = await fetch(url);
     if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
       throw new Error(`Servidor retornou status ${res.status}`);
@@ -97,13 +100,8 @@ async function fetchBufferWithProgress(url, onProgress) {
   } catch (e) {
     _downloading = false;
     console.warn(`[Pack] Falha ao baixar ${url}: ${e.message}. Tentando próximo fallback...`);
-    if (url === PACK_URL) {
-      return fetchBufferWithProgress(FALLBACK_PACK_URL, onProgress);
-    }
-    if (url === FALLBACK_PACK_URL) {
-      return fetchBufferWithProgress(LOCAL_FALLBACK_URL, onProgress);
-    }
-    return null;
+    const next = PACK_SOURCES[PACK_SOURCES.indexOf(url) + 1];
+    return next ? fetchBufferWithProgress(next, onProgress) : null;
   }
 }
 
@@ -177,7 +175,7 @@ export function loadPack(onProgress) {
   if (_promise) return _promise;
   _promise = (async () => {
     try {
-      _buf = await fetchBufferWithProgress(PACK_URL, onProgress);
+      _buf = await fetchBufferWithProgress(PACK_SOURCES[0], onProgress);
       if (!_buf || !isValidZipBuffer(_buf)) {
         _ready = false;
         return false;

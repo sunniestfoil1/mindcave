@@ -46,6 +46,8 @@ brain
 
 # Large archives and extracted assets
 *.zip
+# pacote de texturas do jogo: precisa ir para a Vercel
+!public/assets/Old_Default_1.8.9.zip
 *.gz
 ceu_extracted/
 
